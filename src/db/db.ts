@@ -1,0 +1,259 @@
+import Dexie, { type Table } from 'dexie';
+import type { Project, Block, Attachment } from '../types';
+
+export class DeepScribeDatabase extends Dexie {
+  projects!: Table<Project, string>;
+  blocks!: Table<Block, string>;
+  attachments!: Table<Attachment, string>;
+
+  constructor() {
+    super('DeepScribeDB');
+    this.version(1).stores({
+      projects: 'id, title, createdAt, updatedAt',
+      blocks: 'id, projectId, parentId, order, isTrash, plainText, updatedAt',
+      attachments: 'id, blockId, fileName, createdAt'
+    });
+    this.version(2).stores({
+      projects: 'id, title, isTrash, createdAt, updatedAt',
+      blocks: 'id, projectId, parentId, order, isTrash, plainText, updatedAt',
+      attachments: 'id, blockId, fileName, createdAt'
+    }).upgrade(transaction => transaction.table<Project>('projects').toCollection().modify(project => {
+      project.isTrash = project.isTrash ?? false;
+    }));
+  }
+}
+
+export const db = new DeepScribeDatabase();
+
+export async function requestPersistentStorage(): Promise<boolean> {
+  if (typeof navigator === 'undefined' || !navigator.storage?.persist) return false;
+  try {
+    return await navigator.storage.persist();
+  } catch {
+    return false;
+  }
+}
+
+export async function seedDemoDataIfEmpty() {
+  const projectCount = await db.projects.count();
+  if (projectCount > 0) return;
+
+  const now = Date.now();
+  const demoProjectId = 'proj-demo-1';
+  const demoProject2Id = 'proj-demo-2';
+
+  await db.projects.add({
+    id: demoProjectId,
+    title: '📘 Sci-Fi Roman: De Cybernetic Horizon',
+    description: 'Een meeslepende cyberpunk roman over kunstmatige intelligentie en menselijk bewustzijn.',
+    color: '#00F0FF',
+    icon: 'book',
+    isTrash: false,
+    createdAt: now - 86400000 * 5,
+    updatedAt: now,
+  });
+
+  await db.projects.add({
+    id: demoProject2Id,
+    title: '🧠 Kennisbank & Onderzoek',
+    description: 'Persoonlijk archief met notities, bibliografie en ideeën.',
+    color: '#FF007F',
+    icon: 'brain',
+    isTrash: false,
+    createdAt: now - 86400000 * 3,
+    updatedAt: now,
+  });
+
+  const rootBlocks: Block[] = [
+    {
+      id: 'block-ch1',
+      projectId: demoProjectId,
+      parentId: null,
+      title: 'Hoofdstuk 1: De Eerste Vonk',
+      content: '<h1>Hoofdstuk 1: De Eerste Vonk</h1><p>Het neonlicht van Neo-Rotterdam weerkaatste op het natte asfalt van de West-Kruiskade. Nova stelde haar neuro-implantaten scherp.</p><blockquote><p>"In een stad van nullen en enen is herinnering de enige valuta die er echt toe doet."</p></blockquote><ul data-type="taskList"><li data-type="taskItem" data-checked="true"><label><input type="checkbox" checked="checked"><span></span></label><div><p>Introduceer hoofdpersoon Nova</p></div></li><li data-type="taskItem" data-checked="false"><label><input type="checkbox"><span></span></label><div><p>Beschrijf het neon-landschap van het ondergrondse netwerk</p></div></li></ul>',
+      plainText: 'Hoofdstuk 1: De Eerste Vonk Het neonlicht van Neo-Rotterdam weerkaatste op het natte asfalt van de West-Kruiskade. Nova stelde haar neuro-implantaten scherp.',
+      order: 0,
+      childCount: 3,
+      taskCount: 2,
+      completedTaskCount: 1,
+      attachmentCount: 0,
+      isTrash: false,
+      createdAt: now - 86400000 * 4,
+      updatedAt: now - 3600000 * 2,
+    },
+    {
+      id: 'block-char',
+      projectId: demoProjectId,
+      parentId: null,
+      title: 'Personages & Facties',
+      content: '<h2>Personages &amp; Netwerken</h2><p>Overzicht van alle sleutelfiguren in het verhaal en hun motieven.</p>',
+      plainText: 'Personages & Netwerken Overzicht van alle sleutelfiguren in het verhaal en hun motieven.',
+      order: 1,
+      childCount: 2,
+      taskCount: 0,
+      completedTaskCount: 0,
+      attachmentCount: 0,
+      isTrash: false,
+      createdAt: now - 86400000 * 4,
+      updatedAt: now - 3600000 * 5,
+    },
+    {
+      id: 'block-world',
+      projectId: demoProjectId,
+      parentId: null,
+      title: 'Worldbuilding & Technologie',
+      content: '<h2>Technologische kaders</h2><p>Specificaties van neuro-links, kwantumsystemen en de fysieke infrastructuur.</p>',
+      plainText: 'Technologische kaders Specificaties van neuro-links, kwantumsystemen en de fysieke infrastructuur.',
+      order: 2,
+      childCount: 1,
+      taskCount: 0,
+      completedTaskCount: 0,
+      attachmentCount: 0,
+      isTrash: false,
+      createdAt: now - 86400000 * 3,
+      updatedAt: now - 86400000,
+    }
+  ];
+
+  await db.blocks.bulkAdd(rootBlocks);
+
+  const ch1SubBlocks: Block[] = [
+    {
+      id: 'block-scene-1-1',
+      projectId: demoProjectId,
+      parentId: 'block-ch1',
+      title: 'Scène 1.1: Het Steegje',
+      content: '<h3>Scène 1.1: Het Steegje</h3><p>Nova ontmoet de informant Kael in de schaduw van de zwevende monorail. De regen smaakt naar metaal.</p>',
+      plainText: 'Scène 1.1: Het Steegje Nova ontmoet de informant Kael in de schaduw van de zwevende monorail. De regen smaakt naar metaal.',
+      order: 0,
+      childCount: 0,
+      taskCount: 0,
+      completedTaskCount: 0,
+      attachmentCount: 0,
+      isTrash: false,
+      createdAt: now - 86400000 * 3,
+      updatedAt: now - 3600000 * 3,
+    },
+    {
+      id: 'block-scene-1-2',
+      projectId: demoProjectId,
+      parentId: 'block-ch1',
+      title: 'Scène 1.2: De Hack',
+      content: '<h3>Scène 1.2: De Hack</h3><p>Met een trillende hand plugt ze de glasvezelkabel in de aansluiting achter haar oor. De data-stroom overspoelt haar zintuigen.</p>',
+      plainText: 'Scène 1.2: De Hack Met een trillende hand plugt ze de glasvezelkabel in de aansluiting achter haar oor.',
+      order: 1,
+      childCount: 2,
+      taskCount: 1,
+      completedTaskCount: 0,
+      attachmentCount: 0,
+      isTrash: false,
+      createdAt: now - 86400000 * 2,
+      updatedAt: now - 3600000,
+    },
+    {
+      id: 'block-scene-1-3',
+      projectId: demoProjectId,
+      parentId: 'block-ch1',
+      title: 'Scène 1.3: De Vlucht',
+      content: '<h3>Scène 1.3: De Vlucht</h3><p>Sirenes huilen in de verte. De Security Drones zwermen uit over het dak.</p>',
+      plainText: 'Scène 1.3: De Vlucht Sirenes huilen in de verte. De Security Drones zwermen uit over het dak.',
+      order: 2,
+      childCount: 0,
+      taskCount: 0,
+      completedTaskCount: 0,
+      attachmentCount: 0,
+      isTrash: false,
+      createdAt: now - 86400000,
+      updatedAt: now - 1800000,
+    }
+  ];
+
+  const scene12SubBlocks: Block[] = [
+    {
+      id: 'block-detail-hacker',
+      projectId: demoProjectId,
+      parentId: 'block-scene-1-2',
+      title: 'Code Snippet: Neuro-Decryptie Protocol',
+      content: '<pre><code>function decryptNeuroBuffer(buffer: ArrayBuffer, key: string): Uint8Array {\n  const view = new DataView(buffer);\n  console.log("Decrypting pulse stream...");\n  return new Uint8Array(buffer);\n}</code></pre>',
+      plainText: 'Code Snippet: Neuro-Decryptie Protocol function decryptNeuroBuffer',
+      order: 0,
+      childCount: 0,
+      taskCount: 0,
+      completedTaskCount: 0,
+      attachmentCount: 0,
+      isTrash: false,
+      createdAt: now - 3600000 * 2,
+      updatedAt: now - 1800000,
+    },
+    {
+      id: 'block-detail-firewall',
+      projectId: demoProjectId,
+      parentId: 'block-scene-1-2',
+      title: 'Aanvalstactiek vs Aegis Corp Firewall',
+      content: '<p>Analyse van de kwantum-omleidingen en decoys die Nova gebruikt.</p>',
+      plainText: 'Aanvalstactiek vs Aegis Corp Firewall Analyse van de kwantum-omleidingen',
+      order: 1,
+      childCount: 0,
+      taskCount: 0,
+      completedTaskCount: 0,
+      attachmentCount: 0,
+      isTrash: false,
+      createdAt: now - 3600000,
+      updatedAt: now - 900000,
+    }
+  ];
+
+  const charSubBlocks: Block[] = [
+    {
+      id: 'block-nova',
+      projectId: demoProjectId,
+      parentId: 'block-char',
+      title: 'Nova (Hoofdpersoon)',
+      content: '<h3>Nova (24 jaar)</h3><p>Freelance data-smuggler met een illegale militaire kwantum-chip geïmplanteerd in haar temporale kwab.</p>',
+      plainText: 'Nova (24 jaar) Freelance data-smuggler met een illegale militaire kwantum-chip',
+      order: 0,
+      childCount: 0,
+      taskCount: 0,
+      completedTaskCount: 0,
+      attachmentCount: 0,
+      isTrash: false,
+      createdAt: now - 86400000 * 3,
+      updatedAt: now - 86400000,
+    },
+    {
+      id: 'block-kael',
+      projectId: demoProjectId,
+      parentId: 'block-char',
+      title: 'Kael (Informant)',
+      content: '<h3>Kael (38 jaar)</h3><p>Voormalig engineer bij Aegis Corp, nu schaduwmakelaar in het ondergrondse data-netwerk.</p>',
+      plainText: 'Kael (38 jaar) Voormalig engineer bij Aegis Corp',
+      order: 1,
+      childCount: 0,
+      taskCount: 0,
+      completedTaskCount: 0,
+      attachmentCount: 0,
+      isTrash: false,
+      createdAt: now - 86400000 * 2,
+      updatedAt: now - 86400000,
+    }
+  ];
+
+  await db.blocks.bulkAdd([...ch1SubBlocks, ...scene12SubBlocks, ...charSubBlocks]);
+
+  await db.blocks.add({
+    id: 'block-research-ai',
+    projectId: demoProject2Id,
+    parentId: null,
+    title: 'AI Architecturen & Neural Nets',
+    content: '<h1>AI Architecturen &amp; Neural Nets</h1><p>Documentatie van nieuwste generatie LLM en multi-agent netwerken.</p>',
+    plainText: 'AI Architecturen & Neural Nets Documentatie van nieuwste generatie LLM',
+    order: 0,
+    childCount: 0,
+    taskCount: 0,
+    completedTaskCount: 0,
+    attachmentCount: 0,
+    isTrash: false,
+    createdAt: now - 86400000 * 2,
+    updatedAt: now - 86400000,
+  });
+}

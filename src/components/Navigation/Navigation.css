@@ -1,0 +1,234 @@
+.miller-container {
+  display: flex;
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 16px;
+  gap: 14px;
+  scroll-behavior: smooth;
+}
+
+.miller-column {
+  width: 310px;
+  min-width: 310px;
+  max-width: 310px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-surface);
+  backdrop-filter: var(--glass-backdrop);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  transition: border-color var(--transition-normal), box-shadow var(--transition-normal);
+  position: relative;
+}
+
+.miller-column.active-level {
+  border-color: rgba(235, 222, 195, 0.28);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.column-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(22, 20, 18, 0.7);
+  border-top-left-radius: var(--radius-md);
+  border-top-right-radius: var(--radius-md);
+}
+
+.column-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.column-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+  background: rgba(235, 222, 195, 0.12);
+  color: #EBDEC3;
+  border: 1px solid rgba(235, 222, 195, 0.22);
+}
+
+.column-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.miller-card {
+  padding: 12px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.miller-card:hover {
+  background: var(--bg-card-hover);
+  border-color: rgba(235, 222, 195, 0.28);
+  transform: translateY(-1px);
+}
+
+.miller-card.selected {
+  background: var(--bg-card-active);
+  border-color: rgba(235, 222, 195, 0.45);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+.miller-card.focused-keyboard {
+  outline: 2px solid #EBDEC3;
+  outline-offset: 1px;
+}
+
+/* Drag and Drop dropzone indicators */
+.miller-card.drop-above::before {
+  content: '';
+  position: absolute;
+  top: -5px;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: #EBDEC3;
+  border-radius: 2px;
+  z-index: 10;
+}
+
+.miller-card.drop-below::after {
+  content: '';
+  position: absolute;
+  bottom: -5px;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: #EBDEC3;
+  border-radius: 2px;
+  z-index: 10;
+}
+
+.miller-card.drop-inside {
+  border: 1.5px dashed #EBDEC3 !important;
+  background: rgba(235, 222, 195, 0.12) !important;
+}
+
+.card-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.card-title {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: 1.3;
+}
+
+.card-snippet {
+  font-size: 0.765rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.card-meta-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.card-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.card-badge.cyan {
+  color: #EBDEC3;
+  border-color: rgba(235, 222, 195, 0.22);
+}
+
+.card-badge.magenta {
+  color: #D6CFC4;
+  border-color: rgba(214, 207, 196, 0.22);
+}
+
+.card-badge.link {
+  color: #EBDEC3;
+  border-color: rgba(235, 222, 195, 0.28);
+  background: rgba(235, 222, 195, 0.08);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  text-decoration: none;
+}
+
+.card-badge.link:hover {
+  background: rgba(235, 222, 195, 0.16);
+  color: #FAF6EE;
+  border-color: #EBDEC3;
+}
+
+.column-add-btn {
+  padding: 10px;
+  margin: 8px;
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.015);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.column-add-btn:hover {
+  background: rgba(235, 222, 195, 0.06);
+  border-color: rgba(235, 222, 195, 0.3);
+  color: #EBDEC3;
+}
+
+.empty-column-notice {
+  padding: 24px 14px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}

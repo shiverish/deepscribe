@@ -1,0 +1,66 @@
+export interface Project {
+  id: string;
+  title: string;
+  description: string;
+  color: string;
+  icon?: string;
+  isTrash: boolean;
+  trashedAt?: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface Block {
+  id: string;
+  projectId: string;
+  parentId: string | null;
+  title: string;
+  content: string; // HTML content from TipTap
+  plainText: string; // Extracted plain text for fast indexing
+  order: number;
+  childCount: number;
+  taskCount: number;
+  completedTaskCount: number;
+  attachmentCount: number;
+  isTrash: boolean;
+  trashedAt?: number;
+  trashedWithProject?: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface Attachment {
+  id: string;
+  blockId: string;
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+  dataUrl: string; // Kept for archive compatibility; size is limited on upload/import.
+  createdAt: number;
+}
+
+export interface PathSegment {
+  id: string;
+  title: string;
+  type: 'project' | 'block';
+  parentId?: string | null;
+}
+
+export interface SearchResultItem {
+  block: Block;
+  projectTitle: string;
+  pathSegments: PathSegment[];
+  snippet: string;
+}
+
+export type DropPosition = 'above' | 'below' | 'inside';
+
+export interface DragTarget {
+  blockId: string;
+  position: DropPosition;
+}
+
+export interface SaveStatus {
+  state: 'saved' | 'saving' | 'error';
+  lastSavedAt?: number;
+}
