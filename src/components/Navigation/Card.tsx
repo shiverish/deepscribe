@@ -1,17 +1,20 @@
 import React, { useMemo } from 'react';
 import type { Block, Project, DragTarget } from '../../types';
-import { Folder, FileText, Layers, CheckSquare, MoreVertical, Plus, ExternalLink } from 'lucide-react';
+import { TagBadge } from './TagBadge';
+import { Folder, FileText, Layers, CheckSquare, MoreVertical, Plus, ExternalLink, Check } from 'lucide-react';
 
 interface CardProps {
   item: Block | Project;
   type: 'project' | 'block';
   isSelected: boolean;
+  isCurrent?: boolean;
   isKeyboardFocused?: boolean;
   onSelect: () => void;
   onContextMenu?: (e: React.MouseEvent, item: Block | Project, type: 'project' | 'block') => void;
   onAddChild?: (parentId: string) => void;
   onDuplicate?: (block: Block) => void;
   onDelete?: (block: Block) => void;
+  onTagClick?: (tag: string) => void;
   dragTarget?: DragTarget | null;
   onDragStart?: (e: React.DragEvent, item: Block | Project, type: 'project' | 'block') => void;
   onDragOver?: (e: React.DragEvent, item: Block | Project, type: 'project' | 'block') => void;
@@ -28,10 +31,12 @@ export const Card: React.FC<CardProps> = ({
   item,
   type,
   isSelected,
+  isCurrent = false,
   isKeyboardFocused,
   onSelect,
   onContextMenu,
   onAddChild,
+  onTagClick,
   dragTarget,
   onDragStart,
   onDragOver,
@@ -43,13 +48,15 @@ export const Card: React.FC<CardProps> = ({
   const project = !isBlock ? (item as Project) : null;
 
   const extractedLinks: ExtractedLink[] = useMemo(() => {
-    if (!block || (!block.content && !block.plainText)) return [];
+    const rawContent = isBlock ? block?.content : project?.description;
+    const rawPlainText = isBlock ? block?.plainText : project?.description;
+    if (!rawContent && !rawPlainText) return [];
     const linksMap = new Map<string, string>();
 
-    if (block.content) {
+    if (rawContent) {
       try {
         const parser = new DOMParser();
-        const doc = parser.parseFromString(block.content, 'text/html');
+        const doc = parser.parseFromString(rawContent, 'text/html');
         const anchors = doc.querySelectorAll('a[href]');
         anchors.forEach(a => {
           const href = a.getAttribute('href');
@@ -63,9 +70,9 @@ export const Card: React.FC<CardProps> = ({
       }
     }
 
-    if (block.plainText) {
+    if (rawPlainText) {
       const urlRegex = /(https?:\/\/[^\s<]+)/g;
-      const matches = block.plainText.match(urlRegex);
+      const matches = rawPlainText.match(urlRegex);
       if (matches) {
         matches.forEach(url => {
           const cleanUrl = url.replace(/[.,;!?)]$/, '');
@@ -82,7 +89,7 @@ export const Card: React.FC<CardProps> = ({
     }
 
     return Array.from(linksMap.entries()).map(([url, title]) => ({ url, title }));
-  }, [block]);
+  }, [isBlock, block, project]);
 
   let dropClass = '';
   if (dragTarget && dragTarget.blockId === item.id) {
@@ -93,7 +100,7 @@ export const Card: React.FC<CardProps> = ({
 
   return (
     <div
-      className={`miller-card ${isSelected ? 'selected' : ''} ${isKeyboardFocused ? 'focused-keyboard' : ''} ${dropClass}`}
+      className={`miller-card ${isSelected ? 'selected' : ''} ${isCurrent ? 'current' : ''} ${isKeyboardFocused ? 'focused-keyboard' : ''} ${dropClass}`}
       onClick={onSelect}
       onContextMenu={(e) => onContextMenu && onContextMenu(e, item, type)}
       draggable={type === 'block'}
@@ -101,17 +108,18 @@ export const Card: React.FC<CardProps> = ({
       onDragOver={(e) => onDragOver && onDragOver(e, item, type)}
       onDragLeave={onDragLeave}
       onDrop={(e) => onDrop && onDrop(e, item, type)}
+      aria-current={isCurrent ? 'page' : undefined}
     >
       <div className="card-title-row">
         <div className="card-title">
           {type === 'project' ? (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              <Folder size={16} color={project?.color || '#EBDEC3'} />
+              <Folder size={16} color={project?.color || 'var(--atmosphere-color)'} />
               {project?.title}
             </span>
           ) : (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              <FileText size={15} color="#D6CFC4" />
+              <FileText size={15} color="var(--atmosphere-secondary)" />
               {block?.title || 'Naamloos blok'}
             </span>
           )}
@@ -124,11 +132,18 @@ export const Card: React.FC<CardProps> = ({
             if (onContextMenu) onContextMenu(e, item, type);
           }}
           title="Opties"
-          style={{ background: 'none', border: 'none', color: '#8C857B', cursor: 'pointer', padding: 2 }}
+          style={{ background: 'none', border: 'none', color: 'var(--atmosphere-muted)', cursor: 'pointer', padding: 2 }}
         >
           <MoreVertical size={14} />
         </button>
       </div>
+
+      {isSelected && (
+        <span className={`card-path-status ${isCurrent ? 'current' : ''}`}>
+          <Check size={11} strokeWidth={2.5} />
+          {isCurrent ? 'Open' : 'In pad'}
+        </span>
+      )}
 
       {block && block.plainText && (
         <div className="card-snippet">
@@ -138,7 +153,20 @@ export const Card: React.FC<CardProps> = ({
 
       {project && project.description && (
         <div className="card-snippet">
-          {project.description}
+          {project.description.replace(/<[^>]*>/g, ' ').trim()}
+        </div>
+      )}
+
+      {block && block.tags && block.tags.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6, marginBottom: 2 }}>
+          {block.tags.slice(0, 3).map(tag => (
+            <TagBadge key={tag} tag={tag} size="sm" onClick={onTagClick} />
+          ))}
+          {block.tags.length > 3 && (
+            <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', alignSelf: 'center' }}>
+              +{block.tags.length - 3}
+            </span>
+          )}
         </div>
       )}
 

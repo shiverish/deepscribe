@@ -36,10 +36,18 @@ export const TrashModal: React.FC<TrashModalProps> = ({
   };
 
   useEffect(() => {
-    if (isOpen) {
-      fetchTrashItems();
-    }
-  }, [isOpen]);
+    if (!isOpen) return;
+    fetchTrashItems();
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   const handleRestore = async (blockId: string) => {
     await restoreBlock(blockId);

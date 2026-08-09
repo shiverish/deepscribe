@@ -1,6 +1,6 @@
 import React from 'react';
 import type { PathSegment } from '../../types';
-import { ChevronRight, Search, Trash2, Download, HelpCircle, PanelRightOpen, PanelRightClose, Folder, FileText } from 'lucide-react';
+import { ChevronRight, Search, Trash2, Download, HelpCircle, Settings, PanelRightOpen, PanelRightClose, Folder, FileText } from 'lucide-react';
 
 interface BreadcrumbsProps {
   pathSegments: PathSegment[];
@@ -9,6 +9,7 @@ interface BreadcrumbsProps {
   onOpenTrash: () => void;
   onOpenExportImport: () => void;
   onOpenHelp: () => void;
+  onOpenSettings: () => void;
   isWritingPanelOpen: boolean;
   onToggleWritingPanel: () => void;
 }
@@ -20,87 +21,51 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
   onOpenTrash,
   onOpenExportImport,
   onOpenHelp,
+  onOpenSettings,
   isWritingPanelOpen,
   onToggleWritingPanel
 }) => {
   return (
-    <div
-      style={{
-        height: '48px',
-        background: 'rgba(18, 16, 14, 0.92)',
-        backdropFilter: 'blur(12px)',
-        borderBottom: '1px solid var(--border-subtle)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '0 16px',
-        gap: '16px',
-        zIndex: 20
-      }}
-    >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          overflowX: 'auto',
-          scrollBehavior: 'smooth',
-          fontSize: '0.85rem',
-          fontWeight: 500
-        }}
-      >
-        <span
+    <div className="app-topbar">
+      <nav className="breadcrumb-trail" aria-label="Huidig pad">
+        <button
+          type="button"
+          className={`breadcrumb-segment ${pathSegments.length === 0 ? 'current' : ''}`}
           onClick={() => onSelectSegment(0)}
-          style={{
-            color: pathSegments.length === 0 ? '#EBDEC3' : 'var(--text-secondary)',
-            cursor: 'pointer',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 4,
-            transition: 'color 0.15s'
-          }}
+          aria-current={pathSegments.length === 0 ? 'page' : undefined}
           title="Projectenlijst"
         >
-          <Folder size={15} color="#EBDEC3" />
+          <Folder size={15} />
           <span>Projecten</span>
-        </span>
+        </button>
 
         {pathSegments.map((segment, index) => {
           const isLast = index === pathSegments.length - 1;
           return (
             <React.Fragment key={segment.id || index}>
-              <ChevronRight size={14} color="#8C857B" />
-              <span
+              <ChevronRight className="breadcrumb-separator" size={14} />
+              <button
+                type="button"
+                className={`breadcrumb-segment ${isLast ? 'current' : ''}`}
                 onClick={() => onSelectSegment(index + 1)}
-                style={{
-                  color: isLast ? '#EBDEC3' : 'var(--text-secondary)',
-                  fontWeight: isLast ? 600 : 400,
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  padding: '2px 6px',
-                  borderRadius: '4px',
-                  background: isLast ? 'rgba(235, 222, 195, 0.08)' : 'transparent',
-                  border: isLast ? '1px solid rgba(235, 222, 195, 0.2)' : '1px solid transparent'
-                }}
+                aria-current={isLast ? 'page' : undefined}
               >
-                {segment.type === 'project' ? <Folder size={14} color="#EBDEC3" /> : <FileText size={14} color="#D6CFC4" />}
-                {segment.title}
-              </span>
+                {segment.type === 'project' ? <Folder size={14} /> : <FileText size={14} />}
+                <span>{segment.title}</span>
+                {isLast && <span className="breadcrumb-current-label">Open</span>}
+              </button>
             </React.Fragment>
           );
         })}
-      </div>
+      </nav>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
         <button
           onClick={onOpenSearch}
           style={{
-            background: 'rgba(235, 222, 195, 0.08)',
-            border: '1px solid rgba(235, 222, 195, 0.22)',
-            color: '#EBDEC3',
+            background: 'rgba(var(--atmosphere-rgb), 0.08)',
+            border: '1px solid rgba(var(--atmosphere-rgb), 0.22)',
+            color: 'var(--atmosphere-color)',
             padding: '5px 10px',
             borderRadius: '6px',
             cursor: 'pointer',
@@ -175,14 +140,33 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
           <HelpCircle size={14} />
         </button>
 
+        <button
+          onClick={onOpenSettings}
+          style={{
+            background: 'rgba(255, 255, 255, 0.03)',
+            border: '1px solid var(--border-subtle)',
+            color: 'var(--text-secondary)',
+            padding: '5px 8px',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            fontSize: '0.78rem'
+          }}
+          title="Instellingen (Ctrl + ,)"
+        >
+          <Settings size={14} />
+        </button>
+
         <div style={{ width: 1, height: 20, background: 'var(--border-subtle)', margin: '0 4px' }} />
 
         <button
           onClick={onToggleWritingPanel}
           style={{
-            background: isWritingPanelOpen ? 'rgba(235, 222, 195, 0.1)' : 'rgba(255, 255, 255, 0.03)',
-            border: isWritingPanelOpen ? '1px solid rgba(235, 222, 195, 0.3)' : '1px solid var(--border-subtle)',
-            color: isWritingPanelOpen ? '#EBDEC3' : 'var(--text-secondary)',
+            background: isWritingPanelOpen ? 'rgba(var(--atmosphere-rgb), 0.1)' : 'rgba(255, 255, 255, 0.03)',
+            border: isWritingPanelOpen ? '1px solid rgba(var(--atmosphere-rgb), 0.3)' : '1px solid var(--border-subtle)',
+            color: isWritingPanelOpen ? 'var(--atmosphere-color)' : 'var(--text-secondary)',
             padding: '5px 10px',
             borderRadius: '6px',
             cursor: 'pointer',

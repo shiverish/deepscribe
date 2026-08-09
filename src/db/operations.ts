@@ -1,5 +1,23 @@
 import { db } from './db';
 import type { Block } from '../types';
+import { parseTag, sanitizeTags } from '../utils/tagUtils';
+
+export interface BlockDraftUpdate {
+  title: string;
+  content: string;
+  plainText: string;
+  taskCount: number;
+  completedTaskCount: number;
+  tags: string[];
+}
+
+export async function saveBlockDraft(blockId: string, draft: BlockDraftUpdate): Promise<void> {
+  await db.blocks.update(blockId, {
+    ...draft,
+    tags: sanitizeTags(draft.tags),
+    updatedAt: Date.now()
+  });
+}
 
 export function createId(prefix: 'proj' | 'block' | 'attachment'): string {
   return `${prefix}-${crypto.randomUUID()}`;
@@ -141,4 +159,80 @@ export async function emptyTrash(): Promise<void> {
 
   const remainingBlocks = await db.blocks.toArray();
   for (const block of topLevelTrashedBlocks(remainingBlocks)) await permanentlyDeleteBlock(block.id);
+}
+
+export async function getAllProjectTags(projectId: string): Promise<string[]> {
+  const blocks = await db.blocks.where('projectId').equals(projectId).toArray();
+  const tagsSet = new Set<string>();
+  for (const block of blocks) {
+    if (!block.isTrash && block.tags) {
+      for (const tag of sanitizeTags(block.tags)) tagsSet.add(tag);
+    }
+  }
+  return Array.from(tagsSet).sort();
+}
+
+export async function addTagToBlock(blockId: string, tag: string): Promise<void> {
+  const normalized = parseTag(tag).tag;
+  if (!normalized) return;
+  await db.transaction('rw', db.blocks, async () => {
+    const block = await db.blocks.get(blockId);
+    if (!block) return;
+    const currentTags = sanitizeTags(block.tags);
+    if (!currentTags.includes(normalized)) {
+      await db.blocks.update(blockId, {
+        tags: [...currentTags, normalized],
+        updatedAt: Date.now()
+      });
+    }
+  });
+}
+
+export async function removeTagFromBlock(blockId: string, tag: string): Promise<void> {
+  const normalized = parseTag(tag).tag;
+  if (!normalized) return;
+  await db.transaction('rw', db.blocks, async () => {
+    const block = await db.blocks.get(blockId);
+    if (!block || !block.tags) return;
+    const updatedTags = block.tags.filter(t => t !== normalized);
+    await db.blocks.update(blockId, {
+      tags: updatedTags,
+      updatedAt: Date.now()
+    });
+  });
+}
+
+export async function renameTagInProject(projectId: string, from: string, to: string): Promise<number> {
+  const source = parseTag(from).tag;
+  const target = parseTag(to).tag;
+  if (!source || !target || source === target) return 0;
+
+  let changed = 0;
+  await db.transaction('rw', db.blocks, async () => {
+    await db.blocks.where('projectId').equals(projectId).modify(block => {
+      const current = sanitizeTags(block.tags);
+      if (!current.includes(source)) return;
+      block.tags = sanitizeTags(current.map(tag => tag === source ? target : tag));
+      block.updatedAt = Date.now();
+      changed += 1;
+    });
+  });
+  return changed;
+}
+
+export async function deleteTagFromProject(projectId: string, tag: string): Promise<number> {
+  const target = parseTag(tag).tag;
+  if (!target) return 0;
+
+  let changed = 0;
+  await db.transaction('rw', db.blocks, async () => {
+    await db.blocks.where('projectId').equals(projectId).modify(block => {
+      const current = sanitizeTags(block.tags);
+      if (!current.includes(target)) return;
+      block.tags = current.filter(value => value !== target);
+      block.updatedAt = Date.now();
+      changed += 1;
+    });
+  });
+  return changed;
 }

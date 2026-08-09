@@ -2,10 +2,16 @@ import 'fake-indexeddb/auto';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { db } from './db';
 import {
+  addTagToBlock,
   collectDescendantIds,
+  deleteTagFromProject,
+  getAllProjectTags,
   permanentlyDeleteProject,
+  removeTagFromBlock,
+  renameTagInProject,
   restoreBlock,
   restoreProject,
+  saveBlockDraft,
   topLevelTrashedBlocks,
   trashBlock,
   trashProject
@@ -19,7 +25,7 @@ const project: Project = {
 };
 const block = (id: string, parentId: string | null, order: number): Block => ({
   id, projectId: project.id, parentId, title: id, content: '<p></p>', plainText: '', order,
-  childCount: id === 'root' ? 1 : 0, taskCount: 0, completedTaskCount: 0, attachmentCount: 0,
+  childCount: id === 'root' ? 1 : 0, taskCount: 0, completedTaskCount: 0, attachmentCount: 0, tags: [],
   isTrash: false, createdAt: now, updatedAt: now
 });
 
@@ -81,5 +87,41 @@ describe('local data safety operations', () => {
     await permanentlyDeleteProject(project.id);
     expect(await db.projects.get(project.id)).toBeUndefined();
     expect(await db.blocks.where('projectId').equals(project.id).count()).toBe(0);
+  });
+
+  it('manages tags on blocks correctly', async () => {
+    await addTagToBlock('root', 'belangrijk');
+    await addTagToBlock('root', '#idee');
+    let b = await db.blocks.get('root');
+    expect(b?.tags).toEqual(['belangrijk', 'idee']);
+
+    const tags = await getAllProjectTags(project.id);
+    expect(tags).toEqual(['belangrijk', 'idee']);
+
+    await removeTagFromBlock('root', 'belangrijk');
+    b = await db.blocks.get('root');
+    expect(b?.tags).toEqual(['idee']);
+  });
+
+  it('renames, merges and deletes tags across a project transactionally', async () => {
+    await db.blocks.update('root', { tags: ['idee', 'concept'] });
+    await db.blocks.update('child', { tags: ['idee'] });
+
+    expect(await renameTagInProject(project.id, 'idee', 'concept')).toBe(2);
+    expect((await db.blocks.get('root'))?.tags).toEqual(['concept']);
+    expect((await db.blocks.get('child'))?.tags).toEqual(['concept']);
+
+    expect(await deleteTagFromProject(project.id, '#concept')).toBe(2);
+    expect((await db.blocks.get('root'))?.tags).toEqual([]);
+    expect((await db.blocks.get('child'))?.tags).toEqual([]);
+  });
+
+  it('keeps the explicit tag list when autosaving other block fields', async () => {
+    await db.blocks.update('root', { tags: ['belangrijk'] });
+    await saveBlockDraft('root', {
+      title: 'Gewijzigd', content: '<p>Nieuw</p>', plainText: 'Nieuw',
+      taskCount: 0, completedTaskCount: 0, tags: ['belangrijk']
+    });
+    expect((await db.blocks.get('root'))?.tags).toEqual(['belangrijk']);
   });
 });

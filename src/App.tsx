@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, requestPersistentStorage, seedDemoDataIfEmpty } from './db/db';
-import { createId, trashBlock, trashProject } from './db/operations';
+import { createId, deleteTagFromProject, renameTagInProject, saveBlockDraft, trashBlock, trashProject } from './db/operations';
 import type { Project, Block, PathSegment, SaveStatus, DragTarget } from './types';
 import { Breadcrumbs } from './components/Navigation/Breadcrumbs';
 import { HorizontalLayout, type ColumnData } from './components/Navigation/HorizontalLayout';
@@ -10,13 +10,18 @@ import { SearchModal } from './components/Search/SearchModal';
 import { TrashModal } from './components/Modals/TrashModal';
 import { ExportImportModal } from './components/Modals/ExportImportModal';
 import { HotkeyHelpModal } from './components/Modals/HotkeyHelpModal';
+import { SettingsModal } from './components/Modals/SettingsModal';
 import { ContextMenu } from './components/Modals/ContextMenu';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { useSettings } from './hooks/useSettings';
 import { getDropPosition, moveBlockInTree } from './utils/dragAndDrop';
+import { sanitizeTags } from './utils/tagUtils';
+import { getDeleteFallbackTarget } from './utils/selectionUtils';
 import './styles/theme.css';
 import './components/Navigation/Navigation.css';
 
 export function App() {
+  const { settings, updateSettings, resetSettings } = useSettings();
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [selectedBlockPath, setSelectedBlockPath] = useState<string[]>([]);
   const [focusedLevel, setFocusedLevel] = useState<number>(0);
@@ -27,6 +32,7 @@ export function App() {
   const [isTrashOpen, setIsTrashOpen] = useState(false);
   const [isExportImportOpen, setIsExportImportOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: Project | Block; type: 'project' | 'block' } | null>(null);
 
   const [draggedItem, setDraggedItem] = useState<{ item: Project | Block; type: 'project' | 'block' } | null>(null);
@@ -61,6 +67,17 @@ export function App() {
 
   const activeInspectorItem = activeBlock || activeProject;
   const activeInspectorType: 'project' | 'block' | null = activeBlock ? 'block' : activeProject ? 'project' : null;
+
+  const projectTagSuggestions = useMemo(() => {
+    if (!activeProjectId) return [];
+    const counts = new Map<string, number>();
+    for (const block of allBlocks) {
+      if (block.projectId !== activeProjectId) continue;
+      for (const tag of sanitizeTags(block.tags)) counts.set(tag, (counts.get(tag) ?? 0) + 1);
+    }
+    return Array.from(counts, ([tag, count]) => ({ tag, count }))
+      .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
+  }, [activeProjectId, allBlocks]);
 
   const columns: ColumnData[] = useMemo(() => {
     const cols: ColumnData[] = [];
@@ -136,28 +153,27 @@ export function App() {
   const handleSelectItem = useCallback((level: number, item: Project | Block) => {
     setFocusedLevel(level);
     setFocusedCardId(item.id);
+    setIsWritingPanelOpen(true);
 
     if (level === 0) {
       const proj = item as Project;
       setActiveProjectId(proj.id);
-
-      const rootBlocks = allBlocks.filter(b => b.projectId === proj.id && b.parentId === null).sort((a, b) => a.order - b.order);
-      if (rootBlocks.length > 0) {
-        setSelectedBlockPath([rootBlocks[0].id]);
-      } else {
-        setSelectedBlockPath([]);
-      }
+      setSelectedBlockPath([]);
     } else {
       const block = item as Block;
       const newPath = selectedBlockPath.slice(0, level - 1);
       newPath.push(block.id);
       setSelectedBlockPath(newPath);
     }
-  }, [allBlocks, selectedBlockPath]);
+  }, [selectedBlockPath]);
 
   const handleSelectBreadcrumbSegment = (index: number) => {
     setFocusedLevel(index);
-    if (index === 0) return;
+    setIsWritingPanelOpen(true);
+    if (index === 0) {
+      setSelectedBlockPath([]);
+      return;
+    }
     const newPath = selectedBlockPath.slice(0, index);
     setSelectedBlockPath(newPath);
   };
@@ -178,6 +194,8 @@ export function App() {
       await db.projects.add(newProj);
       setActiveProjectId(newProjId);
       setSelectedBlockPath([]);
+      setIsWritingPanelOpen(true);
+      setFocusTitleSignal(prev => prev + 1);
     } else {
       if (!activeProjectId) return;
 
@@ -196,6 +214,7 @@ export function App() {
         taskCount: 0,
         completedTaskCount: 0,
         attachmentCount: 0,
+        tags: [],
         isTrash: false,
         createdAt: now,
         updatedAt: now
@@ -208,6 +227,8 @@ export function App() {
       setSelectedBlockPath(newPath);
       setFocusedLevel(level);
       setFocusedCardId(newBlockId);
+      setIsWritingPanelOpen(true);
+      setFocusTitleSignal(prev => prev + 1);
     }
   };
 
@@ -229,6 +250,7 @@ export function App() {
       taskCount: 0,
       completedTaskCount: 0,
       attachmentCount: 0,
+      tags: [],
       isTrash: false,
       createdAt: now,
       updatedAt: now
@@ -243,6 +265,9 @@ export function App() {
       newPath.push(newBlockId);
       setSelectedBlockPath(newPath);
       setFocusedLevel(newPath.length);
+      setFocusedCardId(newBlockId);
+      setIsWritingPanelOpen(true);
+      setFocusTitleSignal(prev => prev + 1);
     }
   };
 
@@ -254,24 +279,25 @@ export function App() {
     content: string,
     plainText: string,
     taskCount: number,
-    completedTaskCount: number
+    completedTaskCount: number,
+    tags: string[]
   ) => {
     setSaveStatus({ state: 'saving' });
     try {
       if (itemType === 'project') {
         await db.projects.update(itemId, {
           title,
-          description: plainText,
+          description: content || plainText,
           updatedAt: Date.now()
         });
       } else {
-        await db.blocks.update(itemId, {
+        await saveBlockDraft(itemId, {
           title,
           content,
           plainText,
           taskCount,
           completedTaskCount,
-          updatedAt: Date.now()
+          tags
         });
       }
       setSaveStatus({ state: 'saved', lastSavedAt: Date.now() });
@@ -334,8 +360,11 @@ export function App() {
       }
     } else {
       const block = item as Block;
+      const fallback = getDeleteFallbackTarget(block, allBlocks, selectedBlockPath);
       await trashBlock(block.id);
-      setSelectedBlockPath(prev => prev.filter(id => id !== block.id));
+      setSelectedBlockPath(fallback.newPath);
+      if (fallback.focusedId) setFocusedCardId(fallback.focusedId);
+      setFocusedLevel(fallback.focusedLevel);
     }
   };
 
@@ -409,13 +438,25 @@ export function App() {
     }
   }, [focusedLevel, columns]);
 
+  const [focusTitleSignal, setFocusTitleSignal] = useState(0);
+
   useKeyboardShortcuts({
     onNavigateUp: handleNavigateUp,
     onNavigateDown: handleNavigateDown,
     onNavigateRight: handleNavigateRight,
     onNavigateLeft: handleNavigateLeft,
+    onEditFocus: () => {
+      setIsWritingPanelOpen(true);
+      setFocusTitleSignal(prev => prev + 1);
+    },
     onOpenSearch: () => setIsSearchOpen(true),
     onNewBlock: () => handleAddNewItem(focusedLevel, activeColumn?.parentId || null),
+    onAddChildBlock: () => {
+      const item = activeColumnItems[currentFocusedIndex];
+      if (item) {
+        handleAddChildItem(item.id);
+      }
+    },
     onDuplicate: () => {
       const item = activeColumnItems[currentFocusedIndex];
       if (item) handleDuplicate(item, activeColumn.type);
@@ -425,7 +466,8 @@ export function App() {
       if (item) handleDeleteToTrash(item, activeColumn.type);
     },
     onToggleWritingPanel: () => setIsWritingPanelOpen(prev => !prev),
-    onOpenHelp: () => setIsHelpOpen(true)
+    onOpenHelp: () => setIsHelpOpen(true),
+    onOpenSettings: () => setIsSettingsOpen(true)
   });
 
   const handleSelectSearchResult = (blockId: string, projectId: string, pathSegmentIds: string[]) => {
@@ -445,6 +487,7 @@ export function App() {
         onOpenTrash={() => setIsTrashOpen(true)}
         onOpenExportImport={() => setIsExportImportOpen(true)}
         onOpenHelp={() => setIsHelpOpen(true)}
+        onOpenSettings={() => setIsSettingsOpen(true)}
         isWritingPanelOpen={isWritingPanelOpen}
         onToggleWritingPanel={() => setIsWritingPanelOpen(prev => !prev)}
       />
@@ -474,7 +517,16 @@ export function App() {
           itemType={activeInspectorType}
           pathSegments={pathSegments}
           saveStatus={saveStatus}
+          focusTitleSignal={focusTitleSignal}
+          onReturnFocusToCards={() => {
+            if (document.activeElement instanceof HTMLElement) {
+              document.activeElement.blur();
+            }
+          }}
           onSaveItem={handleSaveItem}
+          tagSuggestions={projectTagSuggestions}
+          onRenameProjectTag={(from, to) => activeProjectId ? renameTagInProject(activeProjectId, from, to) : Promise.resolve(0)}
+          onDeleteProjectTag={tag => activeProjectId ? deleteTagFromProject(activeProjectId, tag) : Promise.resolve(0)}
           onClose={() => setIsWritingPanelOpen(false)}
         />
       </div>
@@ -513,6 +565,14 @@ export function App() {
       <HotkeyHelpModal
         isOpen={isHelpOpen}
         onClose={() => setIsHelpOpen(false)}
+      />
+
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        settings={settings}
+        onUpdateSettings={updateSettings}
+        onResetSettings={resetSettings}
       />
     </div>
   );

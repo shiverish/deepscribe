@@ -31,14 +31,22 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
   const [statusMessage, setStatusMessage] = useState<string>('');
 
   useEffect(() => {
-    if (isOpen) {
-      db.projects.filter(project => !project.isTrash).toArray().then(projs => {
-        setProjects(projs);
-        setSelectedProjectId(current => projs.some(project => project.id === current) ? current : (projs[0]?.id ?? ''));
-      });
-      setStatusMessage('');
-    }
-  }, [isOpen]);
+    if (!isOpen) return;
+    db.projects.filter(project => !project.isTrash).toArray().then(projs => {
+      setProjects(projs);
+      setSelectedProjectId(current => projs.some(project => project.id === current) ? current : (projs[0]?.id ?? ''));
+    });
+    setStatusMessage('');
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   const handleExportProject = async () => {
     if (!selectedProjectId) return;
@@ -149,7 +157,9 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
         if (attachments.length) await db.attachments.bulkAdd(attachments);
       });
 
-      setStatusMessage('Import succesvol afgerond! Project is hersteld.');
+      setStatusMessage(data.normalizedTagBlocks > 0
+        ? `Import afgerond. Tags in ${data.normalizedTagBlocks} blok${data.normalizedTagBlocks === 1 ? '' : 'ken'} zijn opgeschoond.`
+        : 'Import succesvol afgerond! Project is hersteld.');
       onRefreshData();
     } catch (err) {
       console.error(err);

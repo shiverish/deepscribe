@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { X, Command } from 'lucide-react';
 
 interface HotkeyHelpModalProps {
@@ -7,16 +7,31 @@ interface HotkeyHelpModalProps {
 }
 
 export const HotkeyHelpModal: React.FC<HotkeyHelpModalProps> = ({ isOpen, onClose }) => {
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const shortcuts = [
     { key: '↑ / ↓', desc: 'Verticaal navigeren door kaarten in de actieve kolom' },
-    { key: '→ / Enter', desc: 'Open geselecteerde kaart & ontvouw volgende niveau' },
+    { key: 'Enter', desc: 'Titel bewerken (nogmaals Enter = door naar tekstinhoud)' },
+    { key: 'Escape', desc: 'Bewerken stoppen & terugkeren naar kaartnavigatie' },
+    { key: 'Shift + →', desc: 'Nieuw kind-blok (subblok) toevoegen aan gekozen blok' },
+    { key: 'Shift + ↓ / Shift + N', desc: 'Nieuw tekstblok toevoegen aan actieve niveau' },
+    { key: 'Delete / Backspace', desc: 'Geselecteerd blok verplaatsen naar prullenbak' },
+    { key: '→', desc: 'Volgende niveau / kind-blokken openen' },
     { key: '←', desc: 'Terugnavigeren naar de bovenliggende kolom' },
-    { key: 'Ctrl + K', desc: 'Globale zoekfunctie openen (titel & inhoud)' },
-    { key: 'Ctrl + N', desc: 'Nieuw tekstblok toevoegen aan actieve niveau' },
+    { key: 'Ctrl + K', desc: 'Globale zoekfunctie openen (titel, inhoud & tags)' },
     { key: 'Ctrl + D', desc: 'Geselecteerd blok + onderliggende tak dupliceren' },
-    { key: 'Ctrl + Delete', desc: 'Geselecteerd blok verplaatsen naar prullenbak' },
     { key: 'Ctrl + Shift + E', desc: 'Vast schrijfpaneel in- of inklappen' },
     { key: 'Shift + ?', desc: 'Dit sneltoetsenoverzicht openen' },
   ];

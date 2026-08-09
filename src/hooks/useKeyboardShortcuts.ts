@@ -5,12 +5,15 @@ interface KeyboardShortcutsHandlers {
   onNavigateDown: () => void;
   onNavigateRight: () => void;
   onNavigateLeft: () => void;
+  onEditFocus?: () => void;
   onOpenSearch: () => void;
   onNewBlock: () => void;
+  onAddChildBlock?: () => void;
   onDuplicate: () => void;
   onTrash: () => void;
   onToggleWritingPanel: () => void;
   onOpenHelp: () => void;
+  onOpenSettings?: () => void;
 }
 
 export function useKeyboardShortcuts({
@@ -18,12 +21,15 @@ export function useKeyboardShortcuts({
   onNavigateDown,
   onNavigateRight,
   onNavigateLeft,
+  onEditFocus,
   onOpenSearch,
   onNewBlock,
+  onAddChildBlock,
   onDuplicate,
   onTrash,
   onToggleWritingPanel,
-  onOpenHelp
+  onOpenHelp,
+  onOpenSettings
 }: KeyboardShortcutsHandlers) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -37,6 +43,12 @@ export function useKeyboardShortcuts({
       if (isCtrlOrCmd && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         onOpenSearch();
+        return;
+      }
+
+      if (isCtrlOrCmd && e.key === ',') {
+        e.preventDefault();
+        if (onOpenSettings) onOpenSettings();
         return;
       }
 
@@ -56,26 +68,35 @@ export function useKeyboardShortcuts({
 
       if (isInput) return; // Prevent navigation hotkeys while typing in editor or search input
 
-      // Miller Navigation Hotkeys
-      if (e.key === 'ArrowUp') {
+      // Miller Navigation & Block Action Hotkeys
+      if (e.shiftKey && e.key === 'ArrowRight') {
+        e.preventDefault();
+        if (onAddChildBlock) onAddChildBlock();
+      } else if (e.shiftKey && e.key === 'ArrowDown') {
+        e.preventDefault();
+        onNewBlock();
+      } else if (e.key === 'ArrowUp') {
         e.preventDefault();
         onNavigateUp();
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
         onNavigateDown();
-      } else if (e.key === 'ArrowRight' || e.key === 'Enter') {
+      } else if (e.key === 'ArrowRight') {
         e.preventDefault();
         onNavigateRight();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (onEditFocus) onEditFocus();
       } else if (e.key === 'ArrowLeft') {
         e.preventDefault();
         onNavigateLeft();
-      } else if (isCtrlOrCmd && e.key.toLowerCase() === 'n') {
+      } else if ((e.shiftKey && e.key.toLowerCase() === 'n') || (isCtrlOrCmd && e.shiftKey && e.key.toLowerCase() === 'n')) {
         e.preventDefault();
         onNewBlock();
       } else if (isCtrlOrCmd && e.key.toLowerCase() === 'd') {
         e.preventDefault();
         onDuplicate();
-      } else if (isCtrlOrCmd && (e.key === 'Delete' || e.key === 'Backspace')) {
+      } else if (e.key === 'Delete' || e.key === 'Backspace' || (isCtrlOrCmd && (e.key === 'Delete' || e.key === 'Backspace'))) {
         e.preventDefault();
         onTrash();
       }
@@ -88,11 +109,14 @@ export function useKeyboardShortcuts({
     onNavigateDown,
     onNavigateRight,
     onNavigateLeft,
+    onEditFocus,
     onOpenSearch,
     onNewBlock,
+    onAddChildBlock,
     onDuplicate,
     onTrash,
     onToggleWritingPanel,
-    onOpenHelp
+    onOpenHelp,
+    onOpenSettings
   ]);
 }

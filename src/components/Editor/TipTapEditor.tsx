@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useImperativeHandle, forwardRef } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
@@ -30,19 +30,25 @@ import {
   Upload
 } from 'lucide-react';
 
+export interface TipTapEditorHandle {
+  focus: () => void;
+}
+
 interface TipTapEditorProps {
   content: string;
   onChange: (html: string, plainText: string, taskCount: number, completedTaskCount: number) => void;
   onBlur?: () => void;
   onUploadImage?: (file: File) => Promise<string>;
+  onReturnFocusToCards?: () => void;
 }
 
-export const TipTapEditor: React.FC<TipTapEditorProps> = ({
+export const TipTapEditor = forwardRef<TipTapEditorHandle, TipTapEditorProps>(({
   content,
   onChange,
   onBlur,
-  onUploadImage
-}) => {
+  onUploadImage,
+  onReturnFocusToCards
+}, ref) => {
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -56,9 +62,27 @@ export const TipTapEditor: React.FC<TipTapEditorProps> = ({
       TableHeader,
       TableCell,
       Image.configure({ inline: true, allowBase64: true }),
-      Link.configure({ openOnClick: false })
+      Link.configure({
+        autolink: true,
+        linkOnPaste: true,
+        openOnClick: false,
+        HTMLAttributes: {
+          target: '_blank',
+          rel: 'noopener noreferrer'
+        }
+      })
     ],
     content: content || '<p></p>',
+    editorProps: {
+      handleKeyDown: (_view, event) => {
+        if (event.key === 'Escape') {
+          if (editor) editor.commands.blur();
+          if (onReturnFocusToCards) onReturnFocusToCards();
+          return true;
+        }
+        return false;
+      }
+    },
     onUpdate: ({ editor }) => {
       const html = editor.getHTML();
       const plainText = editor.getText();
@@ -84,8 +108,16 @@ export const TipTapEditor: React.FC<TipTapEditorProps> = ({
     }
   });
 
+  useImperativeHandle(ref, () => ({
+    focus: () => {
+      if (editor) {
+        editor.chain().focus().run();
+      }
+    }
+  }), [editor]);
+
   useEffect(() => {
-    if (editor && content !== editor.getHTML()) {
+    if (editor && !editor.isFocused && content !== editor.getHTML()) {
       editor.commands.setContent(content || '<p></p>');
     }
   }, [content, editor]);
@@ -269,9 +301,18 @@ export const TipTapEditor: React.FC<TipTapEditorProps> = ({
         </button>
       </div>
 
-      <div className="editor-content-area">
+      <div
+        className="editor-content-area"
+        onClick={() => {
+          if (editor && !editor.isFocused) {
+            editor.chain().focus().run();
+          }
+        }}
+      >
         <EditorContent editor={editor} />
       </div>
     </div>
   );
-};
+});
+
+TipTapEditor.displayName = 'TipTapEditor';

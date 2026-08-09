@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../../db/db';
 import type { Block, Project, SearchResultItem, PathSegment } from '../../types';
-import { Search, FileText, ChevronRight, X } from 'lucide-react';
+import { TagBadge } from '../Navigation/TagBadge';
+import { Search, FileText, ChevronRight, X, Tag as TagIcon } from 'lucide-react';
+import { parseSearchQuery } from '../../utils/searchUtils';
+import { sanitizeTags } from '../../utils/tagUtils';
 
 interface SearchModalProps {
   isOpen: boolean;
@@ -16,8 +19,10 @@ export const SearchModal: React.FC<SearchModalProps> = ({
 }) => {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResultItem[]>([]);
+  const [allTags, setAllTags] = useState<string[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const searchRequestRef = useRef(0);
 
   useEffect(() => {
     if (isOpen) {
@@ -25,6 +30,13 @@ export const SearchModal: React.FC<SearchModalProps> = ({
       setResults([]);
       setSelectedIndex(0);
       setTimeout(() => inputRef.current?.focus(), 50);
+
+      // Load all distinct tags in DB for quick filter chips
+      db.blocks.filter(b => !b.isTrash && Boolean(b.tags?.length)).toArray().then(blocks => {
+        const tagSet = new Set<string>();
+        blocks.forEach(b => sanitizeTags(b.tags).forEach(t => tagSet.add(t)));
+        setAllTags(Array.from(tagSet).sort());
+      }).catch(err => console.error(err));
     }
   }, [isOpen]);
 
@@ -35,19 +47,33 @@ export const SearchModal: React.FC<SearchModalProps> = ({
     }
 
     const performSearch = async () => {
-      const q = query.toLowerCase();
-      const allBlocks = await db.blocks.filter(b => !b.isTrash).toArray();
-      const allProjects = await db.projects.toArray();
+      const requestId = ++searchRequestRef.current;
+      const parsed = parseSearchQuery(query);
+      let allBlocks: Block[];
+      if (parsed.tags.length > 0) {
+        const [firstTag, ...otherTags] = parsed.tags;
+        allBlocks = await db.blocks.where('tags').equals(firstTag).and(block =>
+          !block.isTrash && otherTags.every(tag => block.tags.includes(tag))
+        ).toArray();
+      } else {
+        allBlocks = await db.blocks.filter(b => !b.isTrash).toArray();
+      }
+      const [allProjects, navigationBlocks] = await Promise.all([
+        db.projects.toArray(),
+        parsed.tags.length > 0 ? db.blocks.filter(b => !b.isTrash).toArray() : Promise.resolve(allBlocks)
+      ]);
+      if (requestId !== searchRequestRef.current) return;
       const projectMap = new Map<string, Project>(allProjects.map(p => [p.id, p]));
-      const blockMap = new Map<string, Block>(allBlocks.map(b => [b.id, b]));
+      const blockMap = new Map<string, Block>(navigationBlocks.map(b => [b.id, b]));
 
       const matchedResults: SearchResultItem[] = [];
 
       for (const block of allBlocks) {
-        const titleMatch = block.title.toLowerCase().includes(q);
-        const textMatch = block.plainText.toLowerCase().includes(q);
+        const titleMatch = parsed.text ? block.title.toLowerCase().includes(parsed.text) : true;
+        const textMatch = parsed.text ? block.plainText.toLowerCase().includes(parsed.text) : true;
+        const textMatches = titleMatch || textMatch;
 
-        if (titleMatch || textMatch) {
+        if (textMatches) {
           const project = projectMap.get(block.projectId);
           const projectTitle = project?.title || 'Onbekend Project';
 
@@ -73,10 +99,10 @@ export const SearchModal: React.FC<SearchModalProps> = ({
           });
 
           let snippet = block.plainText;
-          const idx = block.plainText.toLowerCase().indexOf(q);
+          const idx = parsed.text ? block.plainText.toLowerCase().indexOf(parsed.text) : -1;
           if (idx !== -1) {
             const start = Math.max(0, idx - 40);
-            const end = Math.min(block.plainText.length, idx + q.length + 60);
+            const end = Math.min(block.plainText.length, idx + parsed.text.length + 60);
             snippet = (start > 0 ? '...' : '') + block.plainText.substring(start, end) + (end < block.plainText.length ? '...' : '');
           } else {
             snippet = snippet.substring(0, 100);
@@ -91,12 +117,17 @@ export const SearchModal: React.FC<SearchModalProps> = ({
         }
       }
 
-      setResults(matchedResults.slice(0, 20));
-      setSelectedIndex(0);
+      if (requestId === searchRequestRef.current) {
+        setResults(matchedResults.slice(0, 20));
+        setSelectedIndex(0);
+      }
     };
 
     const timer = setTimeout(performSearch, 150);
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      searchRequestRef.current += 1;
+    };
   }, [query]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -186,10 +217,30 @@ export const SearchModal: React.FC<SearchModalProps> = ({
           </button>
         </div>
 
+        {allTags.length > 0 && (
+          <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', background: 'rgba(0,0,0,0.1)' }}>
+            <TagIcon size={12} color="var(--text-muted)" />
+            <span style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>Tags:</span>
+            {allTags.map(tag => (
+              <TagBadge
+                key={tag}
+                tag={tag}
+                size="sm"
+                active={parseSearchQuery(query).tags.includes(tag)}
+                onClick={(t) => {
+                  const parsed = parseSearchQuery(query);
+                  const nextTags = parsed.tags.includes(t) ? parsed.tags.filter(tag => tag !== t) : [...parsed.tags, t];
+                  setQuery([parsed.text, ...nextTags.map(tag => `#${tag}`)].filter(Boolean).join(' '));
+                }}
+              />
+            ))}
+          </div>
+        )}
+
         <div style={{ maxHeight: '420px', overflowY: 'auto', padding: '8px' }}>
           {!query.trim() ? (
             <div style={{ padding: '30px 20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-              Typ een zoekterm in om snel door je hele kennisboom te zoeken.
+              Typ een zoekterm in om snel door je hele kennisboom te zoeken of klik hierboven op een tag.
             </div>
           ) : results.length === 0 ? (
             <div style={{ padding: '30px 20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
@@ -225,6 +276,13 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                       <FileText size={15} color="#38BDF8" />
                       {res.block.title}
                     </div>
+                    {res.block.tags && res.block.tags.length > 0 && (
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        {res.block.tags.map(tag => (
+                          <TagBadge key={tag} tag={tag} size="sm" onClick={() => setQuery(`#${tag}`)} />
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.75rem', color: 'var(--text-secondary)' }}>

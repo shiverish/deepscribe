@@ -1,10 +1,12 @@
 import Dexie, { type Table } from 'dexie';
 import type { Project, Block, Attachment } from '../types';
+import { sanitizeTags } from '../utils/tagUtils';
 
 export class DeepScribeDatabase extends Dexie {
   projects!: Table<Project, string>;
   blocks!: Table<Block, string>;
   attachments!: Table<Attachment, string>;
+  settings!: Table<{ key: string; value: any }, string>;
 
   constructor() {
     super('DeepScribeDB');
@@ -20,6 +22,26 @@ export class DeepScribeDatabase extends Dexie {
     }).upgrade(transaction => transaction.table<Project>('projects').toCollection().modify(project => {
       project.isTrash = project.isTrash ?? false;
     }));
+    this.version(3).stores({
+      projects: 'id, title, isTrash, createdAt, updatedAt',
+      blocks: 'id, projectId, parentId, order, isTrash, *tags, plainText, updatedAt',
+      attachments: 'id, blockId, fileName, createdAt'
+    }).upgrade(transaction => transaction.table<Block>('blocks').toCollection().modify(block => {
+      block.tags = block.tags ?? [];
+    }));
+    this.version(4).stores({
+      projects: 'id, title, isTrash, createdAt, updatedAt',
+      blocks: 'id, projectId, parentId, order, isTrash, *tags, plainText, updatedAt',
+      attachments: 'id, blockId, fileName, createdAt'
+    }).upgrade(transaction => transaction.table<Block>('blocks').toCollection().modify(block => {
+      block.tags = sanitizeTags(block.tags);
+    }));
+    this.version(5).stores({
+      projects: 'id, title, isTrash, createdAt, updatedAt',
+      blocks: 'id, projectId, parentId, order, isTrash, *tags, plainText, updatedAt',
+      attachments: 'id, blockId, fileName, createdAt',
+      settings: 'key'
+    });
   }
 }
 
@@ -77,6 +99,7 @@ export async function seedDemoDataIfEmpty() {
       taskCount: 2,
       completedTaskCount: 1,
       attachmentCount: 0,
+      tags: ['hoofdstuk1', 'concept'],
       isTrash: false,
       createdAt: now - 86400000 * 4,
       updatedAt: now - 3600000 * 2,
@@ -93,6 +116,7 @@ export async function seedDemoDataIfEmpty() {
       taskCount: 0,
       completedTaskCount: 0,
       attachmentCount: 0,
+      tags: ['personages', 'cyberpunk'],
       isTrash: false,
       createdAt: now - 86400000 * 4,
       updatedAt: now - 3600000 * 5,
@@ -109,6 +133,7 @@ export async function seedDemoDataIfEmpty() {
       taskCount: 0,
       completedTaskCount: 0,
       attachmentCount: 0,
+      tags: [],
       isTrash: false,
       createdAt: now - 86400000 * 3,
       updatedAt: now - 86400000,
@@ -130,6 +155,7 @@ export async function seedDemoDataIfEmpty() {
       taskCount: 0,
       completedTaskCount: 0,
       attachmentCount: 0,
+      tags: [],
       isTrash: false,
       createdAt: now - 86400000 * 3,
       updatedAt: now - 3600000 * 3,
@@ -146,6 +172,7 @@ export async function seedDemoDataIfEmpty() {
       taskCount: 1,
       completedTaskCount: 0,
       attachmentCount: 0,
+      tags: [],
       isTrash: false,
       createdAt: now - 86400000 * 2,
       updatedAt: now - 3600000,
@@ -162,6 +189,7 @@ export async function seedDemoDataIfEmpty() {
       taskCount: 0,
       completedTaskCount: 0,
       attachmentCount: 0,
+      tags: [],
       isTrash: false,
       createdAt: now - 86400000,
       updatedAt: now - 1800000,
@@ -181,6 +209,7 @@ export async function seedDemoDataIfEmpty() {
       taskCount: 0,
       completedTaskCount: 0,
       attachmentCount: 0,
+      tags: [],
       isTrash: false,
       createdAt: now - 3600000 * 2,
       updatedAt: now - 1800000,
@@ -197,6 +226,7 @@ export async function seedDemoDataIfEmpty() {
       taskCount: 0,
       completedTaskCount: 0,
       attachmentCount: 0,
+      tags: [],
       isTrash: false,
       createdAt: now - 3600000,
       updatedAt: now - 900000,
@@ -216,6 +246,7 @@ export async function seedDemoDataIfEmpty() {
       taskCount: 0,
       completedTaskCount: 0,
       attachmentCount: 0,
+      tags: [],
       isTrash: false,
       createdAt: now - 86400000 * 3,
       updatedAt: now - 86400000,
@@ -232,6 +263,7 @@ export async function seedDemoDataIfEmpty() {
       taskCount: 0,
       completedTaskCount: 0,
       attachmentCount: 0,
+      tags: [],
       isTrash: false,
       createdAt: now - 86400000 * 2,
       updatedAt: now - 86400000,
@@ -252,6 +284,7 @@ export async function seedDemoDataIfEmpty() {
     taskCount: 0,
     completedTaskCount: 0,
     attachmentCount: 0,
+    tags: [],
     isTrash: false,
     createdAt: now - 86400000 * 2,
     updatedAt: now - 86400000,

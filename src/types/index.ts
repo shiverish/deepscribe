@@ -25,6 +25,7 @@ export interface Block {
   isTrash: boolean;
   trashedAt?: number;
   trashedWithProject?: boolean;
+  tags: string[];
   createdAt: number;
   updatedAt: number;
 }
@@ -64,3 +65,42 @@ export interface SaveStatus {
   state: 'saved' | 'saving' | 'error';
   lastSavedAt?: number;
 }
+
+export type ThemeMode = 'dark' | 'light' | 'system';
+export type ThemePreset = 'vanilla' | 'cyberpunk' | 'nord' | 'dracula' | 'sepia' | 'obsidian' | 'custom';
+export type FontFamily = 'sans' | 'serif' | 'mono';
+export type ContentWidth = 'narrow' | 'standard' | 'full';
+
+export interface UserSettings {
+  theme: ThemeMode;
+  preset: ThemePreset;
+  accentColor: string;
+  atmosphereColor: string;
+  customBgColor?: string;
+  customTextColor?: string;
+  enableGlassmorphism: boolean;
+  enableGlow: boolean;
+  fontSize: number;
+  fontFamily: FontFamily;
+  lineHeight: number;
+  contentWidth: ContentWidth;
+  columnWidth: number;
+  spellcheck: boolean;
+}
+
+export const DEFAULT_USER_SETTINGS: UserSettings = {
+  theme: 'dark',
+  preset: 'vanilla',
+  accentColor: '#3b82f6',
+  atmosphereColor: '#EBDEC3',
+  customBgColor: '#141312',
+  customTextColor: '#faf6ee',
+  enableGlassmorphism: true,
+  enableGlow: true,
+  fontSize: 16,
+  fontFamily: 'sans',
+  lineHeight: 1.6,
+  contentWidth: 'standard',
+  columnWidth: 320,
+  spellcheck: true
+};

@@ -1,4 +1,5 @@
 import type { Attachment, Block, Project } from '../types';
+import { sanitizeTags } from '../utils/tagUtils';
 
 export const MAX_ARCHIVE_FILE_BYTES = 250 * 1024 * 1024;
 export const MAX_PROJECT_JSON_CHARS = 25 * 1024 * 1024;
@@ -12,6 +13,7 @@ export interface ProjectArchive {
   project: Project;
   blocks: Block[];
   attachmentsMeta: AttachmentMeta[];
+  normalizedTagBlocks: number;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -46,12 +48,18 @@ export function parseProjectArchive(raw: unknown): ProjectArchive {
   };
 
   const ids = new Set<string>();
+  let normalizedTagBlocks = 0;
   const blocks = raw.blocks.map((entry, index): Block => {
     if (!isRecord(entry)) throw new Error(`Blok ${index + 1} is ongeldig.`);
     const id = requiredString(entry.id, `blocks[${index}].id`);
     if (ids.has(id)) throw new Error(`Dubbel blok-id in archief: ${id}.`);
     ids.add(id);
     const parentId = entry.parentId === null ? null : requiredString(entry.parentId, `blocks[${index}].parentId`);
+    const importedTags = Array.isArray(entry.tags) ? entry.tags.filter((t): t is string => typeof t === 'string') : [];
+    const tags = sanitizeTags(importedTags);
+    if (importedTags.length !== tags.length || importedTags.some((tag, tagIndex) => tag !== tags[tagIndex])) {
+      normalizedTagBlocks += 1;
+    }
     return {
       id,
       projectId: project.id,
@@ -67,6 +75,7 @@ export function parseProjectArchive(raw: unknown): ProjectArchive {
       isTrash: Boolean(entry.isTrash),
       trashedAt: typeof entry.trashedAt === 'number' ? entry.trashedAt : undefined,
       trashedWithProject: false,
+      tags,
       createdAt: requiredNumber(entry.createdAt, `blocks[${index}].createdAt`),
       updatedAt: requiredNumber(entry.updatedAt, `blocks[${index}].updatedAt`)
     };
@@ -99,5 +108,5 @@ export function parseProjectArchive(raw: unknown): ProjectArchive {
     };
   });
 
-  return { version: typeof raw.version === 'string' ? raw.version : '1.0', project, blocks, attachmentsMeta };
+  return { version: typeof raw.version === 'string' ? raw.version : '1.0', project, blocks, attachmentsMeta, normalizedTagBlocks };
 }

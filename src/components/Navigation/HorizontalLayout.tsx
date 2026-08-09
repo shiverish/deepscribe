@@ -41,6 +41,10 @@ export const HorizontalLayout: React.FC<HorizontalLayoutProps> = ({
   onDrop
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const currentSelectionLevel = columns.reduce(
+    (deepestLevel, column) => column.selectedId ? Math.max(deepestLevel, column.level) : deepestLevel,
+    -1
+  );
 
   useEffect(() => {
     if (containerRef.current) {
@@ -63,6 +67,7 @@ export const HorizontalLayout: React.FC<HorizontalLayoutProps> = ({
           selectedId={col.selectedId}
           focusedCardId={focusedCardId}
           isActiveLevel={activeLevel === col.level}
+          isCurrentLevel={currentSelectionLevel === col.level}
           onSelectItem={(item) => onSelectItem(col.level, item)}
           onAddNewItem={() => onAddNewItem(col.level, col.parentId)}
           onAddChildItem={onAddChildItem}

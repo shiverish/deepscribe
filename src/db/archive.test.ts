@@ -34,4 +34,10 @@ describe('archive validation', () => {
     source.blocks[0].parentId = 'child';
     expect(() => parseProjectArchive(source)).toThrow(/circulaire boomstructuur/);
   });
+
+  it('normalizes, deduplicates and rejects invalid imported tags', () => {
+    const source = validArchive();
+    Object.assign(source.blocks[0], { tags: [' Idee ', '#idee', 'twee woorden', 'CAFÉ'] });
+    expect(parseProjectArchive(source).blocks[0].tags).toEqual(['idee', 'café']);
+  });
 });
