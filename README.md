@@ -9,6 +9,12 @@ npm install
 npm run dev
 ```
 
+## Standalone Desktop App (Electron)
+
+- **Snel starten (ontwikkelmodus):** Dubbelklik op `start-deepscribe.bat` of voer `npm run app:dev` uit.
+- **Standalone Windows .exe bouwen:** Voer `npm run app:build` uit. De verpakte installatiebestanden (`.exe` / draagbare app) worden aangemaakt in `dist-electron/`.
+- **PWA (Progressive Web App):** De web-app bevat een Web App Manifest (`public/manifest.json`), waardoor je de app ook direct vanuit Chrome of Edge als app op je computer kunt installeren via "App installeren".
+
 ## Lokale data en back-ups
 
 - DeepScribe vraagt de browser om persistente opslag, maar een export blijft de veiligste back-up.
