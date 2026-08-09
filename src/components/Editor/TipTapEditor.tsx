@@ -1,4 +1,4 @@
-import React, { useEffect, useImperativeHandle, forwardRef } from 'react';
+import React, { useCallback, useEffect, useImperativeHandle, useState, forwardRef } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
@@ -49,6 +49,21 @@ export const TipTapEditor = forwardRef<TipTapEditorHandle, TipTapEditorProps>(({
   onUploadImage,
   onReturnFocusToCards
 }, ref) => {
+  const [isImageDragActive, setIsImageDragActive] = useState(false);
+
+  const resolveImageSource = useCallback(async (file: File): Promise<string> => {
+    if (!file.type.startsWith('image/')) throw new Error(`“${file.name}” is geen afbeelding.`);
+    if (file.size > 5 * 1024 * 1024) throw new Error(`“${file.name}” is groter dan 5 MB.`);
+    if (onUploadImage) return await onUploadImage(file);
+
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('De afbeelding kon niet worden gelezen.'));
+      reader.onerror = () => reject(new Error('De afbeelding kon niet worden gelezen.'));
+      reader.readAsDataURL(file);
+    });
+  }, [onUploadImage]);
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -81,6 +96,31 @@ export const TipTapEditor = forwardRef<TipTapEditorHandle, TipTapEditorProps>(({
           return true;
         }
         return false;
+      },
+      handleDrop: (view, event, _slice, moved) => {
+        if (moved) return false;
+        const images = Array.from(event.dataTransfer?.files ?? []).filter(file => file.type.startsWith('image/'));
+        if (images.length === 0) return false;
+        event.preventDefault();
+        setIsImageDragActive(false);
+
+        const dropPosition = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos ?? view.state.selection.from;
+        void (async () => {
+          let position = dropPosition;
+          for (const file of images) {
+            try {
+              const src = await resolveImageSource(file);
+              const imageNode = view.state.schema.nodes.image.create({ src, alt: file.name, title: file.name });
+              const safePosition = Math.min(position, view.state.doc.content.size);
+              view.dispatch(view.state.tr.insert(safePosition, imageNode));
+              position = safePosition + imageNode.nodeSize;
+            } catch (error) {
+              window.alert(error instanceof Error ? error.message : 'De afbeelding kon niet worden ingevoegd.');
+            }
+          }
+          view.focus();
+        })();
+        return true;
       }
     },
     onUpdate: ({ editor }) => {
@@ -106,7 +146,7 @@ export const TipTapEditor = forwardRef<TipTapEditorHandle, TipTapEditorProps>(({
     onBlur: () => {
       if (onBlur) onBlur();
     }
-  });
+  }, [resolveImageSource]);
 
   useImperativeHandle(ref, () => ({
     focus: () => {
@@ -125,33 +165,17 @@ export const TipTapEditor = forwardRef<TipTapEditorHandle, TipTapEditorProps>(({
   if (!editor) return null;
 
   const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const files = Array.from(e.target.files ?? []);
     e.target.value = '';
-    if (!file || !editor) return;
-    if (!file.type.startsWith('image/')) {
-      window.alert('Alleen afbeeldingsbestanden kunnen worden ingevoegd.');
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      window.alert('Deze afbeelding is groter dan 5 MB. Verklein het bestand eerst om je lokale database gezond te houden.');
-      return;
-    }
-
-    try {
-      if (onUploadImage) {
-        const url = await onUploadImage(file);
+    if (files.length === 0 || !editor) return;
+    for (const file of files) {
+      try {
+        const url = await resolveImageSource(file);
         editor.chain().focus().setImage({ src: url }).run();
-      } else {
-        const reader = new FileReader();
-        reader.onload = () => {
-          if (typeof reader.result === 'string') editor.chain().focus().setImage({ src: reader.result }).run();
-        };
-        reader.onerror = () => window.alert('De afbeelding kon niet worden gelezen.');
-        reader.readAsDataURL(file);
+      } catch (error) {
+        console.error(error);
+        window.alert(error instanceof Error ? error.message : 'De afbeelding kon niet worden opgeslagen.');
       }
-    } catch (error) {
-      console.error(error);
-      window.alert('De afbeelding kon niet worden opgeslagen.');
     }
   };
 
@@ -277,7 +301,7 @@ export const TipTapEditor = forwardRef<TipTapEditorHandle, TipTapEditorProps>(({
 
         <label className="toolbar-btn" title="Afbeelding uploaden" style={{ cursor: 'pointer' }}>
           <Upload size={15} />
-          <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageFileChange} />
+          <input type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={handleImageFileChange} />
         </label>
 
         <div className="toolbar-divider" />
@@ -302,7 +326,17 @@ export const TipTapEditor = forwardRef<TipTapEditorHandle, TipTapEditorProps>(({
       </div>
 
       <div
-        className="editor-content-area"
+        className={`editor-content-area ${isImageDragActive ? 'image-drag-active' : ''}`}
+        onDragEnter={event => {
+          if (event.dataTransfer.types.includes('Files')) setIsImageDragActive(true);
+        }}
+        onDragOver={event => {
+          if (event.dataTransfer.types.includes('Files')) event.preventDefault();
+        }}
+        onDragLeave={event => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setIsImageDragActive(false);
+        }}
+        onDrop={() => setIsImageDragActive(false)}
         onClick={() => {
           if (editor && !editor.isFocused) {
             editor.chain().focus().run();
@@ -310,6 +344,12 @@ export const TipTapEditor = forwardRef<TipTapEditorHandle, TipTapEditorProps>(({
         }}
       >
         <EditorContent editor={editor} />
+        {isImageDragActive && (
+          <div className="image-drop-overlay" aria-hidden="true">
+            <Upload size={22} />
+            <span>Laat afbeeldingen los om ze in te voegen</span>
+          </div>
+        )}
       </div>
     </div>
   );

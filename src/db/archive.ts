@@ -6,7 +6,7 @@ export const MAX_PROJECT_JSON_CHARS = 25 * 1024 * 1024;
 export const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 export const MAX_TOTAL_ATTACHMENT_BYTES = 150 * 1024 * 1024;
 
-export type AttachmentMeta = Omit<Attachment, 'dataUrl'>;
+export type AttachmentMeta = Omit<Attachment, 'dataUrl' | 'localPath'>;
 
 export interface ProjectArchive {
   version: string;
@@ -36,14 +36,17 @@ export function parseProjectArchive(raw: unknown): ProjectArchive {
   if (raw.blocks.length > 100_000) throw new Error('Dit archief bevat te veel blokken.');
 
   const sourceProject = raw.project;
+  const projectCreatedAt = requiredNumber(sourceProject.createdAt, 'project.createdAt');
   const project: Project = {
     id: requiredString(sourceProject.id, 'project.id'),
     title: requiredString(sourceProject.title, 'project.title'),
     description: typeof sourceProject.description === 'string' ? sourceProject.description : '',
     color: typeof sourceProject.color === 'string' ? sourceProject.color : '#F59E0B',
+    order: typeof sourceProject.order === 'number' && Number.isFinite(sourceProject.order) ? sourceProject.order : projectCreatedAt,
+    tags: sanitizeTags(Array.isArray(sourceProject.tags) ? sourceProject.tags.filter((tag): tag is string => typeof tag === 'string') : []),
     icon: typeof sourceProject.icon === 'string' ? sourceProject.icon : undefined,
     isTrash: false,
-    createdAt: requiredNumber(sourceProject.createdAt, 'project.createdAt'),
+    createdAt: projectCreatedAt,
     updatedAt: requiredNumber(sourceProject.updatedAt, 'project.updatedAt')
   };
 

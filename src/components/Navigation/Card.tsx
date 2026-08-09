@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import type { Block, Project, DragTarget } from '../../types';
 import { TagBadge } from './TagBadge';
-import { Folder, FileText, Layers, CheckSquare, MoreVertical, Plus, ExternalLink, Check } from 'lucide-react';
+import { Folder, FileText, Layers, CheckSquare, MoreVertical, Paperclip, Plus, ExternalLink, Check } from 'lucide-react';
 
 interface CardProps {
   item: Block | Project;
@@ -19,6 +19,7 @@ interface CardProps {
   onDragStart?: (e: React.DragEvent, item: Block | Project, type: 'project' | 'block') => void;
   onDragOver?: (e: React.DragEvent, item: Block | Project, type: 'project' | 'block') => void;
   onDragLeave?: (e: React.DragEvent) => void;
+  onDragEnd?: (e: React.DragEvent) => void;
   onDrop?: (e: React.DragEvent, targetItem: Block | Project, type: 'project' | 'block') => void;
 }
 
@@ -41,11 +42,13 @@ export const Card: React.FC<CardProps> = ({
   onDragStart,
   onDragOver,
   onDragLeave,
+  onDragEnd,
   onDrop
 }) => {
   const isBlock = type === 'block';
   const block = isBlock ? (item as Block) : null;
   const project = !isBlock ? (item as Project) : null;
+  const itemTags = isBlock ? block?.tags : project?.tags;
 
   const extractedLinks: ExtractedLink[] = useMemo(() => {
     const rawContent = isBlock ? block?.content : project?.description;
@@ -92,7 +95,7 @@ export const Card: React.FC<CardProps> = ({
   }, [isBlock, block, project]);
 
   let dropClass = '';
-  if (dragTarget && dragTarget.blockId === item.id) {
+  if (dragTarget && dragTarget.itemId === item.id) {
     if (dragTarget.position === 'above') dropClass = 'drop-above';
     else if (dragTarget.position === 'below') dropClass = 'drop-below';
     else if (dragTarget.position === 'inside') dropClass = 'drop-inside';
@@ -103,10 +106,11 @@ export const Card: React.FC<CardProps> = ({
       className={`miller-card ${isSelected ? 'selected' : ''} ${isCurrent ? 'current' : ''} ${isKeyboardFocused ? 'focused-keyboard' : ''} ${dropClass}`}
       onClick={onSelect}
       onContextMenu={(e) => onContextMenu && onContextMenu(e, item, type)}
-      draggable={type === 'block'}
+      draggable
       onDragStart={(e) => onDragStart && onDragStart(e, item, type)}
       onDragOver={(e) => onDragOver && onDragOver(e, item, type)}
       onDragLeave={onDragLeave}
+      onDragEnd={onDragEnd}
       onDrop={(e) => onDrop && onDrop(e, item, type)}
       aria-current={isCurrent ? 'page' : undefined}
     >
@@ -157,14 +161,14 @@ export const Card: React.FC<CardProps> = ({
         </div>
       )}
 
-      {block && block.tags && block.tags.length > 0 && (
+      {itemTags && itemTags.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6, marginBottom: 2 }}>
-          {block.tags.slice(0, 3).map(tag => (
+          {itemTags.slice(0, 3).map(tag => (
             <TagBadge key={tag} tag={tag} size="sm" onClick={onTagClick} />
           ))}
-          {block.tags.length > 3 && (
+          {itemTags.length > 3 && (
             <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', alignSelf: 'center' }}>
-              +{block.tags.length - 3}
+              +{itemTags.length - 3}
             </span>
           )}
         </div>
@@ -180,6 +184,12 @@ export const Card: React.FC<CardProps> = ({
         {block && block.taskCount > 0 && (
           <span className="card-badge magenta">
             <CheckSquare size={11} /> {block.completedTaskCount}/{block.taskCount}
+          </span>
+        )}
+
+        {block && block.attachmentCount > 0 && (
+          <span className="card-badge cyan" title={`${block.attachmentCount} bijlage${block.attachmentCount === 1 ? '' : 'n'}`}>
+            <Paperclip size={11} /> {block.attachmentCount}
           </span>
         )}
 

@@ -3,6 +3,8 @@ export interface Project {
   title: string;
   description: string;
   color: string;
+  order: number;
+  tags: string[];
   icon?: string;
   isTrash: boolean;
   trashedAt?: number;
@@ -36,7 +38,8 @@ export interface Attachment {
   fileName: string;
   fileType: string;
   fileSize: number;
-  dataUrl: string; // Kept for archive compatibility; size is limited on upload/import.
+  dataUrl?: string; // Kept for archive compatibility with imported projects.
+  localPath?: string;
   createdAt: number;
 }
 
@@ -57,7 +60,7 @@ export interface SearchResultItem {
 export type DropPosition = 'above' | 'below' | 'inside';
 
 export interface DragTarget {
-  blockId: string;
+  itemId: string;
   position: DropPosition;
 }
 

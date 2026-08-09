@@ -21,6 +21,7 @@ interface ColumnProps {
   onDragStart?: (e: React.DragEvent, item: Block | Project, type: 'project' | 'block') => void;
   onDragOver?: (e: React.DragEvent, item: Block | Project, type: 'project' | 'block') => void;
   onDragLeave?: (e: React.DragEvent) => void;
+  onDragEnd?: (e: React.DragEvent) => void;
   onDrop?: (e: React.DragEvent, targetItem: Block | Project, type: 'project' | 'block') => void;
 }
 
@@ -41,6 +42,7 @@ export const Column: React.FC<ColumnProps> = ({
   onDragStart,
   onDragOver,
   onDragLeave,
+  onDragEnd,
   onDrop
 }) => {
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
@@ -49,11 +51,9 @@ export const Column: React.FC<ColumnProps> = ({
   const availableTags = useMemo(() => {
     const set = new Set<string>();
     for (const item of items) {
-      if (type === 'block') {
-        const b = item as Block;
-        if (b.tags) {
-          for (const t of b.tags) set.add(t);
-        }
+      const tags = type === 'block' ? (item as Block).tags : (item as Project).tags;
+      if (tags) {
+        for (const tag of tags) set.add(tag);
       }
     }
     return Array.from(set).sort();
@@ -63,11 +63,8 @@ export const Column: React.FC<ColumnProps> = ({
   const filteredItems = useMemo(() => {
     if (!selectedTag) return items;
     return items.filter(item => {
-      if (type === 'block') {
-        const b = item as Block;
-        return b.tags?.includes(selectedTag);
-      }
-      return true;
+      const tags = type === 'block' ? (item as Block).tags : (item as Project).tags;
+      return tags?.includes(selectedTag);
     });
   }, [items, selectedTag, type]);
 
@@ -203,6 +200,7 @@ export const Column: React.FC<ColumnProps> = ({
               onDragStart={onDragStart}
               onDragOver={onDragOver}
               onDragLeave={onDragLeave}
+              onDragEnd={onDragEnd}
               onDrop={onDrop}
             />
           ))

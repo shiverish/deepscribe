@@ -39,6 +39,69 @@ export function getDropPosition(event: React.DragEvent<HTMLElement>): DropPositi
   return 'inside';
 }
 
+function insertionIndex(targetIndex: number, position: Exclude<DropPosition, 'inside'>): number {
+  return position === 'above' ? targetIndex : targetIndex + 1;
+}
+
+/** Reorders projects without changing any project contents. */
+export async function reorderProject(
+  sourceProjectId: string,
+  targetProjectId: string,
+  position: Exclude<DropPosition, 'inside'>
+): Promise<boolean> {
+  if (sourceProjectId === targetProjectId) return false;
+
+  const projects = await db.projects.filter(project => !project.isTrash).toArray();
+  projects.sort((a, b) => (a.order ?? a.createdAt) - (b.order ?? b.createdAt));
+
+  const source = projects.find(project => project.id === sourceProjectId);
+  const withoutSource = projects.filter(project => project.id !== sourceProjectId);
+  const targetIndex = withoutSource.findIndex(project => project.id === targetProjectId);
+  if (!source || targetIndex < 0) return false;
+
+  withoutSource.splice(insertionIndex(targetIndex, position), 0, source);
+  const updatedAt = Date.now();
+  await db.transaction('rw', db.projects, async () => {
+    await Promise.all(withoutSource.map((project, order) =>
+      db.projects.update(project.id, { order, updatedAt })
+    ));
+  });
+  return true;
+}
+
+/** Reorders blocks only when source and target already belong to the same column. */
+export async function reorderBlockWithinParent(
+  sourceBlockId: string,
+  targetBlockId: string,
+  position: Exclude<DropPosition, 'inside'>
+): Promise<boolean> {
+  if (sourceBlockId === targetBlockId) return false;
+
+  const [source, target] = await Promise.all([
+    db.blocks.get(sourceBlockId),
+    db.blocks.get(targetBlockId)
+  ]);
+  if (!source || !target || source.projectId !== target.projectId || source.parentId !== target.parentId) return false;
+
+  const siblings = await db.blocks
+    .filter(block => block.projectId === source.projectId && block.parentId === source.parentId && !block.isTrash)
+    .toArray();
+  siblings.sort((a, b) => a.order - b.order);
+
+  const withoutSource = siblings.filter(block => block.id !== sourceBlockId);
+  const targetIndex = withoutSource.findIndex(block => block.id === targetBlockId);
+  if (targetIndex < 0) return false;
+
+  withoutSource.splice(insertionIndex(targetIndex, position), 0, source);
+  const updatedAt = Date.now();
+  await db.transaction('rw', db.blocks, async () => {
+    await Promise.all(withoutSource.map((block, order) =>
+      db.blocks.update(block.id, { order, updatedAt })
+    ));
+  });
+  return true;
+}
+
 /**
  * Handles block relocation and reordering in Dexie DB.
  */

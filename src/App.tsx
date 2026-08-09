@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, requestPersistentStorage, seedDemoDataIfEmpty } from './db/db';
 import { createId, deleteTagFromProject, renameTagInProject, saveBlockDraft, trashBlock, trashProject } from './db/operations';
-import type { Project, Block, PathSegment, SaveStatus, DragTarget } from './types';
+import type { Project, Block, Attachment, PathSegment, SaveStatus, DragTarget } from './types';
 import { Breadcrumbs } from './components/Navigation/Breadcrumbs';
 import { HorizontalLayout, type ColumnData } from './components/Navigation/HorizontalLayout';
 import { WritingPanel } from './components/Editor/WritingPanel';
@@ -14,9 +14,10 @@ import { SettingsModal } from './components/Modals/SettingsModal';
 import { ContextMenu } from './components/Modals/ContextMenu';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useSettings } from './hooks/useSettings';
-import { getDropPosition, moveBlockInTree } from './utils/dragAndDrop';
+import { getDropPosition, reorderBlockWithinParent, reorderProject } from './utils/dragAndDrop';
 import { sanitizeTags } from './utils/tagUtils';
 import { getDeleteFallbackTarget } from './utils/selectionUtils';
+import { handleMcpBridgeRequest } from './mcp/bridge';
 import './styles/theme.css';
 import './components/Navigation/Navigation.css';
 
@@ -55,20 +56,43 @@ export function App() {
     });
   }, []);
 
+  useEffect(() => {
+    if (!window.deepScribeMcp) return;
+
+    const unsubscribe = window.deepScribeMcp.onRequest(request => {
+      handleMcpBridgeRequest(request.method, request.params)
+        .then(result => window.deepScribeMcp?.respond({ id: request.id, ok: true, result }))
+        .catch((error: unknown) => window.deepScribeMcp?.respond({
+          id: request.id,
+          ok: false,
+          error: error instanceof Error ? error.message : 'Onbekende DeepScribe-fout.'
+        }));
+    });
+    window.deepScribeMcp.ready();
+    return unsubscribe;
+  }, []);
+
   const projectsQuery = useLiveQuery(() => db.projects.filter(project => !project.isTrash).toArray(), []);
   const blocksQuery = useLiveQuery(() => db.blocks.filter(block => !block.isTrash).toArray(), []);
-  const projects = useMemo(() => projectsQuery ?? [], [projectsQuery]);
+  const projects = useMemo(() => [...(projectsQuery ?? [])].sort(
+    (a, b) => (a.order ?? a.createdAt) - (b.order ?? b.createdAt)
+  ), [projectsQuery]);
   const allBlocks = useMemo(() => blocksQuery ?? [], [blocksQuery]);
 
   const activeProject = useMemo(() => projects.find(p => p.id === activeProjectId) || null, [projects, activeProjectId]);
 
   const activeBlockId = selectedBlockPath.length > 0 ? selectedBlockPath[selectedBlockPath.length - 1] : null;
   const activeBlock = useMemo(() => allBlocks.find(b => b.id === activeBlockId) || null, [allBlocks, activeBlockId]);
+  const activeAttachments = useLiveQuery(
+    () => activeBlockId ? db.attachments.where('blockId').equals(activeBlockId).sortBy('createdAt') : Promise.resolve([] as Attachment[]),
+    [activeBlockId],
+    [] as Attachment[]
+  );
 
   const activeInspectorItem = activeBlock || activeProject;
   const activeInspectorType: 'project' | 'block' | null = activeBlock ? 'block' : activeProject ? 'project' : null;
 
-  const projectTagSuggestions = useMemo(() => {
+  const blockTagSuggestions = useMemo(() => {
     if (!activeProjectId) return [];
     const counts = new Map<string, number>();
     for (const block of allBlocks) {
@@ -78,6 +102,15 @@ export function App() {
     return Array.from(counts, ([tag, count]) => ({ tag, count }))
       .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
   }, [activeProjectId, allBlocks]);
+
+  const projectTagSuggestions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const project of projects) {
+      for (const tag of sanitizeTags(project.tags)) counts.set(tag, (counts.get(tag) ?? 0) + 1);
+    }
+    return Array.from(counts, ([tag, count]) => ({ tag, count }))
+      .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
+  }, [projects]);
 
   const columns: ColumnData[] = useMemo(() => {
     const cols: ColumnData[] = [];
@@ -187,6 +220,8 @@ export function App() {
         title: 'Nieuw Project',
         description: 'Beschrijf je nieuwe project...',
         color: '#F59E0B',
+        order: projects.reduce((highest, project) => Math.max(highest, project.order ?? -1), -1) + 1,
+        tags: [],
         isTrash: false,
         createdAt: now,
         updatedAt: now
@@ -271,6 +306,59 @@ export function App() {
     }
   };
 
+  const handleAddAttachments = async (blockId: string) => {
+    const block = allBlocks.find(item => item.id === blockId);
+    if (!block || !window.electronAPI?.addAttachments) throw new Error('Bestanden toevoegen is alleen beschikbaar in de desktop-app.');
+    const files = await window.electronAPI.addAttachments({ projectId: block.projectId, blockId });
+    if (files.length === 0) return;
+
+    const now = Date.now();
+    const attachments: Attachment[] = files.map((file, index) => ({
+      id: createId('attachment'),
+      blockId,
+      ...file,
+      createdAt: now + index
+    }));
+    try {
+      await db.transaction('rw', db.attachments, db.blocks, async () => {
+        await db.attachments.bulkAdd(attachments);
+        const attachmentCount = await db.attachments.where('blockId').equals(blockId).count();
+        await db.blocks.update(blockId, { attachmentCount, updatedAt: Date.now() });
+      });
+    } catch (error) {
+      await Promise.allSettled(attachments
+        .filter(attachment => attachment.localPath)
+        .map(attachment => window.electronAPI!.removeAttachment(attachment.localPath!)));
+      throw error;
+    }
+  };
+
+  const handleOpenAttachment = async (attachment: Attachment) => {
+    if (attachment.localPath && window.electronAPI?.openAttachment) {
+      await window.electronAPI.openAttachment(attachment.localPath);
+      return;
+    }
+    if (attachment.dataUrl) {
+      const link = document.createElement('a');
+      link.href = attachment.dataUrl;
+      link.download = attachment.fileName;
+      link.click();
+      return;
+    }
+    throw new Error('Het bijlagebestand is niet meer beschikbaar.');
+  };
+
+  const handleRemoveAttachment = async (attachment: Attachment) => {
+    if (attachment.localPath && window.electronAPI?.removeAttachment) {
+      await window.electronAPI.removeAttachment(attachment.localPath);
+    }
+    await db.transaction('rw', db.attachments, db.blocks, async () => {
+      await db.attachments.delete(attachment.id);
+      const attachmentCount = await db.attachments.where('blockId').equals(attachment.blockId).count();
+      await db.blocks.update(attachment.blockId, { attachmentCount, updatedAt: Date.now() });
+    });
+  };
+
   // Explicit Save Handler called by WritingPanel on blur, navigation, 10s timer, beforeunload
   const handleSaveItem = useCallback(async (
     itemId: string,
@@ -288,6 +376,7 @@ export function App() {
         await db.projects.update(itemId, {
           title,
           description: content || plainText,
+          tags: sanitizeTags(tags),
           updatedAt: Date.now()
         });
       } else {
@@ -316,6 +405,7 @@ export function App() {
         ...proj,
         id: newProjId,
         title: `${proj.title} (Kopie)`,
+        order: projects.reduce((highest, project) => Math.max(highest, project.order ?? -1), -1) + 1,
         isTrash: false,
         trashedAt: undefined,
         createdAt: now,
@@ -371,13 +461,29 @@ export function App() {
   const handleDragStart = (e: React.DragEvent, item: Block | Project, type: 'project' | 'block') => {
     setDraggedItem({ item, type });
     e.dataTransfer.setData('text/plain', item.id);
+    e.dataTransfer.effectAllowed = 'move';
   };
 
-  const handleDragOver = (e: React.DragEvent, targetItem: Block | Project) => {
+  const handleDragOver = (e: React.DragEvent, targetItem: Block | Project, type: 'project' | 'block') => {
     e.preventDefault();
-    if (!draggedItem || draggedItem.item.id === targetItem.id) return;
-    const pos = getDropPosition(e as unknown as React.DragEvent<HTMLElement>);
-    setDragTarget({ blockId: targetItem.id, position: pos });
+    if (!draggedItem || draggedItem.type !== type || draggedItem.item.id === targetItem.id) {
+      setDragTarget(null);
+      return;
+    }
+    if (type === 'block') {
+      const source = draggedItem.item as Block;
+      const target = targetItem as Block;
+      if (source.projectId !== target.projectId || source.parentId !== target.parentId) {
+        setDragTarget(null);
+        return;
+      }
+    }
+    e.dataTransfer.dropEffect = 'move';
+    const measuredPosition = getDropPosition(e as unknown as React.DragEvent<HTMLElement>);
+    const position = measuredPosition === 'inside'
+      ? (e.clientY < e.currentTarget.getBoundingClientRect().top + e.currentTarget.getBoundingClientRect().height / 2 ? 'above' : 'below')
+      : measuredPosition;
+    setDragTarget({ itemId: targetItem.id, position });
   };
 
   const handleDragLeave = () => {
@@ -386,13 +492,24 @@ export function App() {
 
   const handleDrop = async (e: React.DragEvent, targetItem: Block | Project, type: 'project' | 'block') => {
     e.preventDefault();
-    if (!draggedItem || !dragTarget || draggedItem.type !== 'block' || type !== 'block') {
+    if (!draggedItem || !dragTarget || draggedItem.type !== type) {
       setDragTarget(null);
       setDraggedItem(null);
       return;
     }
 
-    await moveBlockInTree(draggedItem.item.id, targetItem.id, dragTarget.position);
+    if (dragTarget.position !== 'inside') {
+      if (type === 'project') {
+        await reorderProject(draggedItem.item.id, targetItem.id, dragTarget.position);
+      } else {
+        await reorderBlockWithinParent(draggedItem.item.id, targetItem.id, dragTarget.position);
+      }
+    }
+    setDragTarget(null);
+    setDraggedItem(null);
+  };
+
+  const handleDragEnd = () => {
     setDragTarget(null);
     setDraggedItem(null);
   };
@@ -508,6 +625,7 @@ export function App() {
           onDragStart={handleDragStart}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
+          onDragEnd={handleDragEnd}
           onDrop={handleDrop}
         />
 
@@ -524,9 +642,14 @@ export function App() {
             }
           }}
           onSaveItem={handleSaveItem}
-          tagSuggestions={projectTagSuggestions}
+          tagSuggestions={activeInspectorType === 'project' ? projectTagSuggestions : blockTagSuggestions}
           onRenameProjectTag={(from, to) => activeProjectId ? renameTagInProject(activeProjectId, from, to) : Promise.resolve(0)}
           onDeleteProjectTag={tag => activeProjectId ? deleteTagFromProject(activeProjectId, tag) : Promise.resolve(0)}
+          attachments={activeAttachments}
+          onAddAttachments={handleAddAttachments}
+          onOpenAttachment={handleOpenAttachment}
+          onRemoveAttachment={handleRemoveAttachment}
+          onShowAttachmentsFolder={projectId => window.electronAPI?.showAttachmentsFolder(projectId) ?? Promise.reject(new Error('De projectmap is alleen beschikbaar in de desktop-app.'))}
           onClose={() => setIsWritingPanelOpen(false)}
         />
       </div>

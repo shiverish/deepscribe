@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import type { Project, Block, SaveStatus, PathSegment } from '../../types';
+import type { Project, Block, Attachment, SaveStatus, PathSegment } from '../../types';
 import { TipTapEditor, type TipTapEditorHandle } from './TipTapEditor';
 import { TagBadge } from '../Navigation/TagBadge';
 import { TagManagerModal } from '../Modals/TagManagerModal';
 import { extractHashtags, mergeTags, parseTag, sanitizeTags } from '../../utils/tagUtils';
-import { Check, Loader2, AlertCircle, FileText, Folder, PanelRightClose, Edit3, Plus, Tag as TagIcon, Settings2 } from 'lucide-react';
+import { Check, Loader2, AlertCircle, FileText, Folder, FolderOpen, Paperclip, PanelRightClose, Edit3, Plus, Tag as TagIcon, Settings2, Trash2 } from 'lucide-react';
 import './Editor.css';
 
 interface WritingPanelProps {
@@ -28,6 +28,11 @@ interface WritingPanelProps {
   tagSuggestions?: Array<{ tag: string; count: number }>;
   onRenameProjectTag?: (from: string, to: string) => Promise<number>;
   onDeleteProjectTag?: (tag: string) => Promise<number>;
+  attachments?: Attachment[];
+  onAddAttachments?: (blockId: string) => Promise<void>;
+  onOpenAttachment?: (attachment: Attachment) => Promise<void>;
+  onRemoveAttachment?: (attachment: Attachment) => Promise<void>;
+  onShowAttachmentsFolder?: (projectId: string) => Promise<void>;
   onUploadImage?: (file: File) => Promise<string>;
   onClose: () => void;
 }
@@ -43,6 +48,11 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
   tagSuggestions = [],
   onRenameProjectTag,
   onDeleteProjectTag,
+  attachments = [],
+  onAddAttachments,
+  onOpenAttachment,
+  onRemoveAttachment,
+  onShowAttachmentsFolder,
   onUploadImage,
   onClose
 }) => {
@@ -56,6 +66,8 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
   const [isAddingTag, setIsAddingTag] = useState(false);
   const [tagError, setTagError] = useState<string | null>(null);
   const [isTagManagerOpen, setIsTagManagerOpen] = useState(false);
+  const [isAddingAttachment, setIsAddingAttachment] = useState(false);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const tipTapEditorRef = useRef<TipTapEditorHandle>(null);
   const observedHashtagsRef = useRef<Set<string>>(new Set());
@@ -114,6 +126,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
   }, [isResizing]);
 
   const activeItemIdRef = useRef<string | null>(null);
+  const loadedUpdatedAtRef = useRef<number | null>(null);
   const isSavingRef = useRef(false);
   const draftRef = useRef({
     title: '',
@@ -170,8 +183,12 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
     activeItemIdRef.current = activeItem?.id || null;
 
     if (activeItem) {
-      // Only reload form state when switching to a DIFFERENT item ID
-      if (isNewItem) {
+      const hasExternalUpdate = !isNewItem
+        && activeItem.updatedAt !== loadedUpdatedAtRef.current
+        && !draftRef.current.isDirty
+        && !isSavingRef.current;
+
+      if (isNewItem || hasExternalUpdate) {
         setTitle(activeItem.title || '');
         if (itemType === 'block') {
           const b = activeItem as Block;
@@ -187,15 +204,17 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
           setPlainTextContent(p.description || '');
           setTaskCount(0);
           setCompletedTaskCount(0);
-          setTags([]);
+          setTags(sanitizeTags(p.tags));
           observedHashtagsRef.current = new Set();
         }
         setIsDirty(false);
         draftRef.current.isDirty = false;
+        loadedUpdatedAtRef.current = activeItem.updatedAt;
+        setAttachmentError(null);
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeItem?.id, itemType, flushSave]);
+  }, [activeItem?.id, activeItem?.updatedAt, itemType, flushSave]);
 
   useEffect(() => {
     if (focusTitleSignal && focusTitleSignal > 0) {
@@ -287,6 +306,13 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
   };
 
   const isBlock = itemType === 'block';
+  const blockProjectId = isBlock ? (activeItem as Block | null)?.projectId : null;
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
 
   const wordCount = plainTextContent.trim() ? plainTextContent.trim().split(/\s+/).length : 0;
   const charCount = plainTextContent.length;
@@ -377,7 +403,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
             placeholder={itemType === 'project' ? 'Projecttitel...' : 'Bloktitel...'}
           />
 
-          {isBlock && (
+          {itemType && (
             <div style={{ padding: '0 24px 10px 24px', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
               <TagIcon size={13} color="var(--text-muted)" style={{ opacity: 0.7 }} />
               {tags.map(tag => (
@@ -441,10 +467,12 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
               )}
               <datalist id="project-tag-suggestions">
                 {tagSuggestions.filter(suggestion => !tags.includes(suggestion.tag)).map(suggestion => (
-                  <option key={suggestion.tag} value={suggestion.tag}>{suggestion.count} blokken</option>
+                  <option key={suggestion.tag} value={suggestion.tag}>
+                    {suggestion.count} {itemType === 'project' ? 'projecten' : 'blokken'}
+                  </option>
                 ))}
               </datalist>
-              {onRenameProjectTag && onDeleteProjectTag && tagSuggestions.length > 0 && (
+              {isBlock && onRenameProjectTag && onDeleteProjectTag && tagSuggestions.length > 0 && (
                 <button type="button" onClick={() => setIsTagManagerOpen(true)} className="icon-btn-subtle" title="Projecttags beheren" aria-label="Projecttags beheren">
                   <Settings2 size={12} />
                 </button>
@@ -472,6 +500,86 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                 return changed;
               }}
             />
+          )}
+          {isBlock && (
+            <section className="attachments-panel">
+              <div className="attachments-header">
+                <span className="attachments-title">
+                  <Paperclip size={13} />
+                  Bijlagen
+                  {attachments.length > 0 && <span className="attachments-count">{attachments.length}</span>}
+                </span>
+                <div className="attachments-actions">
+                  {blockProjectId && onShowAttachmentsFolder && (
+                    <button
+                      type="button"
+                      className="attachment-icon-button"
+                      title="Projectmap openen"
+                      onClick={() => void onShowAttachmentsFolder(blockProjectId).catch(error => setAttachmentError(error instanceof Error ? error.message : 'De projectmap kon niet worden geopend.'))}
+                    >
+                      <FolderOpen size={13} />
+                    </button>
+                  )}
+                  {activeItem && onAddAttachments && (
+                    <button
+                      type="button"
+                      className="attachment-add-button"
+                      disabled={isAddingAttachment}
+                      onClick={async () => {
+                        setIsAddingAttachment(true);
+                        setAttachmentError(null);
+                        try {
+                          await onAddAttachments(activeItem.id);
+                        } catch (error) {
+                          setAttachmentError(error instanceof Error ? error.message : 'Bestanden toevoegen is mislukt.');
+                        } finally {
+                          setIsAddingAttachment(false);
+                        }
+                      }}
+                    >
+                      {isAddingAttachment ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
+                      Bestand
+                    </button>
+                  )}
+                </div>
+              </div>
+              {attachments.length === 0 && (
+                <div className="attachments-empty">Nog geen bestanden aan dit blok gekoppeld.</div>
+              )}
+              {attachments.map(attachment => (
+                <div key={attachment.id} className="attachment-row">
+                  <span className="attachment-file-icon"><FileText size={13} /></span>
+                  <button
+                    type="button"
+                    className="attachment-name"
+                    onClick={() => void onOpenAttachment?.(attachment).catch(error => setAttachmentError(error instanceof Error ? error.message : 'De bijlage kon niet worden geopend.'))}
+                    title={attachment.localPath || attachment.fileName}
+                  >
+                    {attachment.fileName}
+                  </button>
+                  <span className="attachment-size">{formatFileSize(attachment.fileSize)}</span>
+                  {onRemoveAttachment && (
+                    <button
+                      type="button"
+                      className="attachment-remove-button"
+                      title="Bijlage verwijderen"
+                      onClick={async () => {
+                        if (!window.confirm(`Bijlage “${attachment.fileName}” verwijderen?`)) return;
+                        setAttachmentError(null);
+                        try {
+                          await onRemoveAttachment(attachment);
+                        } catch (error) {
+                          setAttachmentError(error instanceof Error ? error.message : 'De bijlage kon niet worden verwijderd.');
+                        }
+                      }}
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  )}
+                </div>
+              ))}
+              {attachmentError && <p role="alert" className="attachment-error">{attachmentError}</p>}
+            </section>
           )}
 
           <div style={{ flex: 1, overflow: 'hidden' }}>

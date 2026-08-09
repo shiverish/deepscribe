@@ -37,7 +37,9 @@ describe('archive validation', () => {
 
   it('normalizes, deduplicates and rejects invalid imported tags', () => {
     const source = validArchive();
+    Object.assign(source.project, { tags: [' App ', '#app', 'twee woorden', 'DESKTOP'] });
     Object.assign(source.blocks[0], { tags: [' Idee ', '#idee', 'twee woorden', 'CAFÉ'] });
+    expect(parseProjectArchive(source).project.tags).toEqual(['app', 'desktop']);
     expect(parseProjectArchive(source).blocks[0].tags).toEqual(['idee', 'café']);
   });
 });

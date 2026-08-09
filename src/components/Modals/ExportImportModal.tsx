@@ -83,10 +83,13 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
       const attachmentsFolder = zip.folder('attachments');
       if (attachmentsFolder) {
         for (const att of attachments) {
-          if (att.dataUrl) {
-            const base64Data = att.dataUrl.split(',')[1] || att.dataUrl;
-            attachmentsFolder.file(att.id + '_' + att.fileName, base64Data, { base64: true });
-          }
+          const base64Data = att.dataUrl
+            ? (att.dataUrl.split(',')[1] || att.dataUrl)
+            : att.localPath && window.electronAPI?.readAttachment
+              ? await window.electronAPI.readAttachment(att.localPath)
+              : null;
+          if (!base64Data) throw new Error(`Bijlage “${att.fileName}” is niet meer beschikbaar.`);
+          attachmentsFolder.file(att.id + '_' + att.fileName, base64Data, { base64: true });
         }
       }
 
@@ -130,7 +133,15 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
 
       const projectId = createId('proj');
       const blockIdMap = new Map(data.blocks.map(block => [block.id, createId('block')]));
-      const project: Project = { ...data.project, id: projectId, isTrash: false, trashedAt: undefined, updatedAt: Date.now() };
+      const currentProjects = await db.projects.filter(project => !project.isTrash).toArray();
+      const project: Project = {
+        ...data.project,
+        id: projectId,
+        order: currentProjects.reduce((highest, current) => Math.max(highest, current.order ?? -1), -1) + 1,
+        isTrash: false,
+        trashedAt: undefined,
+        updatedAt: Date.now()
+      };
       const blocks = data.blocks.map(block => ({
         ...block,
         id: blockIdMap.get(block.id)!,

@@ -2,6 +2,14 @@ import { db } from './db';
 import type { Block } from '../types';
 import { parseTag, sanitizeTags } from '../utils/tagUtils';
 
+async function removeLocalAttachmentFiles(blockIds: string[]): Promise<void> {
+  if (typeof window === 'undefined' || !window.electronAPI?.removeAttachment || blockIds.length === 0) return;
+  const attachments = await db.attachments.where('blockId').anyOf(blockIds).toArray();
+  for (const attachment of attachments) {
+    if (attachment.localPath) await window.electronAPI.removeAttachment(attachment.localPath);
+  }
+}
+
 export interface BlockDraftUpdate {
   title: string;
   content: string;
@@ -128,11 +136,12 @@ export async function restoreProject(projectId: string): Promise<void> {
 }
 
 export async function permanentlyDeleteBlock(blockId: string): Promise<void> {
+  const allBlocks = await db.blocks.toArray();
+  const root = allBlocks.find(block => block.id === blockId);
+  if (!root) return;
+  const ids = [...collectDescendantIds(allBlocks, blockId)];
+  await removeLocalAttachmentFiles(ids);
   await db.transaction('rw', db.blocks, db.attachments, async () => {
-    const allBlocks = await db.blocks.toArray();
-    const root = allBlocks.find(block => block.id === blockId);
-    if (!root) return;
-    const ids = [...collectDescendantIds(allBlocks, blockId)];
     await db.attachments.where('blockId').anyOf(ids).delete();
     await db.blocks.where('id').anyOf(ids).delete();
     await refreshChildCount(root.parentId);
@@ -140,8 +149,9 @@ export async function permanentlyDeleteBlock(blockId: string): Promise<void> {
 }
 
 export async function permanentlyDeleteProject(projectId: string): Promise<void> {
+  const blockIds = await db.blocks.where('projectId').equals(projectId).primaryKeys();
+  await removeLocalAttachmentFiles(blockIds);
   await db.transaction('rw', db.projects, db.blocks, db.attachments, async () => {
-    const blockIds = await db.blocks.where('projectId').equals(projectId).primaryKeys();
     if (blockIds.length) await db.attachments.where('blockId').anyOf(blockIds).delete();
     await db.blocks.where('projectId').equals(projectId).delete();
     await db.projects.delete(projectId);

@@ -42,6 +42,22 @@ export class DeepScribeDatabase extends Dexie {
       attachments: 'id, blockId, fileName, createdAt',
       settings: 'key'
     });
+    this.version(6).stores({
+      projects: 'id, title, isTrash, createdAt, updatedAt',
+      blocks: 'id, projectId, parentId, order, isTrash, *tags, plainText, updatedAt',
+      attachments: 'id, blockId, fileName, createdAt',
+      settings: 'key'
+    }).upgrade(transaction => transaction.table<Project>('projects').toCollection().modify(project => {
+      project.order = project.order ?? project.createdAt;
+    }));
+    this.version(7).stores({
+      projects: 'id, title, isTrash, *tags, createdAt, updatedAt',
+      blocks: 'id, projectId, parentId, order, isTrash, *tags, plainText, updatedAt',
+      attachments: 'id, blockId, fileName, createdAt',
+      settings: 'key'
+    }).upgrade(transaction => transaction.table<Project>('projects').toCollection().modify(project => {
+      project.tags = sanitizeTags(project.tags);
+    }));
   }
 }
 
@@ -69,6 +85,8 @@ export async function seedDemoDataIfEmpty() {
     title: '📘 Sci-Fi Roman: De Cybernetic Horizon',
     description: 'Een meeslepende cyberpunk roman over kunstmatige intelligentie en menselijk bewustzijn.',
     color: '#00F0FF',
+    order: 0,
+    tags: [],
     icon: 'book',
     isTrash: false,
     createdAt: now - 86400000 * 5,
@@ -80,6 +98,8 @@ export async function seedDemoDataIfEmpty() {
     title: '🧠 Kennisbank & Onderzoek',
     description: 'Persoonlijk archief met notities, bibliografie en ideeën.',
     color: '#FF007F',
+    order: 1,
+    tags: [],
     icon: 'brain',
     isTrash: false,
     createdAt: now - 86400000 * 3,

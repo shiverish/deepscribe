@@ -23,6 +23,7 @@ interface HorizontalLayoutProps {
   onDragStart?: (e: React.DragEvent, item: Block | Project, type: 'project' | 'block') => void;
   onDragOver?: (e: React.DragEvent, item: Block | Project, type: 'project' | 'block') => void;
   onDragLeave?: (e: React.DragEvent) => void;
+  onDragEnd?: (e: React.DragEvent) => void;
   onDrop?: (e: React.DragEvent, targetItem: Block | Project, type: 'project' | 'block') => void;
 }
 
@@ -38,6 +39,7 @@ export const HorizontalLayout: React.FC<HorizontalLayoutProps> = ({
   onDragStart,
   onDragOver,
   onDragLeave,
+  onDragEnd,
   onDrop
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -76,6 +78,7 @@ export const HorizontalLayout: React.FC<HorizontalLayoutProps> = ({
           onDragStart={onDragStart}
           onDragOver={onDragOver}
           onDragLeave={onDragLeave}
+          onDragEnd={onDragEnd}
           onDrop={onDrop}
         />
       ))}

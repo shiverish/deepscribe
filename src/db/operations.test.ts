@@ -17,11 +17,11 @@ import {
   trashProject
 } from './operations';
 import type { Block, Project } from '../types';
-import { moveBlockInTree } from '../utils/dragAndDrop';
+import { moveBlockInTree, reorderBlockWithinParent, reorderProject } from '../utils/dragAndDrop';
 
 const now = 1_700_000_000_000;
 const project: Project = {
-  id: 'project-1', title: 'Project', description: '', color: '#fff', isTrash: false, createdAt: now, updatedAt: now
+  id: 'project-1', title: 'Project', description: '', color: '#fff', order: 0, tags: [], isTrash: false, createdAt: now, updatedAt: now
 };
 const block = (id: string, parentId: string | null, order: number): Block => ({
   id, projectId: project.id, parentId, title: id, content: '<p></p>', plainText: '', order,
@@ -72,7 +72,30 @@ describe('local data safety operations', () => {
     expect(roots.map(item => item.id)).toEqual(['root', 'sibling', 'child']);
   });
 
+  it('reorders blocks within one column but never changes their parent', async () => {
+    await db.blocks.add(block('second-child', 'root', 1));
+    expect(await reorderBlockWithinParent('second-child', 'child', 'above')).toBe(true);
+    const children = await db.blocks.where('parentId').equals('root').sortBy('order');
+    expect(children.map(item => item.id)).toEqual(['second-child', 'child']);
+    expect((await db.blocks.get('second-child'))?.parentId).toBe('root');
+
+    expect(await reorderBlockWithinParent('child', 'sibling', 'below')).toBe(false);
+    expect((await db.blocks.get('child'))?.parentId).toBe('root');
+  });
+
+  it('reorders projects persistently', async () => {
+    const second: Project = { ...project, id: 'project-2', title: 'Tweede', order: 1 };
+    await db.projects.add(second);
+    expect(await reorderProject('project-2', 'project-1', 'above')).toBe(true);
+    const projects = (await db.projects.toArray()).sort((a, b) => a.order - b.order);
+    expect(projects.map(item => item.id)).toEqual(['project-2', 'project-1']);
+  });
+
   it('moves projects through trash before permanent deletion', async () => {
+    await db.attachments.add({
+      id: 'attachment-1', blockId: 'child', fileName: 'notitie.txt', fileType: 'text/plain', fileSize: 7,
+      dataUrl: 'data:text/plain;base64,bm90aXRpZQ==', createdAt: now
+    });
     await trashBlock('child');
     await trashProject(project.id);
     expect((await db.projects.get(project.id))?.isTrash).toBe(true);
@@ -87,6 +110,7 @@ describe('local data safety operations', () => {
     await permanentlyDeleteProject(project.id);
     expect(await db.projects.get(project.id)).toBeUndefined();
     expect(await db.blocks.where('projectId').equals(project.id).count()).toBe(0);
+    expect(await db.attachments.count()).toBe(0);
   });
 
   it('manages tags on blocks correctly', async () => {
