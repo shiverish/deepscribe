@@ -15,5 +15,11 @@ export default defineConfig({
         }
       }
     }
+  },
+  test: {
+    // De Dexie/fake-indexeddb tests doen veel kleine awaits en lopen parallel met
+    // de zwaardere SQLite-suites. Op trage CI-runners haalt 5s (de default) het niet.
+    testTimeout: 30000,
+    hookTimeout: 30000
   }
 })
