@@ -47,7 +47,8 @@
       {
         "provider": "github",
         "owner": "shiverish",
-        "repo": "deepscribe"
+        "repo": "deepscribe",
+        "releaseType": "release"
       }
     ],
     "nsis": {
