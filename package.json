@@ -2,6 +2,8 @@
   "name": "deepscribe",
   "private": true,
   "version": "0.1.7",
+  "description": "Local-first hierarchical writing and knowledge app with Miller columns",
+  "author": "shiverish",
   "main": "electron/main.cjs",
   "type": "module",
   "scripts": {
@@ -23,7 +25,6 @@
   "build": {
     "appId": "com.deepscribe.app",
     "productName": "DeepScribe",
-    "electronDist": "node_modules/electron/dist",
     "directories": {
       "output": "dist-electron"
     },
