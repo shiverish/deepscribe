@@ -288,7 +288,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
   const dependencyStatus = useMemo(() => {
     if (!isBlock || !activeItem) return null;
     return getBlockDependencyStatus(activeItem as Block, allProjectBlocks);
-  }, [isBlock, activeItem, allProjectBlocks, dependsOn]);
+  }, [isBlock, activeItem, allProjectBlocks]);
 
   const candidateDependencyBlocks = useMemo(() => {
     if (!isBlock || !activeItem || !allProjectBlocks) return [];
