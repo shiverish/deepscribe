@@ -32,8 +32,16 @@ jobs:
           npm test
 
       - name: Build frontend & package Electron app
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run app:release
+        run: npm run app:build
+
+      - name: Upload binaries to GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            dist-electron/DeepScribe-Setup.exe
+            dist-electron/DeepScribe-Setup.exe.blockmap
+            dist-electron/latest.yml
+
 
 
