@@ -57,7 +57,7 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "DeepScribe",
-      "artifactName": "${productName} Setup.${ext}",
+      "artifactName": "${productName}-Setup.${ext}",
       "differentialPackage": true
     }
   },
