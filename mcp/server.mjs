@@ -214,7 +214,28 @@ registerTool('create_project', {
     title: z.string().min(1),
     description: z.string().optional(),
     color: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
-    tags: z.array(z.string()).max(20).optional()
+    tags: z.array(z.string()).max(20).optional(),
+    scratchpad: z.string().optional()
+  },
+  annotations: write
+});
+
+registerTool('get_project_context', {
+  title: 'Projectcontext & scratchpad ophalen',
+  description: 'Haal in één aanroep de volledige context van een project op: het actuele agent-scratchpad (architectuurkeuzes, tussenconclusies en status), openstaande taken, blokstatistieken en recente projectactiviteit.',
+  inputSchema: {
+    projectId: z.string().min(1)
+  },
+  annotations: readOnly
+});
+
+registerTool('update_project_scratchpad', {
+  title: 'Project-scratchpad bijwerken',
+  description: 'Werk het centrale context- en geheugenveld (scratchpad) van een project bij. Gebruik dit om tussenconclusies, architectuurkeuzes en samenvattingen vast te leggen voor volgende agent-sessies of de ontwikkelaar.',
+  inputSchema: {
+    projectId: z.string().min(1),
+    content: z.string().min(1),
+    append: z.boolean().optional()
   },
   annotations: write
 });
@@ -251,13 +272,14 @@ registerTool('create_work_item', {
 
 registerTool('update_project', {
   title: 'Project bijwerken',
-  description: 'Werk titel, omschrijving, kleur en/of tags van een bestaand project bij.',
+  description: 'Werk titel, omschrijving, kleur, scratchpad en/of tags van een bestaand project bij.',
   inputSchema: {
     projectId: z.string().min(1),
     title: z.string().min(1).optional(),
     description: z.string().optional(),
     color: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
-    tags: z.array(z.string()).max(20).optional()
+    tags: z.array(z.string()).max(20).optional(),
+    scratchpad: z.string().optional()
   },
   annotations: write
 });

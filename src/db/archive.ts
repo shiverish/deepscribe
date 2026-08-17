@@ -46,6 +46,8 @@ export function parseProjectArchive(raw: unknown): ProjectArchive {
     order: typeof sourceProject.order === 'number' && Number.isFinite(sourceProject.order) ? sourceProject.order : projectCreatedAt,
     tags: sanitizeTags(Array.isArray(sourceProject.tags) ? sourceProject.tags.filter((tag): tag is string => typeof tag === 'string') : []),
     icon: typeof sourceProject.icon === 'string' ? sourceProject.icon : undefined,
+    scratchpad: typeof sourceProject.scratchpad === 'string' ? sourceProject.scratchpad : undefined,
+    scratchpadUpdatedAt: typeof sourceProject.scratchpadUpdatedAt === 'number' ? sourceProject.scratchpadUpdatedAt : undefined,
     isTrash: false,
     createdAt: projectCreatedAt,
     updatedAt: requiredNumber(sourceProject.updatedAt, 'project.updatedAt')

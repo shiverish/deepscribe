@@ -1,5 +1,5 @@
 import { db } from './db';
-import type { Block } from '../types';
+import type { Block, Project } from '../types';
 import { parseTag, sanitizeTags } from '../utils/tagUtils';
 import { sanitizeDependsOn } from '../utils/dependencyUtils';
 
@@ -28,6 +28,31 @@ export async function saveBlockDraft(blockId: string, draft: BlockDraftUpdate): 
     dependsOn: draft.dependsOn ? sanitizeDependsOn(draft.dependsOn) : undefined,
     updatedAt: Date.now()
   });
+}
+
+export interface ProjectDraftUpdate {
+  title: string;
+  description: string;
+  tags: string[];
+  scratchpad?: string;
+}
+
+export async function saveProjectDraft(projectId: string, draft: ProjectDraftUpdate): Promise<void> {
+  const current = await db.projects.get(projectId);
+  const now = Date.now();
+  const update: Partial<Project> = {
+    title: draft.title,
+    description: draft.description,
+    tags: sanitizeTags(draft.tags),
+    updatedAt: now
+  };
+  if (draft.scratchpad !== undefined) {
+    update.scratchpad = draft.scratchpad;
+    if (draft.scratchpad !== current?.scratchpad) {
+      update.scratchpadUpdatedAt = now;
+    }
+  }
+  await db.projects.update(projectId, update);
 }
 
 export function createId(prefix: 'proj' | 'block' | 'attachment'): string {

@@ -245,6 +245,12 @@ export const Card: React.FC<CardProps> = ({
           </span>
         )}
 
+        {type === 'project' && Boolean((item as Project).scratchpad) && (
+          <span className="card-badge agent-update" title="Project bevat een actief agent-scratchpad">
+            <Bot size={11} /> Context
+          </span>
+        )}
+
         {block && block.childCount > 0 && (
           <span className="card-badge cyan">
             <Layers size={11} /> {block.childCount}

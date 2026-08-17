@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, requestPersistentStorage, seedDemoDataIfEmpty } from './db/db';
-import { createId, deleteTagFromProject, markBlockSubtreeAsRead, markProjectAsRead, renameTagInProject, saveBlockDraft, trashBlock, trashProject } from './db/operations';
+import { createId, deleteTagFromProject, markBlockSubtreeAsRead, markProjectAsRead, renameTagInProject, saveBlockDraft, saveProjectDraft, trashBlock, trashProject } from './db/operations';
 import type { Project, Block, Attachment, BlockTemplate, PathSegment, SaveStatus, DragTarget, ActiveView } from './types';
 import { Breadcrumbs } from './components/Navigation/Breadcrumbs';
 import { HorizontalLayout, type ColumnData } from './components/Navigation/HorizontalLayout';
@@ -454,16 +454,17 @@ export function App() {
     taskCount: number,
     completedTaskCount: number,
     tags: string[],
-    dependsOn?: string[]
+    dependsOn?: string[],
+    scratchpad?: string
   ) => {
     setSaveStatus({ state: 'saving' });
     try {
       if (itemType === 'project') {
-        await db.projects.update(itemId, {
+        await saveProjectDraft(itemId, {
           title,
           description: content || plainText,
-          tags: sanitizeTags(tags),
-          updatedAt: Date.now()
+          tags,
+          scratchpad
         });
         await recordActivity({ projectId: itemId, action: 'project-updated', summary: `Project “${title}” bijgewerkt` });
       } else {

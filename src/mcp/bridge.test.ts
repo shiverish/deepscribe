@@ -271,3 +271,75 @@ describe('DeepScribe MCP task dependencies (Feature A)', () => {
   });
 });
 
+describe('DeepScribe MCP project context & scratchpad (Feature C)', () => {
+  it('reads project context, updates scratchpad and appends memory chunks', async () => {
+    const project = await handleMcpBridgeRequest('create_project', {
+      title: 'Context Engine Project',
+      description: 'Test project voor agent context state',
+      scratchpad: '# Initial Architecture\n\n- React + TypeScript frontend\n- Local-first Dexie storage'
+    }) as Project;
+
+    expect(project.scratchpad).toContain('React + TypeScript frontend');
+    expect(project.scratchpadUpdatedAt).toBeDefined();
+
+    // Create some work items
+    await handleMcpBridgeRequest('create_work_item', {
+      projectId: project.id,
+      title: 'Setup State Machine',
+      goal: 'Bouw state machine voor project context',
+      context: 'Nodig voor agent geheugen',
+      acceptanceCriteria: ['State machine draait']
+    });
+
+    // 1. Get project context in single call
+    const context1 = await handleMcpBridgeRequest('get_project_context', {
+      projectId: project.id
+    }) as {
+      projectId: string;
+      title: string;
+      scratchpad: string;
+      totalBlocks: number;
+      openTaskCount: number;
+      openTasks: Array<{ blockTitle: string }>;
+    };
+
+    expect(context1.title).toBe('Context Engine Project');
+    expect(context1.scratchpad).toContain('Initial Architecture');
+    expect(context1.totalBlocks).toBe(1);
+    expect(context1.openTaskCount).toBe(1);
+    expect(context1.openTasks[0].blockTitle).toBe('Setup State Machine');
+
+    // 2. Append new decision to scratchpad
+    const updatedScratchpad = await handleMcpBridgeRequest('update_project_scratchpad', {
+      projectId: project.id,
+      content: '## Besluit 17 Augustus\n\nWe kiezen voor gestandaardiseerde JSON schemas over MCP.',
+      append: true
+    }) as { scratchpad: string; scratchpadUpdatedAt: number };
+
+    expect(updatedScratchpad.scratchpad).toContain('Initial Architecture');
+    expect(updatedScratchpad.scratchpad).toContain('Besluit 17 Augustus');
+    expect(updatedScratchpad.scratchpadUpdatedAt).toBeDefined();
+
+    // 3. Verify via get_project_context
+    const context2 = await handleMcpBridgeRequest('get_project_context', {
+      projectId: project.id
+    }) as { scratchpad: string };
+
+    expect(context2.scratchpad).toContain('Besluit 17 Augustus');
+
+    // 4. Overwrite scratchpad completely
+    await handleMcpBridgeRequest('update_project_scratchpad', {
+      projectId: project.id,
+      content: '# Geherstructureerde architectuur\n\n- Schone lei',
+      append: false
+    });
+
+    const context3 = await handleMcpBridgeRequest('get_project_context', {
+      projectId: project.id
+    }) as { scratchpad: string };
+
+    expect(context3.scratchpad).toBe('# Geherstructureerde architectuur\n\n- Schone lei');
+    expect(context3.scratchpad).not.toContain('Initial Architecture');
+  });
+});
+

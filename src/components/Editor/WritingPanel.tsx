@@ -7,7 +7,7 @@ import { VersionHistoryModal } from '../Modals/VersionHistoryModal';
 import { extractHashtags, mergeTags, parseTag, sanitizeTags } from '../../utils/tagUtils';
 import { initialTagComposerState, tagComposerReducer } from '../../utils/tagComposer';
 import { getBlockDependencyStatus, detectCircularDependency, sanitizeDependsOn, isBlockCompleted } from '../../utils/dependencyUtils';
-import { Check, Loader2, AlertCircle, FileText, Folder, FolderOpen, Paperclip, PanelRightClose, Edit3, Plus, Tag as TagIcon, Settings2, Trash2, Link2, ArrowUpRight, X, History, Lock, CheckCircle2, Clock } from 'lucide-react';
+import { Check, Loader2, AlertCircle, FileText, Folder, FolderOpen, Paperclip, PanelRightClose, Edit3, Plus, Tag as TagIcon, Settings2, Trash2, Link2, ArrowUpRight, X, History, Lock, CheckCircle2, Clock, Bot, ClipboardCopy } from 'lucide-react';
 import './Editor.css';
 
 interface WritingPanelProps {
@@ -28,7 +28,8 @@ interface WritingPanelProps {
     taskCount: number,
     completedTaskCount: number,
     tags: string[],
-    dependsOn?: string[]
+    dependsOn?: string[],
+    scratchpad?: string
   ) => Promise<void>;
   tagSuggestions?: Array<{ tag: string; count: number }>;
   onRenameProjectTag?: (from: string, to: string) => Promise<number>;
@@ -73,6 +74,8 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
   const [completedTaskCount, setCompletedTaskCount] = useState(0);
   const [tags, setTags] = useState<string[]>([]);
   const [dependsOn, setDependsOn] = useState<string[]>([]);
+  const [scratchpad, setScratchpad] = useState('');
+  const [scratchpadCopied, setScratchpadCopied] = useState(false);
   const [tagComposer, dispatchTagComposer] = useReducer(tagComposerReducer, initialTagComposerState);
   const [isTagManagerOpen, setIsTagManagerOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
@@ -142,6 +145,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
     completedTaskCount: 0,
     tags: [] as string[],
     dependsOn: [] as string[],
+    scratchpad: '',
     isDirty: false,
     itemType: null as 'project' | 'block' | null
   });
@@ -155,10 +159,11 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
       completedTaskCount,
       tags,
       dependsOn,
+      scratchpad,
       isDirty,
       itemType
     };
-  }, [title, htmlContent, plainTextContent, taskCount, completedTaskCount, tags, dependsOn, isDirty, itemType]);
+  }, [title, htmlContent, plainTextContent, taskCount, completedTaskCount, tags, dependsOn, scratchpad, isDirty, itemType]);
 
   const flushSave = useCallback(async () => {
     const currentId = activeItemIdRef.current;
@@ -179,7 +184,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
       setTags(finalTags);
     }
 
-    const { title, htmlContent, plainTextContent, taskCount, completedTaskCount, itemType, dependsOn: currentDependsOn } = draftRef.current;
+    const { title, htmlContent, plainTextContent, taskCount, completedTaskCount, itemType, dependsOn: currentDependsOn, scratchpad: currentScratchpad } = draftRef.current;
 
     // Reset dirty flag BEFORE async save so any typing during save marks state dirty again
     setIsDirty(false);
@@ -188,7 +193,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
 
     try {
       if (itemType) {
-        await onSaveItem(currentId, itemType, title, htmlContent, plainTextContent, taskCount, completedTaskCount, finalTags, currentDependsOn);
+        await onSaveItem(currentId, itemType, title, htmlContent, plainTextContent, taskCount, completedTaskCount, finalTags, currentDependsOn, currentScratchpad);
       }
     } finally {
       isSavingRef.current = false;
@@ -223,6 +228,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
         let nextCompletedTaskCount: number;
         let nextTags: string[];
         let nextDependsOn: string[] = [];
+        let nextScratchpad = '';
 
         if (itemType === 'block') {
           const b = activeItem as Block;
@@ -232,6 +238,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
           nextCompletedTaskCount = b.completedTaskCount || 0;
           nextTags = sanitizeTags(b.tags);
           nextDependsOn = sanitizeDependsOn(b.dependsOn);
+          nextScratchpad = '';
           observedHashtagsRef.current = new Set(extractHashtags(b.content || ''));
         } else {
           const p = activeItem as Project;
@@ -241,6 +248,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
           nextCompletedTaskCount = 0;
           nextTags = sanitizeTags(p.tags);
           nextDependsOn = [];
+          nextScratchpad = p.scratchpad || '';
           observedHashtagsRef.current = new Set();
         }
 
@@ -252,6 +260,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
           completedTaskCount: nextCompletedTaskCount,
           tags: nextTags,
           dependsOn: nextDependsOn,
+          scratchpad: nextScratchpad,
           isDirty: false,
           itemType
         };
@@ -262,11 +271,14 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
         setCompletedTaskCount(nextCompletedTaskCount);
         setTags(nextTags);
         setDependsOn(nextDependsOn);
+        setScratchpad(nextScratchpad);
         setIsDirty(false);
         loadedUpdatedAtRef.current = activeItem.updatedAt;
         setAttachmentError(null);
         if (isNewItem) dispatchTagComposer({ type: 'close' });
       }
+    } else {
+      loadedUpdatedAtRef.current = null;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeItem?.id, activeItem?.updatedAt, itemType, flushSave]);
@@ -306,6 +318,25 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
     draftRef.current.isDirty = true;
     setIsDirty(true);
     flushSave();
+  };
+
+  const handleScratchpadChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setScratchpad(val);
+    draftRef.current.scratchpad = val;
+    draftRef.current.isDirty = true;
+    setIsDirty(true);
+  };
+
+  const handleCopyScratchpad = async () => {
+    if (!scratchpad) return;
+    try {
+      await navigator.clipboard.writeText(scratchpad);
+      setScratchpadCopied(true);
+      setTimeout(() => setScratchpadCopied(false), 2000);
+    } catch (err) {
+      console.error('Kopiëren mislukt', err);
+    }
   };
 
   useEffect(() => {
@@ -658,6 +689,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                   completedTaskCount: restoredBlock.completedTaskCount,
                   tags: restoredBlock.tags,
                   dependsOn: restoredBlock.dependsOn || [],
+                  scratchpad: '',
                   isDirty: false,
                   itemType: 'block'
                 };
@@ -916,6 +948,69 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
               {references.outgoing.length === 0 && references.backlinks.length === 0 && (
                 <p className="references-empty">Nog geen koppelingen voor dit blok.</p>
               )}
+            </section>
+          )}
+
+          {!isBlock && (
+            <section className="references-panel" style={{ marginTop: '8px', marginBottom: '8px' }}>
+              <div className="references-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Bot size={14} color="#38bdf8" />
+                  <span style={{ fontWeight: 600, fontSize: '0.82rem' }}>Agent Context & Scratchpad</span>
+                  {activeItem && 'scratchpadUpdatedAt' in activeItem && typeof activeItem.scratchpadUpdatedAt === 'number' && (
+                    <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                      (bijgewerkt: {new Date(activeItem.scratchpadUpdatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})
+                    </span>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleCopyScratchpad}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    background: scratchpadCopied ? 'rgba(34, 197, 94, 0.15)' : 'rgba(255, 255, 255, 0.05)',
+                    border: '1px solid var(--border-subtle)',
+                    color: scratchpadCopied ? '#4ade80' : 'var(--text-secondary)',
+                    borderRadius: '4px',
+                    padding: '2px 8px',
+                    fontSize: '0.7rem',
+                    cursor: 'pointer'
+                  }}
+                  title="Kopieer context voor gebruik in prompt"
+                >
+                  {scratchpadCopied ? <Check size={11} /> : <ClipboardCopy size={11} />}
+                  {scratchpadCopied ? 'Gekopieerd!' : 'Kopieer Context'}
+                </button>
+              </div>
+
+              <p style={{ margin: '0 0 6px 0', fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                Centraal werkgeheugen voor AI-agents. Agents lezen dit direct in via <code>get_project_context</code> en schrijven hier tussenconclusies en besluiten weg.
+              </p>
+
+              <textarea
+                value={scratchpad}
+                onChange={handleScratchpadChange}
+                onBlur={flushSave}
+                placeholder="# Project Context & Architectuurkeuzes&#10;&#10;- Belangrijke besluiten...&#10;- Huidige roadmap..."
+                style={{
+                  width: '100%',
+                  minHeight: '110px',
+                  maxHeight: '260px',
+                  resize: 'vertical',
+                  background: 'rgba(0, 0, 0, 0.25)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: '6px',
+                  padding: '8px 10px',
+                  color: 'var(--text-primary)',
+                  fontFamily: 'monospace',
+                  fontSize: '0.75rem',
+                  lineHeight: '1.45',
+                  boxSizing: 'border-box'
+                }}
+              />
             </section>
           )}
 

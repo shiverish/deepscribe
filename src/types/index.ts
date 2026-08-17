@@ -8,8 +8,26 @@ export interface Project {
   order: number;
   tags: string[];
   icon?: string;
+  scratchpad?: string;
+  scratchpadUpdatedAt?: number;
   isTrash: boolean;
   trashedAt?: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ProjectContext {
+  projectId: string;
+  title: string;
+  description: string;
+  tags: string[];
+  color: string;
+  scratchpad: string;
+  scratchpadUpdatedAt?: number;
+  totalBlocks: number;
+  openTaskCount: number;
+  openTasks: Array<{ blockId: string; blockTitle: string; text: string; isBlocked?: boolean }>;
+  recentActivities: Array<{ id: string; action: string; summary: string; createdAt: number; source: string }>;
   createdAt: number;
   updatedAt: number;
 }

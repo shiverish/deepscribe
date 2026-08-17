@@ -265,6 +265,7 @@ async function projectWithCounts(project: Project) {
 async function createProject(params: JsonObject) {
   const now = Date.now();
   const projects = await db.projects.filter(project => !project.isTrash).toArray();
+  const scratchpad = optionalString(params, 'scratchpad');
   const project: Project = {
     id: `proj-${crypto.randomUUID()}`,
     title: requiredString(params, 'title'),
@@ -272,6 +273,8 @@ async function createProject(params: JsonObject) {
     color: optionalString(params, 'color') || '#3b82f6',
     order: projects.reduce((highest, current) => Math.max(highest, current.order ?? -1), -1) + 1,
     tags: sanitizeTags(Array.isArray(params.tags) ? params.tags.filter((tag): tag is string => typeof tag === 'string') : []),
+    scratchpad: scratchpad ? scratchpad : undefined,
+    scratchpadUpdatedAt: scratchpad ? now : undefined,
     isTrash: false,
     createdAt: now,
     updatedAt: now
@@ -279,6 +282,100 @@ async function createProject(params: JsonObject) {
   await db.projects.add(project);
   await recordActivity({ projectId: project.id, source: 'agent', action: 'project-created', summary: `Agent maakte project “${project.title}”` });
   return project;
+}
+
+async function getProjectContext(params: JsonObject) {
+  const projectId = requiredString(params, 'projectId');
+  const project = await db.projects.get(projectId);
+  if (!project || project.isTrash) throw new Error('Project niet gevonden.');
+
+  const blocks = await db.blocks.where('projectId').equals(projectId).filter(b => !b.isTrash).toArray();
+  const openTasks: Array<{ blockId: string; blockTitle: string; text: string; isBlocked?: boolean }> = [];
+
+  for (const block of blocks) {
+    const depStatus = getBlockDependencyStatus(block, blocks);
+    const todos = todosFromBlock(block).filter(t => !t.completed);
+    if (todos.length > 0) {
+      for (const todo of todos) {
+        openTasks.push({
+          blockId: block.id,
+          blockTitle: block.title,
+          text: todo.text,
+          isBlocked: depStatus.isBlocked
+        });
+      }
+    } else if ((block.tags || []).includes('todo') || (block.tags || []).includes('agent-ready')) {
+      openTasks.push({
+        blockId: block.id,
+        blockTitle: block.title,
+        text: block.title,
+        isBlocked: depStatus.isBlocked
+      });
+    }
+  }
+
+  const activities = await db.activities
+    .where('projectId')
+    .equals(projectId)
+    .reverse()
+    .limit(10)
+    .toArray();
+
+  return {
+    projectId: project.id,
+    title: project.title,
+    description: project.description || '',
+    tags: project.tags || [],
+    color: project.color,
+    scratchpad: project.scratchpad || '',
+    scratchpadUpdatedAt: project.scratchpadUpdatedAt,
+    totalBlocks: blocks.length,
+    openTaskCount: openTasks.length,
+    openTasks,
+    recentActivities: activities.map(a => ({
+      id: a.id,
+      action: a.action,
+      summary: a.summary,
+      createdAt: a.createdAt,
+      source: a.source
+    })),
+    createdAt: project.createdAt,
+    updatedAt: project.updatedAt
+  };
+}
+
+async function updateProjectScratchpad(params: JsonObject) {
+  const projectId = requiredString(params, 'projectId');
+  const content = requiredString(params, 'content');
+  const append = params.append === true;
+  const project = await db.projects.get(projectId);
+  if (!project || project.isTrash) throw new Error('Project niet gevonden.');
+
+  const now = Date.now();
+  let newScratchpad = content;
+  if (append && project.scratchpad && project.scratchpad.trim()) {
+    newScratchpad = `${project.scratchpad.trim()}\n\n${content.trim()}`;
+  }
+
+  await db.projects.update(projectId, {
+    scratchpad: newScratchpad,
+    scratchpadUpdatedAt: now,
+    updatedAt: now
+  });
+
+  await recordActivity({
+    projectId,
+    source: 'agent',
+    action: 'project-scratchpad-updated',
+    summary: `Agent werkte project context / scratchpad bij voor “${project.title}”`
+  });
+
+  return {
+    projectId: project.id,
+    title: project.title,
+    scratchpad: newScratchpad,
+    scratchpadUpdatedAt: now
+  };
 }
 
 async function createBlock(params: JsonObject) {
@@ -690,6 +787,10 @@ export async function handleMcpBridgeRequest(method: string, rawParams: unknown)
       if (!project || project.isTrash) throw new Error('Project niet gevonden.');
       return await projectWithCounts(project);
     }
+    case 'get_project_context':
+      return await getProjectContext(params);
+    case 'update_project_scratchpad':
+      return await updateProjectScratchpad(params);
     case 'list_blocks': {
       const projectId = requiredString(params, 'projectId');
       const recursive = params.recursive === true;
@@ -776,11 +877,16 @@ export async function handleMcpBridgeRequest(method: string, rawParams: unknown)
       const projectId = requiredString(params, 'projectId');
       const project = await db.projects.get(projectId);
       if (!project || project.isTrash) throw new Error('Project niet gevonden.');
-      const update: Partial<Project> = { updatedAt: Date.now() };
+      const now = Date.now();
+      const update: Partial<Project> = { updatedAt: now };
       if (typeof params.title === 'string' && params.title.trim()) update.title = params.title.trim();
       if (typeof params.description === 'string') update.description = params.description;
       if (typeof params.color === 'string') update.color = params.color;
       if (Array.isArray(params.tags)) update.tags = sanitizeTags(params.tags.filter((tag): tag is string => typeof tag === 'string'));
+      if (typeof params.scratchpad === 'string') {
+        update.scratchpad = params.scratchpad;
+        update.scratchpadUpdatedAt = now;
+      }
       await db.projects.update(projectId, update);
       const updated = await db.projects.get(projectId);
       await recordActivity({ projectId, source: 'agent', action: 'project-updated', summary: `Agent wijzigde project “${updated?.title ?? project.title}”` });

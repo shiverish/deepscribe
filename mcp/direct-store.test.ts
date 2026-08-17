@@ -306,5 +306,49 @@ describe('DirectWorkspaceStore offline MCP engine', () => {
       store.close();
     }
   });
+
+  it('supports get_project_context and update_project_scratchpad in direct SQLite mode (Feature C)', async () => {
+    const wsPath = temporaryWorkspace();
+    const store = new DirectWorkspaceStore({ workspacePath: wsPath });
+    try {
+      const project = await store.handleRequest('create_project', {
+        title: 'SQLite Scratchpad Project',
+        description: 'Direct mode scratchpad test',
+        scratchpad: '# Initial Context\n\n- SQLite direct storage active'
+      });
+
+      expect(project.scratchpad).toContain('SQLite direct storage active');
+
+      await store.handleRequest('create_work_item', {
+        projectId: project.id,
+        title: 'Direct Task 1',
+        goal: 'Uitvoeren van offline taak',
+        context: 'Nodig voor validatie',
+        acceptanceCriteria: ['Taak is aangemaakt']
+      });
+
+      const context = await store.handleRequest('get_project_context', { projectId: project.id });
+      expect(context.title).toBe('SQLite Scratchpad Project');
+      expect(context.scratchpad).toContain('SQLite direct storage active');
+      expect(context.totalBlocks).toBe(1);
+      expect(context.openTaskCount).toBe(1);
+      expect(context.openTasks[0].blockTitle).toBe('Direct Task 1');
+
+      // Append
+      const updated = await store.handleRequest('update_project_scratchpad', {
+        projectId: project.id,
+        content: '## Besluit Offline\n\n- Direct SQLite engine is stabiel',
+        append: true
+      });
+
+      expect(updated.scratchpad).toContain('Initial Context');
+      expect(updated.scratchpad).toContain('Besluit Offline');
+
+      const reloadedContext = await store.handleRequest('get_project_context', { projectId: project.id });
+      expect(reloadedContext.scratchpad).toBe(updated.scratchpad);
+    } finally {
+      store.close();
+    }
+  });
 });
 

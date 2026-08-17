@@ -506,6 +506,11 @@ export class DirectWorkspaceStore {
     return row ? JSON.parse(row.json) : null;
   }
 
+  getAllActivities() {
+    this.open();
+    return this.database.prepare('SELECT json FROM activities').all().map(row => JSON.parse(row.json));
+  }
+
   saveProject(project) {
     this.open();
     this.database.prepare('INSERT INTO projects (id, json) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET json = excluded.json')
@@ -702,6 +707,99 @@ export class DirectWorkspaceStore {
         return await this.projectWithCounts(project);
       }
 
+      case 'get_project_context': {
+        const project = this.getProject(requireString('projectId'));
+        if (!project || project.isTrash) throw new Error('Project niet gevonden.');
+
+        const blocks = this.getAllBlocks().filter(b => b.projectId === project.id && !b.isTrash);
+        const openTasks = [];
+
+        for (const block of blocks) {
+          const depStatus = getBlockDependencyStatus(block, blocks);
+          const todos = todosFromBlock(block).filter(t => !t.completed);
+          if (todos.length > 0) {
+            for (const todo of todos) {
+              openTasks.push({
+                blockId: block.id,
+                blockTitle: block.title,
+                text: todo.text,
+                isBlocked: depStatus.isBlocked
+              });
+            }
+          } else if ((block.tags || []).includes('todo') || (block.tags || []).includes('agent-ready')) {
+            openTasks.push({
+              blockId: block.id,
+              blockTitle: block.title,
+              text: block.title,
+              isBlocked: depStatus.isBlocked
+            });
+          }
+        }
+
+        const activities = this.getAllActivities()
+          .filter(a => a.projectId === project.id)
+          .sort((a, b) => b.createdAt - a.createdAt)
+          .slice(0, 10);
+
+        return {
+          projectId: project.id,
+          title: project.title,
+          description: project.description || '',
+          tags: project.tags || [],
+          color: project.color,
+          scratchpad: project.scratchpad || '',
+          scratchpadUpdatedAt: project.scratchpadUpdatedAt,
+          totalBlocks: blocks.length,
+          openTaskCount: openTasks.length,
+          openTasks,
+          recentActivities: activities.map(a => ({
+            id: a.id,
+            action: a.action,
+            summary: a.summary,
+            createdAt: a.createdAt,
+            source: a.source
+          })),
+          createdAt: project.createdAt,
+          updatedAt: project.updatedAt
+        };
+      }
+
+      case 'update_project_scratchpad': {
+        const projectId = requireString('projectId');
+        const content = requireString('content');
+        const append = params.append === true;
+        const project = this.getProject(projectId);
+        if (!project || project.isTrash) throw new Error('Project niet gevonden.');
+
+        const now = Date.now();
+        let newScratchpad = content;
+        if (append && project.scratchpad && project.scratchpad.trim()) {
+          newScratchpad = `${project.scratchpad.trim()}\n\n${content.trim()}`;
+        }
+
+        const updated = {
+          ...project,
+          scratchpad: newScratchpad,
+          scratchpadUpdatedAt: now,
+          updatedAt: now
+        };
+        this.saveProject(updated);
+
+        this.recordActivity({
+          projectId,
+          source: 'agent',
+          action: 'project-scratchpad-updated',
+          summary: `Agent werkte project context / scratchpad bij voor “${project.title}”`
+        });
+
+        return {
+          projectId: project.id,
+          title: project.title,
+          scratchpad: newScratchpad,
+          scratchpadUpdatedAt: now
+        };
+      }
+
       case 'list_blocks': {
         const projectId = requireString('projectId');
         const recursive = params.recursive === true;
@@ -798,6 +896,7 @@ export class DirectWorkspaceStore {
       case 'create_project': {
         const now = Date.now();
         const projects = this.getAllProjects().filter(p => !p.isTrash);
+        const scratchpad = optionalStr('scratchpad');
         const project = {
           id: `proj-${crypto.randomUUID()}`,
           title: requireString('title'),
@@ -805,6 +904,8 @@ export class DirectWorkspaceStore {
           color: optionalStr('color') || '#3b82f6',
           order: projects.reduce((highest, p) => Math.max(highest, p.order ?? -1), -1) + 1,
           tags: sanitizeTags(Array.isArray(params.tags) ? params.tags.filter(t => typeof t === 'string') : []),
+          scratchpad: scratchpad ? scratchpad : undefined,
+          scratchpadUpdatedAt: scratchpad ? now : undefined,
           isTrash: false,
           createdAt: now,
           updatedAt: now
@@ -893,6 +994,10 @@ export class DirectWorkspaceStore {
         if (typeof params.description === 'string') updated.description = params.description;
         if (typeof params.color === 'string') updated.color = params.color;
         if (Array.isArray(params.tags)) updated.tags = sanitizeTags(params.tags.filter(t => typeof t === 'string'));
+        if (typeof params.scratchpad === 'string') {
+          updated.scratchpad = params.scratchpad;
+          updated.scratchpadUpdatedAt = now;
+        }
         this.saveProject(updated);
         this.recordActivity({ projectId, source: 'agent', action: 'project-updated', summary: `Agent wijzigde project “${updated.title}”` });
         return updated;
