@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Bot, CheckCircle2, Clock3, FilePlus2, History, LayoutTemplate, Trash2, X } from 'lucide-react';
+import { Bot, CheckCircle2, Clock3, FilePlus2, History, LayoutTemplate, Trash2, X, Search } from 'lucide-react';
 import { db } from '../../db/db';
 import { recordActivity } from '../../db/activity';
 import type { Block, BlockTemplate, Project } from '../../types';
@@ -26,8 +26,10 @@ export const WorkspaceModal: React.FC<WorkspaceModalProps> = ({
   const [tab, setTab] = useState<WorkspaceTab>('inbox');
   const [templateName, setTemplateName] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [activitySourceFilter, setActivitySourceFilter] = useState<'all' | 'agent' | 'user' | 'system'>('all');
+  const [activitySearchQuery, setActivitySearchQuery] = useState('');
   const activities = useLiveQuery(
-    () => db.activities.orderBy('createdAt').reverse().limit(150).toArray(),
+    () => db.activities.orderBy('createdAt').reverse().limit(250).toArray(),
     [],
     []
   );
@@ -47,6 +49,18 @@ export const WorkspaceModal: React.FC<WorkspaceModalProps> = ({
   const visibleActivities = activeProject
     ? activities.filter(entry => !entry.projectId || entry.projectId === activeProject.id)
     : activities;
+
+  const filteredActivities = useMemo(() => {
+    let list = visibleActivities;
+    if (activitySourceFilter !== 'all') {
+      list = list.filter(a => a.source === activitySourceFilter);
+    }
+    if (activitySearchQuery.trim()) {
+      const q = activitySearchQuery.toLowerCase();
+      list = list.filter(a => a.summary.toLowerCase().includes(q) || a.action.toLowerCase().includes(q));
+    }
+    return list;
+  }, [visibleActivities, activitySourceFilter, activitySearchQuery]);
 
   if (!isOpen) return null;
 
@@ -119,13 +133,127 @@ export const WorkspaceModal: React.FC<WorkspaceModalProps> = ({
           )}
 
           {tab === 'activity' && (
-            visibleActivities.length === 0 ? <p className="workspace-empty">Nog geen activiteiten vastgelegd.</p> : visibleActivities.map(entry => (
-              <button key={entry.id} className="activity-row" onClick={() => entry.blockId && onOpenBlock(entry.blockId)} disabled={!entry.blockId}>
-                <span className={`activity-source ${entry.source}`}>{entry.source === 'agent' ? <Bot size={12} /> : entry.source === 'system' ? <CheckCircle2 size={12} /> : <Clock3 size={12} />}{sourceLabels[entry.source]}</span>
-                <span className="activity-summary">{entry.summary}</span>
-                <time>{new Date(entry.createdAt).toLocaleString()}</time>
-              </button>
-            ))
+            <>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: 4, background: 'rgba(0,0,0,0.2)', padding: 3, borderRadius: 6 }}>
+                  <button
+                    type="button"
+                    style={{
+                      background: activitySourceFilter === 'all' ? 'var(--primary, #3b82f6)' : 'transparent',
+                      color: activitySourceFilter === 'all' ? '#fff' : 'var(--text-secondary)',
+                      border: 'none',
+                      padding: '3px 8px',
+                      borderRadius: 4,
+                      fontSize: '0.72rem',
+                      cursor: 'pointer'
+                    }}
+                    onClick={() => setActivitySourceFilter('all')}
+                  >
+                    Alle ({visibleActivities.length})
+                  </button>
+                  <button
+                    type="button"
+                    style={{
+                      background: activitySourceFilter === 'agent' ? 'var(--primary, #3b82f6)' : 'transparent',
+                      color: activitySourceFilter === 'agent' ? '#fff' : 'var(--text-secondary)',
+                      border: 'none',
+                      padding: '3px 8px',
+                      borderRadius: 4,
+                      fontSize: '0.72rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 3
+                    }}
+                    onClick={() => setActivitySourceFilter('agent')}
+                  >
+                    <Bot size={11} /> Agent ({visibleActivities.filter(a => a.source === 'agent').length})
+                  </button>
+                  <button
+                    type="button"
+                    style={{
+                      background: activitySourceFilter === 'user' ? 'var(--primary, #3b82f6)' : 'transparent',
+                      color: activitySourceFilter === 'user' ? '#fff' : 'var(--text-secondary)',
+                      border: 'none',
+                      padding: '3px 8px',
+                      borderRadius: 4,
+                      fontSize: '0.72rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 3
+                    }}
+                    onClick={() => setActivitySourceFilter('user')}
+                  >
+                    <Clock3 size={11} /> Jij ({visibleActivities.filter(a => a.source === 'user').length})
+                  </button>
+                  <button
+                    type="button"
+                    style={{
+                      background: activitySourceFilter === 'system' ? 'var(--primary, #3b82f6)' : 'transparent',
+                      color: activitySourceFilter === 'system' ? '#fff' : 'var(--text-secondary)',
+                      border: 'none',
+                      padding: '3px 8px',
+                      borderRadius: 4,
+                      fontSize: '0.72rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 3
+                    }}
+                    onClick={() => setActivitySourceFilter('system')}
+                  >
+                    <CheckCircle2 size={11} /> Systeem ({visibleActivities.filter(a => a.source === 'system').length})
+                  </button>
+                </div>
+
+                <div style={{ flex: 1, minWidth: 160, position: 'relative' }}>
+                  <Search size={12} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                  <input
+                    type="text"
+                    value={activitySearchQuery}
+                    onChange={e => setActivitySearchQuery(e.target.value)}
+                    placeholder="Zoek in activiteit..."
+                    style={{
+                      width: '100%',
+                      padding: '4px 8px 4px 24px',
+                      fontSize: '0.72rem',
+                      borderRadius: 4,
+                      background: 'rgba(0,0,0,0.2)',
+                      border: '1px solid var(--border-subtle)',
+                      color: 'var(--text-primary)',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
+              </div>
+
+              {filteredActivities.length === 0 ? (
+                <p className="workspace-empty">Geen activiteiten gevonden.</p>
+              ) : (
+                filteredActivities.map(entry => (
+                  <button
+                    key={entry.id}
+                    className="activity-row"
+                    onClick={() => {
+                      if (entry.blockId) {
+                        onOpenBlock(entry.blockId);
+                        onClose();
+                      }
+                    }}
+                    disabled={!entry.blockId}
+                    style={{ cursor: entry.blockId ? 'pointer' : 'default' }}
+                  >
+                    <span className={`activity-source ${entry.source}`}>
+                      {entry.source === 'agent' ? <Bot size={12} /> : entry.source === 'system' ? <CheckCircle2 size={12} /> : <Clock3 size={12} />}
+                      {sourceLabels[entry.source]}
+                    </span>
+                    <span className="activity-summary">{entry.summary}</span>
+                    <time>{new Date(entry.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>
+                  </button>
+                ))
+              )}
+            </>
           )}
 
           {tab === 'templates' && (

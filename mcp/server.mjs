@@ -382,6 +382,32 @@ registerTool('restore_block_revision', {
   annotations: write
 });
 
+registerTool('list_activities', {
+  title: 'Activiteitenstream opvragen',
+  description: 'Haal recente activiteitslogs en audit events op (bijv. aanpassingen door agents of gebruiker), optioneel gefilterd op projectId, blockId, bron (user, agent, system) of sinds een specifieke timestamp.',
+  inputSchema: {
+    projectId: z.string().optional(),
+    blockId: z.string().optional(),
+    source: z.enum(['user', 'agent', 'system']).optional(),
+    since: z.number().int().optional(),
+    limit: z.number().int().min(1).max(100).optional()
+  },
+  annotations: readOnly
+});
+
+registerTool('record_activity', {
+  title: 'Activiteit of voortgang loggen',
+  description: 'Log een voortgangsupdates, mijlpaal of agent-actie in de centrale activiteitsstream van DeepScribe.',
+  inputSchema: {
+    action: z.string().min(1),
+    summary: z.string().min(1),
+    projectId: z.string().optional(),
+    blockId: z.string().optional(),
+    source: z.enum(['user', 'agent', 'system']).optional()
+  },
+  annotations: write
+});
+
 const transport = new StdioServerTransport();
 await server.connect(transport);
 console.error('DeepScribe MCP-server is actief via stdio.');

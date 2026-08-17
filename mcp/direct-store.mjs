@@ -1209,6 +1209,43 @@ export class DirectWorkspaceStore {
         };
       }
 
+      case 'list_activities': {
+        const projectId = optionalStr('projectId');
+        const blockId = optionalStr('blockId');
+        const source = optionalStr('source');
+        const since = typeof params.since === 'number' && Number.isFinite(params.since) ? params.since : undefined;
+        const limit = clampLimit(params.limit, 100);
+
+        let items = this.getAllActivities().sort((a, b) => b.createdAt - a.createdAt);
+        if (projectId) items = items.filter(a => a.projectId === projectId);
+        if (blockId) items = items.filter(a => a.blockId === blockId);
+        if (source) items = items.filter(a => a.source === source);
+        if (since !== undefined) items = items.filter(a => a.createdAt >= since);
+
+        return items.slice(0, limit);
+      }
+
+      case 'record_activity': {
+        const action = requireString('action');
+        const summary = requireString('summary');
+        const projectId = optionalStr('projectId');
+        const blockId = optionalStr('blockId');
+        const source = (params.source === 'user' || params.source === 'system') ? params.source : 'agent';
+
+        this.open();
+        const activity = {
+          id: `activity-${crypto.randomUUID()}`,
+          projectId: projectId || undefined,
+          blockId: blockId || undefined,
+          source,
+          action,
+          summary,
+          createdAt: Date.now()
+        };
+        this.database.prepare('INSERT INTO activities (id, json) VALUES (?, ?)').run(activity.id, JSON.stringify(activity));
+        return activity;
+      }
+
       default:
         throw new Error(`Onbekende DeepScribe-methode: ${method}`);
     }

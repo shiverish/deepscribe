@@ -343,3 +343,60 @@ describe('DeepScribe MCP project context & scratchpad (Feature C)', () => {
   });
 });
 
+describe('DeepScribe MCP Activity Stream & Live Feed (Feature E)', () => {
+  it('records activities and lists them with various filters', async () => {
+    const timestampBefore = Date.now();
+    const projA = await handleMcpBridgeRequest('create_project', { title: 'Activity Project A' }) as Project;
+    const projB = await handleMcpBridgeRequest('create_project', { title: 'Activity Project B' }) as Project;
+
+    // 1. Record specific agent activities
+    await handleMcpBridgeRequest('record_activity', {
+      projectId: projA.id,
+      action: 'agent-benchmark',
+      summary: 'Agent voltooide benchmark suite',
+      source: 'agent'
+    });
+
+    await handleMcpBridgeRequest('record_activity', {
+      projectId: projB.id,
+      action: 'agent-refactor',
+      summary: 'Agent herschreef data hooks',
+      source: 'agent'
+    });
+
+    await handleMcpBridgeRequest('record_activity', {
+      projectId: projA.id,
+      action: 'user-review',
+      summary: 'Ontwikkelaar heeft PR geaccepteerd',
+      source: 'user'
+    });
+
+    // 2. Query all activities
+    const allActivities = await handleMcpBridgeRequest('list_activities', { limit: 50 }) as Array<{ action: string; source: string; summary: string }>;
+    expect(allActivities.length).toBeGreaterThanOrEqual(3);
+
+    // 3. Filter by projectId
+    const projAActivities = await handleMcpBridgeRequest('list_activities', {
+      projectId: projA.id
+    }) as Array<{ projectId: string; summary: string }>;
+    expect(projAActivities.every(a => a.projectId === projA.id)).toBe(true);
+    expect(projAActivities.some(a => a.summary.includes('benchmark'))).toBe(true);
+    expect(projAActivities.some(a => a.summary.includes('herschreef'))).toBe(false);
+
+    // 4. Filter by source (agent only)
+    const agentActivities = await handleMcpBridgeRequest('list_activities', {
+      projectId: projA.id,
+      source: 'agent'
+    }) as Array<{ source: string; summary: string }>;
+    expect(agentActivities.every(a => a.source === 'agent')).toBe(true);
+    expect(agentActivities.some(a => a.summary.includes('benchmark'))).toBe(true);
+    expect(agentActivities.some(a => a.summary.includes('Ontwikkelaar'))).toBe(false);
+
+    // 5. Filter by since timestamp
+    const recent = await handleMcpBridgeRequest('list_activities', {
+      since: timestampBefore
+    }) as Array<{ createdAt: number }>;
+    expect(recent.every(a => a.createdAt >= timestampBefore)).toBe(true);
+  });
+});
+

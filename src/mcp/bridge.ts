@@ -2,7 +2,7 @@ import { db } from '../db/db';
 import { recordActivity } from '../db/activity';
 import { recordBlockRevision, getBlockRevisions, getBlockRevision, restoreBlockRevision } from '../db/revisions';
 import { sanitizeDependsOn, detectCircularDependency, getBlockDependencyStatus, formatDependencyMarkdown } from '../utils/dependencyUtils';
-import type { Attachment, Block, Project } from '../types';
+import type { Attachment, Block, Project, ActivityEntry, ActivitySource } from '../types';
 import { sanitizeTags } from '../utils/tagUtils';
 import { rankBlocksLocally } from '../utils/semanticSearch';
 
@@ -925,6 +925,40 @@ export async function handleMcpBridgeRequest(method: string, rawParams: unknown)
     case 'restore_block_revision': {
       const revisionId = requiredString(params, 'revisionId');
       return await restoreBlockRevision(revisionId);
+    }
+    case 'list_activities': {
+      const projectId = optionalString(params, 'projectId');
+      const blockId = optionalString(params, 'blockId');
+      const source = optionalString(params, 'source');
+      const since = typeof params.since === 'number' && Number.isFinite(params.since) ? params.since : undefined;
+      const limit = clampLimit(params.limit, 100);
+
+      let items = await db.activities.orderBy('createdAt').reverse().toArray();
+      if (projectId) items = items.filter(a => a.projectId === projectId);
+      if (blockId) items = items.filter(a => a.blockId === blockId);
+      if (source) items = items.filter(a => a.source === source);
+      if (since !== undefined) items = items.filter(a => a.createdAt >= since);
+
+      return items.slice(0, limit);
+    }
+    case 'record_activity': {
+      const action = requiredString(params, 'action');
+      const summary = requiredString(params, 'summary');
+      const projectId = optionalString(params, 'projectId');
+      const blockId = optionalString(params, 'blockId');
+      const source: ActivitySource = (params.source === 'user' || params.source === 'system') ? params.source : 'agent';
+
+      const entry: ActivityEntry = {
+        id: `activity-${crypto.randomUUID()}`,
+        projectId: projectId || undefined,
+        blockId: blockId || undefined,
+        source,
+        action,
+        summary,
+        createdAt: Date.now()
+      };
+      await db.activities.add(entry);
+      return entry;
     }
     default:
       throw new Error(`Onbekende DeepScribe-methode: ${method}`);

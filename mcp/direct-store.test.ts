@@ -350,5 +350,39 @@ describe('DirectWorkspaceStore offline MCP engine', () => {
       store.close();
     }
   });
+
+  it('records and queries activity stream with filters in direct SQLite mode (Feature E)', async () => {
+    const wsPath = temporaryWorkspace();
+    const store = new DirectWorkspaceStore({ workspacePath: wsPath });
+    try {
+      const proj = await store.handleRequest('create_project', { title: 'Direct Activity Project' });
+
+      await store.handleRequest('record_activity', {
+        projectId: proj.id,
+        action: 'agent-build',
+        summary: 'Agent startte automatische build',
+        source: 'agent'
+      });
+
+      await store.handleRequest('record_activity', {
+        projectId: proj.id,
+        action: 'user-note',
+        summary: 'Gebruiker voegde notitie toe',
+        source: 'user'
+      });
+
+      const all = await store.handleRequest('list_activities', {});
+      expect(all.length).toBeGreaterThanOrEqual(3);
+
+      const agentOnly = await store.handleRequest('list_activities', { source: 'agent' });
+      expect(agentOnly.every(a => a.source === 'agent')).toBe(true);
+      expect(agentOnly.some(a => a.summary.includes('automatische build'))).toBe(true);
+
+      const projOnly = await store.handleRequest('list_activities', { projectId: proj.id });
+      expect(projOnly.every(a => a.projectId === proj.id)).toBe(true);
+    } finally {
+      store.close();
+    }
+  });
 });
 
