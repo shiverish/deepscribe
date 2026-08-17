@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import type { Block, Project } from '../../types';
-import { Plus, Copy, Trash2 } from 'lucide-react';
+import { Plus, Copy, CheckCheck, Trash2, ClipboardCopy } from 'lucide-react';
+import { copyAgentReference } from '../../utils/agentReferences';
 
 interface ContextMenuProps {
   x: number;
@@ -10,6 +11,7 @@ interface ContextMenuProps {
   onClose: () => void;
   onAddChild: (parentId: string) => void;
   onDuplicate: (item: Block | Project, type: 'project' | 'block') => void;
+  onMarkAsRead: (item: Block | Project, type: 'project' | 'block') => void;
   onDelete: (item: Block | Project, type: 'project' | 'block') => void;
 }
 
@@ -21,6 +23,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   onClose,
   onAddChild,
   onDuplicate,
+  onMarkAsRead,
   onDelete
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
@@ -36,7 +39,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   }, [onClose]);
 
   const adjustedX = Math.min(x, window.innerWidth - 220);
-  const adjustedY = Math.min(y, window.innerHeight - 200);
+  const adjustedY = Math.max(8, Math.min(y, window.innerHeight - 240));
 
   return (
     <div
@@ -103,6 +106,54 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
       >
         <Copy size={14} color="#38BDF8" />
         <span>Dupliceren</span>
+      </button>
+
+      <button
+        style={{
+          padding: '8px 14px',
+          background: 'none',
+          border: 'none',
+          color: 'var(--text-primary)',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          fontSize: '0.8rem',
+          textAlign: 'left'
+        }}
+        onClick={async () => {
+          try {
+            await copyAgentReference(item, type);
+          } catch (error) {
+            console.error('Agentreferentie kopieren is mislukt.', error);
+          }
+          onClose();
+        }}
+      >
+        <ClipboardCopy size={14} color="#A78BFA" />
+        <span>Kopieer agentreferentie</span>
+      </button>
+
+      <button
+        style={{
+          padding: '8px 14px',
+          background: 'none',
+          border: 'none',
+          color: 'var(--text-primary)',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          fontSize: '0.8rem',
+          textAlign: 'left'
+        }}
+        onClick={() => {
+          onMarkAsRead(item, type);
+          onClose();
+        }}
+      >
+        <CheckCheck size={14} color="#22C55E" />
+        <span>Markeer als gelezen</span>
       </button>
 
       <div style={{ height: 1, background: 'var(--border-subtle)', margin: '4px 0' }} />

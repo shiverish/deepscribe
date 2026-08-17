@@ -11,6 +11,8 @@ node_modules
 dist
 dist-ssr
 dist-electron
+dist-mcpb
+dist-skills
 *.local
 
 # Editor directories and files

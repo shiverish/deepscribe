@@ -14,6 +14,7 @@ interface KeyboardShortcutsHandlers {
   onToggleWritingPanel: () => void;
   onOpenHelp: () => void;
   onOpenSettings?: () => void;
+  onSwitchView?: (view: 'columns' | 'graph' | 'stats') => void;
 }
 
 export function useKeyboardShortcuts({
@@ -29,7 +30,8 @@ export function useKeyboardShortcuts({
   onTrash,
   onToggleWritingPanel,
   onOpenHelp,
-  onOpenSettings
+  onOpenSettings,
+  onSwitchView
 }: KeyboardShortcutsHandlers) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -55,6 +57,24 @@ export function useKeyboardShortcuts({
       if (isCtrlOrCmd && e.shiftKey && e.key.toLowerCase() === 'e') {
         e.preventDefault();
         onToggleWritingPanel();
+        return;
+      }
+
+      if (isCtrlOrCmd && e.key === '1') {
+        e.preventDefault();
+        if (onSwitchView) onSwitchView('columns');
+        return;
+      }
+
+      if (isCtrlOrCmd && e.key === '2') {
+        e.preventDefault();
+        if (onSwitchView) onSwitchView('graph');
+        return;
+      }
+
+      if (isCtrlOrCmd && e.key === '3') {
+        e.preventDefault();
+        if (onSwitchView) onSwitchView('stats');
         return;
       }
 
@@ -117,6 +137,7 @@ export function useKeyboardShortcuts({
     onTrash,
     onToggleWritingPanel,
     onOpenHelp,
-    onOpenSettings
+    onOpenSettings,
+    onSwitchView
   ]);
 }

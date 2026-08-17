@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useReducer } from 'react';
 import type { Project, Block, Attachment, SaveStatus, PathSegment } from '../../types';
 import { TipTapEditor, type TipTapEditorHandle } from './TipTapEditor';
 import { TagBadge } from '../Navigation/TagBadge';
 import { TagManagerModal } from '../Modals/TagManagerModal';
 import { extractHashtags, mergeTags, parseTag, sanitizeTags } from '../../utils/tagUtils';
-import { Check, Loader2, AlertCircle, FileText, Folder, FolderOpen, Paperclip, PanelRightClose, Edit3, Plus, Tag as TagIcon, Settings2, Trash2 } from 'lucide-react';
+import { initialTagComposerState, tagComposerReducer } from '../../utils/tagComposer';
+import { Check, Loader2, AlertCircle, FileText, Folder, FolderOpen, Paperclip, PanelRightClose, Edit3, Plus, Tag as TagIcon, Settings2, Trash2, Link2, ArrowUpRight, X } from 'lucide-react';
 import './Editor.css';
 
 interface WritingPanelProps {
@@ -33,6 +34,8 @@ interface WritingPanelProps {
   onOpenAttachment?: (attachment: Attachment) => Promise<void>;
   onRemoveAttachment?: (attachment: Attachment) => Promise<void>;
   onShowAttachmentsFolder?: (projectId: string) => Promise<void>;
+  references?: { outgoing: Block[]; backlinks: Block[] };
+  onOpenReferencedBlock?: (blockId: string) => void;
   onUploadImage?: (file: File) => Promise<string>;
   onClose: () => void;
 }
@@ -53,6 +56,8 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
   onOpenAttachment,
   onRemoveAttachment,
   onShowAttachmentsFolder,
+  references = { outgoing: [], backlinks: [] },
+  onOpenReferencedBlock,
   onUploadImage,
   onClose
 }) => {
@@ -62,9 +67,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
   const [taskCount, setTaskCount] = useState(0);
   const [completedTaskCount, setCompletedTaskCount] = useState(0);
   const [tags, setTags] = useState<string[]>([]);
-  const [newTagInput, setNewTagInput] = useState('');
-  const [isAddingTag, setIsAddingTag] = useState(false);
-  const [tagError, setTagError] = useState<string | null>(null);
+  const [tagComposer, dispatchTagComposer] = useReducer(tagComposerReducer, initialTagComposerState);
   const [isTagManagerOpen, setIsTagManagerOpen] = useState(false);
   const [isAddingAttachment, setIsAddingAttachment] = useState(false);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
@@ -128,6 +131,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
   const activeItemIdRef = useRef<string | null>(null);
   const loadedUpdatedAtRef = useRef<number | null>(null);
   const isSavingRef = useRef(false);
+  const saveRequestedRef = useRef(false);
   const draftRef = useRef({
     title: '',
     htmlContent: '',
@@ -154,9 +158,24 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
 
   const flushSave = useCallback(async () => {
     const currentId = activeItemIdRef.current;
-    if (!currentId || !draftRef.current.isDirty || isSavingRef.current) return;
+    if (!currentId || !draftRef.current.isDirty) return;
+    if (isSavingRef.current) {
+      saveRequestedRef.current = true;
+      return;
+    }
 
-    const { title, htmlContent, plainTextContent, taskCount, completedTaskCount, tags, itemType } = draftRef.current;
+    // Sync deliberate inline hashtags from html content before saving
+    let finalTags = draftRef.current.tags;
+    if (draftRef.current.itemType === 'block') {
+      const currentContentHashtags = extractHashtags(draftRef.current.htmlContent);
+      const manualTags = draftRef.current.tags.filter(t => !observedHashtagsRef.current.has(t));
+      finalTags = mergeTags(manualTags, currentContentHashtags);
+      draftRef.current.tags = finalTags;
+      observedHashtagsRef.current = new Set(currentContentHashtags);
+      setTags(finalTags);
+    }
+
+    const { title, htmlContent, plainTextContent, taskCount, completedTaskCount, itemType } = draftRef.current;
 
     // Reset dirty flag BEFORE async save so any typing during save marks state dirty again
     setIsDirty(false);
@@ -165,10 +184,14 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
 
     try {
       if (itemType) {
-        await onSaveItem(currentId, itemType, title, htmlContent, plainTextContent, taskCount, completedTaskCount, tags);
+        await onSaveItem(currentId, itemType, title, htmlContent, plainTextContent, taskCount, completedTaskCount, finalTags);
       }
     } finally {
       isSavingRef.current = false;
+      if (saveRequestedRef.current || draftRef.current.isDirty) {
+        saveRequestedRef.current = false;
+        queueMicrotask(() => void flushSave());
+      }
     }
   }, [onSaveItem]);
 
@@ -189,28 +212,51 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
         && !isSavingRef.current;
 
       if (isNewItem || hasExternalUpdate) {
-        setTitle(activeItem.title || '');
+        const nextTitle = activeItem.title || '';
+        let nextHtmlContent: string;
+        let nextPlainTextContent: string;
+        let nextTaskCount: number;
+        let nextCompletedTaskCount: number;
+        let nextTags: string[];
+
         if (itemType === 'block') {
           const b = activeItem as Block;
-          setHtmlContent(b.content || '');
-          setPlainTextContent(b.plainText || '');
-          setTaskCount(b.taskCount || 0);
-          setCompletedTaskCount(b.completedTaskCount || 0);
-          setTags(sanitizeTags(b.tags));
+          nextHtmlContent = b.content || '';
+          nextPlainTextContent = b.plainText || '';
+          nextTaskCount = b.taskCount || 0;
+          nextCompletedTaskCount = b.completedTaskCount || 0;
+          nextTags = sanitizeTags(b.tags);
           observedHashtagsRef.current = new Set(extractHashtags(b.content || ''));
         } else {
           const p = activeItem as Project;
-          setHtmlContent(p.description || '');
-          setPlainTextContent(p.description || '');
-          setTaskCount(0);
-          setCompletedTaskCount(0);
-          setTags(sanitizeTags(p.tags));
+          nextHtmlContent = p.description || '';
+          nextPlainTextContent = p.description || '';
+          nextTaskCount = 0;
+          nextCompletedTaskCount = 0;
+          nextTags = sanitizeTags(p.tags);
           observedHashtagsRef.current = new Set();
         }
+
+        draftRef.current = {
+          title: nextTitle,
+          htmlContent: nextHtmlContent,
+          plainTextContent: nextPlainTextContent,
+          taskCount: nextTaskCount,
+          completedTaskCount: nextCompletedTaskCount,
+          tags: nextTags,
+          isDirty: false,
+          itemType
+        };
+        setTitle(nextTitle);
+        setHtmlContent(nextHtmlContent);
+        setPlainTextContent(nextPlainTextContent);
+        setTaskCount(nextTaskCount);
+        setCompletedTaskCount(nextCompletedTaskCount);
+        setTags(nextTags);
         setIsDirty(false);
-        draftRef.current.isDirty = false;
         loadedUpdatedAtRef.current = activeItem.updatedAt;
         setAttachmentError(null);
+        if (isNewItem) dispatchTagComposer({ type: 'close' });
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -230,25 +276,30 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
   const handleAddTag = (tagText: string) => {
     const parsed = parseTag(tagText);
     if (!parsed.tag) {
-      setTagError(parsed.error);
+      dispatchTagComposer({ type: 'invalid', error: parsed.error ?? 'Ongeldige tag.' });
       return;
     }
     const norm = parsed.tag;
-    if (!tags.includes(norm)) {
-      const updated = [...tags, norm];
-      setTags(updated);
-      setIsDirty(true);
+    if (draftRef.current.tags.includes(norm)) {
+      dispatchTagComposer({ type: 'invalid', error: `Tag "${norm}" is al toegevoegd.` });
+      return;
     }
-    setTagError(null);
-    setNewTagInput('');
-    setIsAddingTag(false);
+    const nextTags = [...draftRef.current.tags, norm];
+    draftRef.current.tags = nextTags;
+    draftRef.current.isDirty = true;
+    setTags(nextTags);
+    setIsDirty(true);
+    dispatchTagComposer({ type: 'close' });
   };
 
   const handleRemoveTag = (tagToRemove: string) => {
-    const updated = tags.filter(t => t !== tagToRemove);
+    const updated = draftRef.current.tags.filter(t => t !== tagToRemove);
+    draftRef.current.tags = updated;
+    draftRef.current.isDirty = true;
+    observedHashtagsRef.current.delete(tagToRemove);
     setTags(updated);
     setIsDirty(true);
-    setTagError(null);
+    dispatchTagComposer({ type: 'clear-error' });
   };
 
   // Save shortly after typing stops; blur and the periodic timer remain fallbacks.
@@ -289,15 +340,22 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
   }, [onSaveItem]);
 
   const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setTitle(e.target.value);
+    const nextTitle = e.target.value;
+    draftRef.current.title = nextTitle;
+    draftRef.current.isDirty = true;
+    setTitle(nextTitle);
     setIsDirty(true);
   };
 
   const handleEditorChange = (html: string, plainText: string, tasks: number, completedTasks: number) => {
-    const currentHashtags = new Set(extractHashtags(html));
-    const additions = Array.from(currentHashtags).filter(tag => !observedHashtagsRef.current.has(tag));
-    observedHashtagsRef.current = currentHashtags;
-    if (additions.length > 0) setTags(current => mergeTags(current, additions));
+    draftRef.current = {
+      ...draftRef.current,
+      htmlContent: html,
+      plainTextContent: plainText,
+      taskCount: tasks,
+      completedTaskCount: completedTasks,
+      isDirty: true
+    };
     setHtmlContent(html);
     setPlainTextContent(plainText);
     setTaskCount(tasks);
@@ -409,49 +467,60 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
               {tags.map(tag => (
                 <TagBadge key={tag} tag={tag} onRemove={handleRemoveTag} size="sm" />
               ))}
-              {isAddingTag ? (
-                <input
-                  type="text"
-                  autoFocus
-                  value={newTagInput}
-                  onChange={e => {
-                    setNewTagInput(e.target.value);
-                    setTagError(null);
-                  }}
-                  list="project-tag-suggestions"
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleAddTag(newTagInput);
-                    } else if (e.key === 'Escape') {
-                      setIsAddingTag(false);
-                      setNewTagInput('');
+              {tagComposer.isOpen ? (
+                <span
+                  className="tag-composer"
+                  onBlur={event => {
+                    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                      dispatchTagComposer({ type: 'close' });
                     }
                   }}
-                  onBlur={() => {
-                    if (newTagInput.trim()) handleAddTag(newTagInput);
-                    else setIsAddingTag(false);
-                  }}
-                  placeholder="nieuwe tag..."
-                  style={{
-                    background: 'rgba(255,255,255,0.06)',
-                    border: '1px solid var(--border-subtle)',
-                    borderRadius: '12px',
-                    color: 'var(--text-primary)',
-                    fontSize: '0.75rem',
-                    padding: '1px 8px',
-                    outline: 'none',
-                    width: '90px',
-                  }}
-                />
+                >
+                  <input
+                    type="text"
+                    autoFocus
+                    value={tagComposer.value}
+                    onChange={event => dispatchTagComposer({ type: 'change', value: event.target.value })}
+                    list="project-tag-suggestions"
+                    aria-label="Nieuwe tag"
+                    aria-invalid={Boolean(tagComposer.error)}
+                    aria-describedby={tagComposer.error ? 'tag-composer-error' : undefined}
+                    onKeyDown={event => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        handleAddTag(tagComposer.value);
+                      } else if (event.key === 'Escape') {
+                        event.preventDefault();
+                        dispatchTagComposer({ type: 'close' });
+                      }
+                    }}
+                    placeholder="nieuwe tag..."
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleAddTag(tagComposer.value)}
+                    aria-label="Tag toevoegen"
+                    title="Tag toevoegen"
+                  >
+                    <Check size={11} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => dispatchTagComposer({ type: 'close' })}
+                    aria-label="Tag invoer sluiten"
+                    title="Annuleren"
+                  >
+                    <X size={11} />
+                  </button>
+                </span>
               ) : (
                 <button
                   type="button"
-                  onClick={() => setIsAddingTag(true)}
+                  onClick={() => dispatchTagComposer({ type: 'open' })}
                   style={{
                     background: 'rgba(255,255,255,0.04)',
                     border: '1px dashed var(--border-subtle)',
-                    borderRadius: '12px',
+                    borderRadius: '6px',
                     color: 'var(--text-muted)',
                     fontSize: '0.75rem',
                     padding: '2px 8px',
@@ -477,9 +546,9 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                   <Settings2 size={12} />
                 </button>
               )}
-              {tagError && (
-                <span role="alert" style={{ width: '100%', color: '#FCA5A5', fontSize: '0.7rem' }}>
-                  {tagError}
+              {tagComposer.error && (
+                <span id="tag-composer-error" role="alert" style={{ width: '100%', color: '#FCA5A5', fontSize: '0.7rem' }}>
+                  {tagComposer.error}
                 </span>
               )}
             </div>
@@ -579,6 +648,36 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                 </div>
               ))}
               {attachmentError && <p role="alert" className="attachment-error">{attachmentError}</p>}
+            </section>
+          )}
+
+          {isBlock && (
+            <section className="references-panel">
+              <div className="references-header"><Link2 size={13} /> Verwijzingen</div>
+              <p className="references-help">Typ <code>[[Bloknaam]]</code> in de tekst om een blok te verbinden.</p>
+              {references.outgoing.length > 0 && (
+                <div className="references-group">
+                  <span>Verwijst naar</span>
+                  <div>{references.outgoing.map(block => (
+                    <button key={block.id} onClick={() => onOpenReferencedBlock?.(block.id)} title={`Open ${block.title}`}>
+                      {block.title}<ArrowUpRight size={11} />
+                    </button>
+                  ))}</div>
+                </div>
+              )}
+              {references.backlinks.length > 0 && (
+                <div className="references-group">
+                  <span>Hiernaar verwezen vanuit</span>
+                  <div>{references.backlinks.map(block => (
+                    <button key={block.id} onClick={() => onOpenReferencedBlock?.(block.id)} title={`Open ${block.title}`}>
+                      {block.title}<ArrowUpRight size={11} />
+                    </button>
+                  ))}</div>
+                </div>
+              )}
+              {references.outgoing.length === 0 && references.backlinks.length === 0 && (
+                <p className="references-empty">Nog geen koppelingen voor dit blok.</p>
+              )}
             </section>
           )}
 

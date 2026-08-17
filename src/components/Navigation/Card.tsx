@@ -1,7 +1,9 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { Block, Project, DragTarget } from '../../types';
 import { TagBadge } from './TagBadge';
-import { Folder, FileText, Layers, CheckSquare, MoreVertical, Paperclip, Plus, ExternalLink, Check } from 'lucide-react';
+import { Bot, Folder, FileText, Layers, CheckSquare, MoreVertical, Paperclip, Plus, ExternalLink, Check, ClipboardCopy } from 'lucide-react';
+import { formatAgentEditBadgeLabel, hasUnseenAgentEdits } from '../../utils/agentEdits';
+import { copyAgentReference } from '../../utils/agentReferences';
 
 interface CardProps {
   item: Block | Project;
@@ -9,6 +11,7 @@ interface CardProps {
   isSelected: boolean;
   isCurrent?: boolean;
   isKeyboardFocused?: boolean;
+  unseenAgentEditCount?: number;
   onSelect: () => void;
   onContextMenu?: (e: React.MouseEvent, item: Block | Project, type: 'project' | 'block') => void;
   onAddChild?: (parentId: string) => void;
@@ -34,6 +37,7 @@ export const Card: React.FC<CardProps> = ({
   isSelected,
   isCurrent = false,
   isKeyboardFocused,
+  unseenAgentEditCount = 0,
   onSelect,
   onContextMenu,
   onAddChild,
@@ -45,10 +49,42 @@ export const Card: React.FC<CardProps> = ({
   onDragEnd,
   onDrop
 }) => {
+  const [referenceCopied, setReferenceCopied] = useState(false);
+  const copiedTimerRef = useRef<number | null>(null);
   const isBlock = type === 'block';
   const block = isBlock ? (item as Block) : null;
   const project = !isBlock ? (item as Project) : null;
   const itemTags = isBlock ? block?.tags : project?.tags;
+  const hasOwnAgentUpdate = Boolean(block && hasUnseenAgentEdits(block));
+  const descendantAgentEditCount = block ? Math.max(0, unseenAgentEditCount - (hasOwnAgentUpdate ? 1 : 0)) : 0;
+  const agentEditCount = unseenAgentEditCount;
+  const hasAgentUpdates = agentEditCount > 0;
+  const agentBadgeLabel = project
+    ? String(agentEditCount)
+    : formatAgentEditBadgeLabel(hasOwnAgentUpdate, agentEditCount);
+  const agentBadgeTitle = project
+    ? `${agentEditCount} blok${agentEditCount === 1 ? '' : 'ken'} met ongelezen agentbewerkingen.`
+    : hasOwnAgentUpdate && descendantAgentEditCount > 0
+      ? `Dit blok en ${descendantAgentEditCount} onderliggend${descendantAgentEditCount === 1 ? ' blok bevatten' : 'e blokken bevatten'} ongelezen agentbewerkingen.`
+      : hasOwnAgentUpdate
+        ? 'Dit blok bevat agentbewerkingen die je nog niet hebt bekeken.'
+        : `${descendantAgentEditCount} onderliggend${descendantAgentEditCount === 1 ? ' blok bevat' : 'e blokken bevatten'} ongelezen agentbewerkingen.`;
+
+  useEffect(() => () => {
+    if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current);
+  }, []);
+
+  const handleCopyReference = async (event: React.MouseEvent) => {
+    event.stopPropagation();
+    try {
+      await copyAgentReference(item, type);
+      setReferenceCopied(true);
+      if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = window.setTimeout(() => setReferenceCopied(false), 1600);
+    } catch (error) {
+      console.error('Agentreferentie kopieren is mislukt.', error);
+    }
+  };
 
   const extractedLinks: ExtractedLink[] = useMemo(() => {
     const rawContent = isBlock ? block?.content : project?.description;
@@ -103,7 +139,8 @@ export const Card: React.FC<CardProps> = ({
 
   return (
     <div
-      className={`miller-card ${isSelected ? 'selected' : ''} ${isCurrent ? 'current' : ''} ${isKeyboardFocused ? 'focused-keyboard' : ''} ${dropClass}`}
+      className={`miller-card ${isSelected ? 'selected' : ''} ${isCurrent ? 'current' : ''} ${isKeyboardFocused ? 'focused-keyboard' : ''} ${hasAgentUpdates ? 'has-agent-updates' : ''} ${dropClass}`}
+      data-item-id={item.id}
       onClick={onSelect}
       onContextMenu={(e) => onContextMenu && onContextMenu(e, item, type)}
       draggable
@@ -129,17 +166,28 @@ export const Card: React.FC<CardProps> = ({
           )}
         </div>
 
-        <button
-          className="icon-btn-subtle"
-          onClick={(e) => {
-            e.stopPropagation();
-            if (onContextMenu) onContextMenu(e, item, type);
-          }}
-          title="Opties"
-          style={{ background: 'none', border: 'none', color: 'var(--atmosphere-muted)', cursor: 'pointer', padding: 2 }}
-        >
-          <MoreVertical size={14} />
-        </button>
+        <div className="card-actions">
+          <button
+            className={`card-reference-button ${referenceCopied ? 'copied' : ''}`}
+            onClick={handleCopyReference}
+            title={referenceCopied ? 'Agentreferentie gekopieerd' : 'Kopieer agentreferentie met ID'}
+            aria-label={referenceCopied ? 'Agentreferentie gekopieerd' : 'Kopieer agentreferentie met ID'}
+          >
+            {referenceCopied ? <Check size={13} /> : <ClipboardCopy size={13} />}
+          </button>
+          <button
+            className="icon-btn-subtle"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (onContextMenu) onContextMenu(e, item, type);
+            }}
+            title="Opties"
+            aria-label="Opties"
+            style={{ background: 'none', border: 'none', color: 'var(--atmosphere-muted)', cursor: 'pointer', padding: 2 }}
+          >
+            <MoreVertical size={14} />
+          </button>
+        </div>
       </div>
 
       {isSelected && (
@@ -175,6 +223,12 @@ export const Card: React.FC<CardProps> = ({
       )}
 
       <div className="card-meta-row">
+        {hasAgentUpdates && (
+          <span className="card-badge agent-update" title={agentBadgeTitle}>
+            <Bot size={11} /> {agentBadgeLabel}
+          </span>
+        )}
+
         {block && block.childCount > 0 && (
           <span className="card-badge cyan">
             <Layers size={11} /> {block.childCount}

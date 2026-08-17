@@ -1,7 +1,7 @@
 {
   "name": "deepscribe",
   "private": true,
-  "version": "0.1.2",
+  "version": "0.1.6",
   "main": "electron/main.cjs",
   "type": "module",
   "scripts": {
@@ -10,8 +10,11 @@
     "app:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
     "app:start": "cross-env NODE_ENV=production electron .",
     "app:build": "npm run build && electron-builder",
+    "app:release": "npm run build && electron-builder --publish always",
     "mcp:start": "node mcp/server.mjs",
     "mcp:test": "node mcp/smoke-test.mjs",
+    "mcpb:build": "node mcp/build-mcpb.mjs",
+    "skill:build": "node integrations/chatgpt/build-skill.mjs",
     "lint": "oxlint",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -39,13 +42,21 @@
         }
       ]
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "shiverish",
+        "repo": "deepscribe"
+      }
+    ],
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "DeepScribe",
-      "artifactName": "${productName} Setup.${ext}"
+      "artifactName": "${productName} Setup.${ext}",
+      "differentialPackage": true
     }
   },
   "dependencies": {
@@ -65,6 +76,7 @@
     "@types/file-saver": "^2.0.7",
     "dexie": "^4.4.4",
     "dexie-react-hooks": "^4.4.0",
+    "electron-updater": "^6.8.9",
     "file-saver": "^2.0.5",
     "jszip": "^3.10.1",
     "lucide-react": "^1.25.0",
@@ -73,6 +85,7 @@
     "zod": "^4.0.0"
   },
   "devDependencies": {
+    "@anthropic-ai/mcpb": "^2.1.2",
     "@types/node": "^24.13.2",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",

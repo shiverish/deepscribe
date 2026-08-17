@@ -1,0 +1,331 @@
+.stats-view-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  height: 100%;
+  overflow-y: auto;
+  padding: 32px 40px;
+  background: var(--bg-dark, #141312);
+  color: var(--text-primary, #faf6ee);
+  user-select: none;
+}
+
+.stats-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 28px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+}
+
+.stats-title-group h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--atmosphere-color, #ebdec3);
+  letter-spacing: -0.02em;
+}
+
+.stats-subtitle {
+  margin-top: 4px;
+  font-size: 0.82rem;
+  color: var(--text-secondary, #888);
+}
+
+.stats-scope-switch {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(var(--selected-card-rgb, 50, 44, 37), 0.7);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
+}
+
+.stats-scope-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary, #999);
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stats-scope-btn:hover {
+  color: var(--text-primary, #fff);
+}
+
+.stats-scope-btn.active {
+  background: rgba(var(--atmosphere-rgb, 235, 222, 195), 0.2);
+  color: var(--atmosphere-color, #ebdec3);
+  font-weight: 600;
+}
+
+/* Stat Cards Grid */
+.stats-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.stat-card {
+  background: rgba(var(--selected-card-rgb, 50, 44, 37), 0.5);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  border-radius: 12px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(var(--atmosphere-rgb, 235, 222, 195), 0.25);
+}
+
+.stat-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  color: var(--text-secondary, #888);
+}
+
+.stat-card-label {
+  font-size: 0.78rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.stat-card-icon {
+  color: var(--atmosphere-color, #ebdec3);
+  opacity: 0.85;
+}
+
+.stat-card-value {
+  font-size: 1.85rem;
+  font-weight: 700;
+  color: var(--text-primary, #faf6ee);
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+.stat-card-unit {
+  font-size: 0.75rem;
+  color: var(--text-secondary, #777);
+  margin-top: 4px;
+}
+
+/* Sections */
+.stats-sections-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-bottom: 32px;
+}
+
+@media (max-width: 1024px) {
+  .stats-sections-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.stats-panel {
+  background: rgba(var(--selected-card-rgb, 50, 44, 37), 0.4);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  border-radius: 12px;
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+}
+
+.stats-panel-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--atmosphere-color, #ebdec3);
+  margin: 0 0 16px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Task progress */
+.task-progress-box {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.task-progress-overall {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.task-progress-percentage {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--atmosphere-color, #ebdec3);
+  min-width: 70px;
+}
+
+.task-progress-bar-container {
+  flex: 1;
+}
+
+.task-progress-bar-bg {
+  height: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.task-progress-bar-fill {
+  height: 100%;
+  background: var(--accent-color, #38bdf8);
+  border-radius: 5px;
+  transition: width 0.3s ease;
+}
+
+.task-progress-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.76rem;
+  color: var(--text-secondary, #888);
+  margin-top: 6px;
+}
+
+.task-project-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.task-project-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.task-project-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.78rem;
+}
+
+.task-project-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+}
+
+.task-project-color-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+/* Tag distribution */
+.tags-distribution-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.tag-dist-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tag-dist-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.8rem;
+}
+
+.tag-dist-badge {
+  background: rgba(234, 179, 8, 0.15);
+  color: #eab308;
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+.tag-dist-count {
+  font-size: 0.76rem;
+  color: var(--text-secondary, #888);
+}
+
+.tag-dist-bar-bg {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.tag-dist-bar-fill {
+  height: 100%;
+  background: #eab308;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.stats-empty-text {
+  font-size: 0.82rem;
+  color: var(--text-secondary, #777);
+  font-style: italic;
+  margin: 12px 0;
+}
+
+/* Projects comparison table */
+.projects-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+  font-size: 0.82rem;
+}
+
+.projects-table th {
+  text-align: left;
+  padding: 8px 12px;
+  color: var(--text-secondary, #888);
+  font-weight: 500;
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+}
+
+.projects-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.projects-table tr:hover td {
+  background: rgba(255, 255, 255, 0.02);
+}

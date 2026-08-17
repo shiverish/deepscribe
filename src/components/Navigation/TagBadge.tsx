@@ -32,13 +32,14 @@ export const TagBadge: React.FC<TagBadgeProps> = ({
   };
 
   const badgeStyle: React.CSSProperties = {
-    backgroundColor: active ? color.text : color.bg,
+    backgroundColor: active ? color.border : color.bg,
     color: active ? '#ffffff' : color.text,
     border: `1px solid ${active ? color.text : color.border}`,
-    borderRadius: '12px',
-    padding: isSmall ? '1px 7px' : '3px 10px',
-    fontSize: isSmall ? '0.72rem' : '0.8rem',
+    borderRadius: '6px',
+    padding: isSmall ? '1px 6px' : '2px 8px',
+    fontSize: isSmall ? '0.70rem' : '0.76rem',
     fontWeight: 500,
+    letterSpacing: '0.01em',
     display: 'inline-flex',
     alignItems: 'center',
     gap: '4px',
@@ -46,14 +47,14 @@ export const TagBadge: React.FC<TagBadgeProps> = ({
     userSelect: 'none',
     transition: 'all 0.15s ease',
     whiteSpace: 'nowrap',
-    lineHeight: '1.2',
+    lineHeight: '1.3',
     fontFamily: 'inherit',
   };
 
   const label = (
     <>
-      {showIcon && <TagIcon size={isSmall ? 10 : 12} style={{ opacity: 0.8 }} aria-hidden="true" />}
-      <span>#{normalized}</span>
+      {showIcon && <TagIcon size={isSmall ? 9 : 11} style={{ opacity: 0.6 }} aria-hidden="true" />}
+      <span>{normalized}</span>
     </>
   );
 
@@ -69,7 +70,7 @@ export const TagBadge: React.FC<TagBadgeProps> = ({
         }}
         aria-pressed={active}
         aria-label={`Filter op tag ${normalized}`}
-        title={`Filter op #${normalized}`}
+        title={`Filter op tag ${normalized}`}
       >
         {label}
       </button>
@@ -80,7 +81,7 @@ export const TagBadge: React.FC<TagBadgeProps> = ({
     <span
       className={`tag-badge ${active ? 'active' : ''}`}
       style={badgeStyle}
-      title={`Tag: #${normalized}`}
+      title={`Tag: ${normalized}`}
     >
       {label}
       {onRemove && (
@@ -96,10 +97,10 @@ export const TagBadge: React.FC<TagBadgeProps> = ({
             cursor: 'pointer',
             display: 'inline-flex',
             alignItems: 'center',
-            opacity: 0.7,
+            opacity: 0.6,
             borderRadius: '50%',
           }}
-          title={`Verwijder #${normalized}`}
+          title={`Verwijder tag ${normalized}`}
           aria-label={`Verwijder tag ${normalized}`}
         >
           <X size={isSmall ? 10 : 12} />

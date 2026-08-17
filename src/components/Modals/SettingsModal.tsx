@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, RotateCcw, Palette, Type, Sliders, Sparkles, Eye, Check } from 'lucide-react';
-import type { UserSettings, ThemePreset, FontFamily, ContentWidth } from '../../types';
+import { X, RotateCcw, Palette, Type, Sliders, Sparkles, Eye, Check, Save, Trash2, FolderOpen, FolderInput, Database, Bot, Copy, CheckCheck, RefreshCw, ArrowUpCircle } from 'lucide-react';
+import type { UserSettings, ThemePreset, FontFamily, ContentWidth, WorkspaceStatus } from '../../types';
 import { PRESET_PALETTES } from '../../hooks/useSettings';
+import { repository } from '../../db/repository';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -11,7 +12,21 @@ interface SettingsModalProps {
   onResetSettings: () => void;
 }
 
-type TabType = 'appearance' | 'editor' | 'general';
+type TabType = 'appearance' | 'editor' | 'general' | 'ai';
+
+interface UpdaterState {
+  status: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error';
+  currentVersion: string;
+  availableVersion?: string | null;
+  releaseNotes?: string | null;
+  progress?: {
+    percent: number;
+    bytesPerSecond: number;
+    transferred: number;
+    total: number;
+  } | null;
+  error?: string | null;
+}
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
@@ -21,7 +36,64 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onResetSettings
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('appearance');
+  const [copiedClient, setCopiedClient] = useState<string | null>(null);
+  const [selectedMcpClient, setSelectedMcpClient] = useState<'claude' | 'antigravity' | 'cursor' | 'cli'>('claude');
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [themeName, setThemeName] = useState('');
+  const [themeSaveError, setThemeSaveError] = useState<string | null>(null);
+  const [workspaceStatus, setWorkspaceStatus] = useState<WorkspaceStatus | null>(null);
+  const [workspaceMessage, setWorkspaceMessage] = useState('');
+  const [isMovingWorkspace, setIsMovingWorkspace] = useState(false);
+  const [updaterState, setUpdaterState] = useState<UpdaterState | null>(null);
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+  const [updateFeedback, setUpdateFeedback] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen || !window.electronAPI?.updater) return;
+    window.electronAPI.updater.getState().then(setUpdaterState).catch(() => {});
+    const unsubscribe = window.electronAPI.updater.onStatusChange(state => {
+      setUpdaterState(state);
+      if (state.status === 'checking') {
+        setIsCheckingUpdate(true);
+      } else {
+        setIsCheckingUpdate(false);
+      }
+      if (state.status === 'not-available') {
+        setUpdateFeedback('Je gebruikt al de nieuwste versie.');
+      } else if (state.status === 'downloaded') {
+        setUpdateFeedback(`Versie ${state.availableVersion || ''} is gereed voor installatie.`);
+      } else if (state.status === 'error' && state.error) {
+        setUpdateFeedback(`Updatecontrole: ${state.error}`);
+      }
+    });
+    return () => unsubscribe();
+  }, [isOpen]);
+
+  const handleCheckForUpdates = async () => {
+    if (!window.electronAPI?.updater) return;
+    setIsCheckingUpdate(true);
+    setUpdateFeedback('Zoeken naar updates...');
+    try {
+      const res = await window.electronAPI.updater.check();
+      if (!res.ok) {
+        setUpdateFeedback(`Updatecontrole: ${res.error || 'Geen updates gevonden'}`);
+      }
+    } catch (err) {
+      setUpdateFeedback(`Fout: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setIsCheckingUpdate(false);
+    }
+  };
+
+  const handleInstallUpdate = async () => {
+    if (!window.electronAPI?.updater) return;
+    setUpdateFeedback('Update installeren en herstarten...');
+    try {
+      await window.electronAPI.updater.install();
+    } catch (err) {
+      setUpdateFeedback(`Fout bij installatie: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
 
   useEffect(() => {
     if (!isOpen) return;
@@ -35,11 +107,85 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
+  useEffect(() => {
+    if (!isOpen || !window.electronAPI?.workspace) return;
+    window.electronAPI.workspace.status().then(setWorkspaceStatus).catch(error => {
+      setWorkspaceMessage(error instanceof Error ? error.message : 'Workspacestatus kon niet worden gelezen.');
+    });
+  }, [isOpen]);
+
+  const handleMoveWorkspace = async () => {
+    if (!window.electronAPI?.workspace) return;
+    setIsMovingWorkspace(true);
+    setWorkspaceMessage('Workspace wordt gecontroleerd en gekopieerd...');
+    try {
+      await repository.flush();
+      const result = await window.electronAPI.workspace.chooseAndMove();
+      if (!result) {
+        setWorkspaceMessage('Verplaatsen geannuleerd.');
+        return;
+      }
+      setWorkspaceStatus(result);
+      setWorkspaceMessage(result.previousPath
+        ? `Workspace verplaatst. De vorige map is als veiligheidskopie behouden: ${result.previousPath}`
+        : 'De workspace staat al op deze locatie.');
+    } catch (error) {
+      setWorkspaceMessage(error instanceof Error ? error.message : 'Workspace verplaatsen is mislukt.');
+    } finally {
+      setIsMovingWorkspace(false);
+    }
+  };
+
   if (!isOpen) return null;
 
   const handleReset = () => {
     onResetSettings();
     setShowResetConfirm(false);
+  };
+
+  const handleSaveTheme = () => {
+    const name = themeName.trim();
+    if (!name) {
+      setThemeSaveError('Geef het thema eerst een naam.');
+      return;
+    }
+    if (name.length > 40) {
+      setThemeSaveError('Een themanaam mag maximaal 40 tekens bevatten.');
+      return;
+    }
+
+    const palette = settings.preset === 'custom' ? undefined : PRESET_PALETTES[settings.preset];
+    const savedTheme = {
+      id: `theme-${crypto.randomUUID()}`,
+      name,
+      theme: palette?.mode ?? settings.theme,
+      accentColor: palette?.accent ?? settings.accentColor,
+      atmosphereColor: palette?.atmosphere ?? settings.atmosphereColor,
+      selectedCardColor: palette?.selected ?? settings.selectedCardColor,
+      backgroundColor: palette?.bg ?? settings.customBgColor ?? '#141312',
+      textColor: palette?.text ?? settings.customTextColor ?? '#faf6ee',
+      createdAt: Date.now()
+    };
+    onUpdateSettings({ savedThemes: [...settings.savedThemes, savedTheme] });
+    setThemeName('');
+    setThemeSaveError(null);
+  };
+
+  const applySavedTheme = (theme: UserSettings['savedThemes'][number]) => {
+    onUpdateSettings({
+      preset: 'custom',
+      theme: theme.theme,
+      accentColor: theme.accentColor,
+      atmosphereColor: theme.atmosphereColor,
+      selectedCardColor: theme.selectedCardColor,
+      customBgColor: theme.backgroundColor,
+      customTextColor: theme.textColor
+    });
+  };
+
+  const deleteSavedTheme = (themeId: string, name: string) => {
+    if (!window.confirm(`Opgeslagen thema “${name}” verwijderen?`)) return;
+    onUpdateSettings({ savedThemes: settings.savedThemes.filter(theme => theme.id !== themeId) });
   };
 
   const themePresets: Array<{ id: ThemePreset; name: string; icon: string; bg: string; text: string; accent: string; atmosphere: string }> = [
@@ -119,6 +265,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <Sliders size={16} />
             <span>Algemeen</span>
           </button>
+          <button
+            className={`settings-tab ${activeTab === 'ai' ? 'active' : ''}`}
+            onClick={() => setActiveTab('ai')}
+          >
+            <Bot size={16} />
+            <span>AI & Integraties</span>
+          </button>
         </div>
 
         {/* Tab Body */}
@@ -142,6 +295,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           preset: preset.id,
                           accentColor: pal ? pal.accent : settings.accentColor,
                           atmosphereColor: pal ? pal.atmosphere : settings.atmosphereColor,
+                          selectedCardColor: pal ? pal.selected : settings.selectedCardColor,
+                          customBgColor: pal ? pal.bg : settings.customBgColor,
+                          customTextColor: pal ? pal.text : settings.customTextColor,
                           theme: pal ? pal.mode : settings.theme
                         });
                       }}
@@ -171,7 +327,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div className="setting-item">
                 <div className="setting-info">
                   <label>Aangepaste Kleuren</label>
-                  <span className="setting-description">Selecteer of verfijn je eigen accent-, sfeer-, achtergrond- en tekstkleur</span>
+                  <span className="setting-description">Selecteer of verfijn je eigen accent-, sfeer-, selectie-, agent-alert-, achtergrond- en tekstkleur</span>
                 </div>
                 <div className="color-picker-row">
                   <div className="color-picker-field">
@@ -199,6 +355,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
 
                   <div className="color-picker-field">
+                    <span>Agent-alertkleur</span>
+                    <div className="color-picker-input-wrapper">
+                      <input
+                        type="color"
+                        value={settings.agentAlertColor}
+                        onChange={e => onUpdateSettings({ agentAlertColor: e.target.value })}
+                      />
+                      <span className="color-hex-label">{settings.agentAlertColor}</span>
+                    </div>
+                  </div>
+
+                  <div className="color-picker-field">
                     <span>Achtergrond</span>
                     <div className="color-picker-input-wrapper">
                       <input
@@ -207,6 +375,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         onChange={e => onUpdateSettings({ customBgColor: e.target.value, preset: 'custom' })}
                       />
                       <span className="color-hex-label">{settings.customBgColor || '#141312'}</span>
+                    </div>
+                  </div>
+
+                  <div className="color-picker-field">
+                    <span>Geselecteerde kaarten (gradient)</span>
+                    <div className="color-picker-input-wrapper">
+                      <input
+                        type="color"
+                        value={settings.selectedCardColor}
+                        onChange={e => onUpdateSettings({ selectedCardColor: e.target.value, preset: 'custom' })}
+                      />
+                      <span className="color-hex-label">{settings.selectedCardColor}</span>
                     </div>
                   </div>
 
@@ -222,6 +402,56 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
                   </div>
                 </div>
+              </div>
+
+              <div className="setting-item">
+                <div className="setting-info">
+                  <label>Opgeslagen thema’s</label>
+                  <span className="setting-description">Bewaar de huidige kleuren als een persoonlijk thema en pas ze later opnieuw toe</span>
+                </div>
+                {settings.savedThemes.length > 0 && (
+                  <div className="saved-theme-grid">
+                    {settings.savedThemes.map(theme => (
+                      <div key={theme.id} className="saved-theme-card" style={{ background: theme.backgroundColor, color: theme.textColor }}>
+                        <button type="button" className="saved-theme-apply" onClick={() => applySavedTheme(theme)} title={`Thema “${theme.name}” toepassen`}>
+                          <span className="saved-theme-name">{theme.name}</span>
+                          <span className="preset-preview-dots">
+                            <span className="dot" style={{ backgroundColor: theme.backgroundColor, border: '1px solid rgba(255,255,255,0.2)' }} />
+                            <span className="dot" style={{ backgroundColor: theme.textColor }} />
+                            <span className="dot" style={{ backgroundColor: theme.accentColor }} />
+                            <span className="dot" style={{ backgroundColor: theme.atmosphereColor }} />
+                            <span className="dot" style={{ backgroundColor: theme.selectedCardColor }} />
+                          </span>
+                        </button>
+                        <button type="button" className="saved-theme-delete" onClick={() => deleteSavedTheme(theme.id, theme.name)} title={`Thema “${theme.name}” verwijderen`} aria-label={`Thema “${theme.name}” verwijderen`}>
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="save-theme-row">
+                  <input
+                    type="text"
+                    value={themeName}
+                    maxLength={40}
+                    placeholder="Naam van dit thema..."
+                    onChange={event => {
+                      setThemeName(event.target.value);
+                      setThemeSaveError(null);
+                    }}
+                    onKeyDown={event => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        handleSaveTheme();
+                      }
+                    }}
+                  />
+                  <button type="button" className="secondary-button save-theme-button" onClick={handleSaveTheme}>
+                    <Save size={14} /> Opslaan
+                  </button>
+                </div>
+                {themeSaveError && <span className="setting-inline-error" role="alert">{themeSaveError}</span>}
               </div>
 
               {/* Visual Effects Toggles */}
@@ -343,6 +573,110 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div className="settings-section">
               <div className="setting-item">
                 <div className="setting-info">
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <RefreshCw size={15} /> Versie & Updates
+                  </label>
+                  <span className="setting-description">
+                    DeepScribe kan automatisch op updates controleren en direct in-app worden bijgewerkt.
+                  </span>
+                </div>
+                {window.electronAPI?.updater ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                          Huidige versie: v{updaterState?.currentVersion || '0.1.6'}
+                        </span>
+                        {updaterState?.status === 'downloaded' && (
+                          <span style={{
+                            fontSize: '0.72rem',
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            background: 'rgba(16, 185, 129, 0.15)',
+                            color: '#10B981',
+                            fontWeight: 600
+                          }}>
+                            Update v{updaterState.availableVersion || ''} gereed!
+                          </span>
+                        )}
+                      </div>
+
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        {updaterState?.status === 'downloaded' ? (
+                          <button
+                            className="primary-button"
+                            type="button"
+                            onClick={handleInstallUpdate}
+                            style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                          >
+                            <ArrowUpCircle size={14} /> Nu herstarten & bijwerken
+                          </button>
+                        ) : (
+                          <button
+                            className="secondary-button"
+                            type="button"
+                            disabled={isCheckingUpdate || updaterState?.status === 'downloading'}
+                            onClick={handleCheckForUpdates}
+                            style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                          >
+                            <RefreshCw size={14} style={{ animation: isCheckingUpdate ? 'spin 1s linear infinite' : 'none' }} />
+                            {isCheckingUpdate ? 'Zoeken...' : 'Zoeken naar updates'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {updaterState?.status === 'downloading' && updaterState.progress && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                          <span>Update v{updaterState.availableVersion || ''} downloaden...</span>
+                          <span>{updaterState.progress.percent}%</span>
+                        </div>
+                        <div style={{ width: '100%', height: '6px', background: 'var(--bg-tertiary)', borderRadius: '3px', overflow: 'hidden' }}>
+                          <div style={{ width: `${updaterState.progress.percent}%`, height: '100%', background: 'var(--accent-color)', transition: 'width 0.2s ease' }} />
+                        </div>
+                      </div>
+                    )}
+
+                    {updateFeedback && (
+                      <span className="setting-description" style={{ fontSize: '0.75rem', color: updaterState?.status === 'error' ? '#EF4444' : 'var(--text-secondary)' }}>
+                        {updateFeedback}
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <span className="setting-description">In-app updates zijn beschikbaar in de geïnstalleerde desktopversie.</span>
+                )}
+              </div>
+
+              <div className="setting-item">
+                <div className="setting-info">
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Database size={15} /> Dataopslag</label>
+                  <span className="setting-description">Projecten, instellingen en bijlagen staan samen in één verplaatsbare workspace.</span>
+                </div>
+                {window.electronAPI?.workspace ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <code style={{ fontSize: '0.72rem', overflowWrap: 'anywhere', color: 'var(--text-secondary)' }}>
+                      {workspaceStatus?.path ?? 'Locatie wordt geladen...'}
+                    </code>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      <button className="secondary-button" type="button" onClick={() => window.electronAPI?.workspace.openFolder()}>
+                        <FolderOpen size={14} /> Open workspacemap
+                      </button>
+                      <button className="secondary-button" type="button" disabled={isMovingWorkspace} onClick={handleMoveWorkspace}>
+                        <FolderInput size={14} /> {isMovingWorkspace ? 'Bezig...' : 'Locatie wijzigen'}
+                      </button>
+                    </div>
+                    <span style={{ color: '#F59E0B', fontSize: '0.72rem' }}>Niet versleuteld — bestanden zijn leesbaar voor processen met toegang tot deze map.</span>
+                    {workspaceMessage && <span className="setting-description" role="status">{workspaceMessage}</span>}
+                  </div>
+                ) : (
+                  <span className="setting-description">De verplaatsbare workspace is beschikbaar in de desktop-app.</span>
+                )}
+              </div>
+
+              <div className="setting-item">
+                <div className="setting-info">
                   <label>Miller-kolombreedte ({settings.columnWidth}px)</label>
                   <span className="setting-description">Breedte van elke navigatiekolom in de hoofdweergave</span>
                 </div>
@@ -372,6 +706,164 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   />
                   <span className="toggle-slider"></span>
                 </label>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'ai' && (
+            <div className="settings-section">
+              {/* Status Banner */}
+              <div className="setting-item">
+                <div style={{
+                  padding: '14px 16px',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'rgba(16, 185, 129, 0.08)',
+                  border: '1px solid rgba(16, 185, 129, 0.25)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10B981', display: 'inline-block', boxShadow: '0 0 8px #10B981' }} />
+                      <strong style={{ color: '#10B981', fontSize: '13px' }}>Smart Dual-Mode MCP Server Actief</strong>
+                    </div>
+                    <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '12px', background: 'rgba(16, 185, 129, 0.15)', color: '#10B981', fontWeight: 600 }}>
+                      24/7 Agent Ready
+                    </span>
+                  </div>
+                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+                    AI-agents (zoals in Antigravity, Claude Desktop en Cursor) kunnen DeepScribe altijd uitlezen en bijwerken — zowel live als het venster open staat als rechtstreeks via SQLite wanneer de app gesloten is.
+                  </span>
+                </div>
+              </div>
+
+              {/* Toggle offline agent access */}
+              <div className="setting-item">
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div className="setting-info">
+                    <label>Directe SQLite Offline Toegang</label>
+                    <span className="setting-description">Laat AI-agents rechtstreeks in workspace.sqlite lezen en schrijven als de app gesloten is</span>
+                  </div>
+                  <label className="toggle-switch">
+                    <input
+                      type="checkbox"
+                      checked={settings.allowOfflineAgentAccess !== false}
+                      onChange={e => onUpdateSettings({ allowOfflineAgentAccess: e.target.checked })}
+                    />
+                    <span className="toggle-slider"></span>
+                  </label>
+                </div>
+              </div>
+
+              {/* MCP Configuration Generator */}
+              <div className="setting-item">
+                <div className="setting-info">
+                  <label>MCP Client Configuratie</label>
+                  <span className="setting-description">Kopieer de kant-en-klare configuratie voor jouw AI assistent of ontwikkelomgeving:</span>
+                </div>
+                <div className="setting-control-group">
+                  {(['claude', 'antigravity', 'cursor', 'cli'] as const).map(client => (
+                    <button
+                      key={client}
+                      type="button"
+                      className={`setting-chip ${selectedMcpClient === client ? 'active' : ''}`}
+                      onClick={() => setSelectedMcpClient(client)}
+                    >
+                      {client === 'claude' ? 'Claude Desktop' : client === 'antigravity' ? 'Antigravity / Gemini' : client === 'cursor' ? 'Cursor / VS Code' : 'Universele CLI'}
+                    </button>
+                  ))}
+                </div>
+
+                <div style={{ position: 'relative', marginTop: '6px' }}>
+                  <pre style={{
+                    padding: '12px 14px',
+                    borderRadius: 'var(--radius-sm)',
+                    background: 'rgba(0, 0, 0, 0.4)',
+                    border: '1px solid var(--border-subtle)',
+                    fontSize: '12px',
+                    fontFamily: 'var(--font-code)',
+                    color: 'var(--text-primary)',
+                    overflowX: 'auto',
+                    margin: 0
+                  }}>
+                    <code>
+                      {(() => {
+                        const serverPath = 'k:/Apps/DeepScribe/mcp/server.mjs';
+                        switch (selectedMcpClient) {
+                          case 'claude':
+                          case 'antigravity':
+                          case 'cursor':
+                            return JSON.stringify({
+                              mcpServers: {
+                                deepscribe: {
+                                  command: 'node',
+                                  args: [serverPath]
+                                }
+                              }
+                            }, null, 2);
+                          case 'cli':
+                            return `node "${serverPath}"`;
+                        }
+                      })()}
+                    </code>
+                  </pre>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    style={{
+                      position: 'absolute',
+                      top: '8px',
+                      right: '8px',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      fontSize: '11px',
+                      padding: '4px 8px'
+                    }}
+                    onClick={() => {
+                      const serverPath = 'k:/Apps/DeepScribe/mcp/server.mjs';
+                      let text = '';
+                      if (selectedMcpClient === 'cli') {
+                        text = `node "${serverPath}"`;
+                      } else {
+                        text = JSON.stringify({
+                          mcpServers: {
+                            deepscribe: {
+                              command: 'node',
+                              args: [serverPath]
+                            }
+                          }
+                        }, null, 2);
+                      }
+                      navigator.clipboard.writeText(text);
+                      setCopiedClient(selectedMcpClient);
+                      setTimeout(() => setCopiedClient(null), 2500);
+                    }}
+                  >
+                    {copiedClient === selectedMcpClient ? (
+                      <>
+                        <CheckCheck size={12} color="#10B981" />
+                        <span style={{ color: '#10B981' }}>Gekopieerd!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy size={12} />
+                        <span>Kopieer</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Best practices note */}
+              <div className="setting-item" style={{ marginTop: '4px' }}>
+                <div className="setting-info">
+                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>💡 Aanbevolen AI Tags &amp; Workflows</label>
+                  <span className="setting-description" style={{ fontSize: '11px', lineHeight: '1.5' }}>
+                    Gebruik tags zoals <code style={{ color: 'var(--accent-color)' }}>#todo</code>, <code style={{ color: 'var(--accent-color)' }}>#agent-ready</code> of <code style={{ color: 'var(--accent-color)' }}>#concept</code> om taken en kennisblokken direct vindbaar te maken voor agents. Vraag een agent om <code style={{ color: 'var(--accent-color)' }}>get_or_create_daily_plan</code> aan te roepen voor een overzichtelijke dagplanning.
+                  </span>
+                </div>
               </div>
             </div>
           )}

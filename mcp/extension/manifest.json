@@ -1,0 +1,39 @@
+{
+  "$schema": "https://raw.githubusercontent.com/modelcontextprotocol/mcpb/main/schemas/mcpb-manifest-v0.4.schema.json",
+  "manifest_version": "0.4",
+  "name": "deepscribe",
+  "display_name": "DeepScribe",
+  "version": "0.1.6",
+  "description": "Connect Claude Desktop to your local DeepScribe knowledge workspace.",
+  "long_description": "Read, search and update DeepScribe projects, blocks, todos, relations and linked files from Claude Desktop. Supports both live updates when DeepScribe is open and direct SQLite workspace access when DeepScribe is closed. All communication stays strictly on the local machine.",
+  "author": {
+    "name": "DeepScribe"
+  },
+  "icon": "icon.png",
+  "server": {
+    "type": "node",
+    "entry_point": "server/server.mjs",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/server/server.mjs"
+      ]
+    }
+  },
+  "tools_generated": true,
+  "keywords": [
+    "knowledge",
+    "writing",
+    "notes",
+    "local-first",
+    "mcp"
+  ],
+  "compatibility": {
+    "platforms": [
+      "win32"
+    ],
+    "runtimes": {
+      "node": ">=18"
+    }
+  }
+}

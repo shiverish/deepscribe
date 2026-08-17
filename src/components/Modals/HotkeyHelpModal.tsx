@@ -32,6 +32,7 @@ export const HotkeyHelpModal: React.FC<HotkeyHelpModalProps> = ({ isOpen, onClos
     { key: '←', desc: 'Terugnavigeren naar de bovenliggende kolom' },
     { key: 'Ctrl + K', desc: 'Globale zoekfunctie openen (titel, inhoud & tags)' },
     { key: 'Ctrl + D', desc: 'Geselecteerd blok + onderliggende tak dupliceren' },
+    { key: 'Ctrl + 1 / 2 / 3', desc: 'Wissel weergave (Columns / Graph / Stats)' },
     { key: 'Ctrl + Shift + E', desc: 'Vast schrijfpaneel in- of inklappen' },
     { key: 'Shift + ?', desc: 'Dit sneltoetsenoverzicht openen' },
   ];

@@ -1,3 +1,5 @@
+import type { WorkspaceSnapshot, WorkspaceStatus } from './types';
+
 export {};
 
 declare global {
@@ -15,6 +17,48 @@ declare global {
       showAttachmentsFolder: (projectId: string) => Promise<void>;
       removeAttachment: (localPath: string) => Promise<void>;
       readAttachment: (localPath: string) => Promise<string>;
+      importAttachment: (payload: { projectId: string; blockId: string; fileName: string; base64: string }) => Promise<{ localPath: string }>;
+      migrateLegacyAttachment: (payload: { projectId: string; blockId: string; localPath: string }) => Promise<{ localPath: string }>;
+      workspace: {
+        status: () => Promise<WorkspaceStatus>;
+        load: () => Promise<WorkspaceSnapshot>;
+        save: (snapshot: WorkspaceSnapshot) => Promise<void>;
+        openFolder: () => Promise<void>;
+        chooseAndMove: () => Promise<WorkspaceStatus | null>;
+      };
+      updater?: {
+        getState: () => Promise<{
+          status: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error';
+          currentVersion: string;
+          availableVersion?: string | null;
+          releaseNotes?: string | null;
+          progress?: {
+            percent: number;
+            bytesPerSecond: number;
+            transferred: number;
+            total: number;
+          } | null;
+          error?: string | null;
+        }>;
+        check: () => Promise<{ ok: boolean; updateInfo?: unknown; error?: string }>;
+        download: () => Promise<{ ok: boolean; error?: string }>;
+        install: () => Promise<{ ok: boolean }>;
+        onStatusChange: (handler: (state: {
+          status: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error';
+          currentVersion: string;
+          availableVersion?: string | null;
+          releaseNotes?: string | null;
+          progress?: {
+            percent: number;
+            bytesPerSecond: number;
+            transferred: number;
+            total: number;
+          } | null;
+          error?: string | null;
+        }) => void) => () => void;
+      };
+      onWorkspaceFlushRequested: (handler: () => void) => () => void;
+      workspaceFlushed: () => void;
     };
     deepScribeMcp?: {
       onRequest: (handler: (request: { id: string; method: string; params?: unknown }) => void) => () => void;

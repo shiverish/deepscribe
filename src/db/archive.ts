@@ -79,6 +79,8 @@ export function parseProjectArchive(raw: unknown): ProjectArchive {
       trashedAt: typeof entry.trashedAt === 'number' ? entry.trashedAt : undefined,
       trashedWithProject: false,
       tags,
+      lastAgentEditAt: typeof entry.lastAgentEditAt === 'number' && Number.isFinite(entry.lastAgentEditAt) ? entry.lastAgentEditAt : undefined,
+      lastSeenAgentEditAt: typeof entry.lastSeenAgentEditAt === 'number' && Number.isFinite(entry.lastSeenAgentEditAt) ? entry.lastSeenAgentEditAt : undefined,
       createdAt: requiredNumber(entry.createdAt, `blocks[${index}].createdAt`),
       updatedAt: requiredNumber(entry.updatedAt, `blocks[${index}].updatedAt`)
     };

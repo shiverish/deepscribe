@@ -159,7 +159,19 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
         const fileInZip = attachmentsFolder?.file(meta.id + '_' + meta.fileName);
         if (!fileInZip) throw new Error(`Bijlage ontbreekt in archief: ${meta.fileName}.`);
         const base64 = await fileInZip.async('base64');
-        attachments.push({ ...meta, id: createId('attachment'), blockId: blockIdMap.get(meta.blockId)!, dataUrl: `data:${meta.fileType};base64,${base64}` });
+        const blockId = blockIdMap.get(meta.blockId)!;
+        const attachmentId = createId('attachment');
+        if (window.electronAPI?.importAttachment) {
+          const stored = await window.electronAPI.importAttachment({
+            projectId,
+            blockId,
+            fileName: meta.fileName,
+            base64
+          });
+          attachments.push({ ...meta, id: attachmentId, blockId, localPath: stored.localPath });
+        } else {
+          attachments.push({ ...meta, id: attachmentId, blockId, dataUrl: `data:${meta.fileType};base64,${base64}` });
+        }
       }
 
       await db.transaction('rw', db.projects, db.blocks, db.attachments, async () => {

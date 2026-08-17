@@ -1,28 +1,36 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, requestPersistentStorage, seedDemoDataIfEmpty } from './db/db';
-import { createId, deleteTagFromProject, renameTagInProject, saveBlockDraft, trashBlock, trashProject } from './db/operations';
-import type { Project, Block, Attachment, PathSegment, SaveStatus, DragTarget } from './types';
+import { createId, deleteTagFromProject, markBlockSubtreeAsRead, markProjectAsRead, renameTagInProject, saveBlockDraft, trashBlock, trashProject } from './db/operations';
+import type { Project, Block, Attachment, BlockTemplate, PathSegment, SaveStatus, DragTarget, ActiveView } from './types';
 import { Breadcrumbs } from './components/Navigation/Breadcrumbs';
 import { HorizontalLayout, type ColumnData } from './components/Navigation/HorizontalLayout';
 import { WritingPanel } from './components/Editor/WritingPanel';
+import { GraphView } from './components/Graph/GraphView';
+import { StatisticsView } from './components/Statistics/StatisticsView';
 import { SearchModal } from './components/Search/SearchModal';
 import { TrashModal } from './components/Modals/TrashModal';
 import { ExportImportModal } from './components/Modals/ExportImportModal';
 import { HotkeyHelpModal } from './components/Modals/HotkeyHelpModal';
 import { SettingsModal } from './components/Modals/SettingsModal';
 import { ContextMenu } from './components/Modals/ContextMenu';
+import { WorkspaceModal } from './components/Modals/WorkspaceModal';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useSettings } from './hooks/useSettings';
-import { getDropPosition, reorderBlockWithinParent, reorderProject } from './utils/dragAndDrop';
+import { getDropPosition, isDescendantOrSelf, moveBlockInTree, reorderProject } from './utils/dragAndDrop';
 import { sanitizeTags } from './utils/tagUtils';
 import { getDeleteFallbackTarget } from './utils/selectionUtils';
 import { handleMcpBridgeRequest } from './mcp/bridge';
+import { recordActivity } from './db/activity';
+import { resolveBlockReferences } from './utils/references';
+import { calculateAgentEditCounts } from './utils/agentEdits';
+import { repository } from './db/repository';
 import './styles/theme.css';
 import './components/Navigation/Navigation.css';
 
 export function App() {
   const { settings, updateSettings, resetSettings } = useSettings();
+  const [activeView, setActiveView] = useState<ActiveView>('columns');
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [selectedBlockPath, setSelectedBlockPath] = useState<string[]>([]);
   const [focusedLevel, setFocusedLevel] = useState<number>(0);
@@ -34,6 +42,7 @@ export function App() {
   const [isExportImportOpen, setIsExportImportOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isWorkspaceOpen, setIsWorkspaceOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: Project | Block; type: 'project' | 'block' } | null>(null);
 
   const [draggedItem, setDraggedItem] = useState<{ item: Project | Block; type: 'project' | 'block' } | null>(null);
@@ -43,7 +52,7 @@ export function App() {
 
   useEffect(() => {
     void requestPersistentStorage();
-    seedDemoDataIfEmpty().then(async () => {
+    repository.initialize().then(() => seedDemoDataIfEmpty()).then(async () => {
       const projs = await db.projects.filter(project => !project.isTrash).toArray();
       if (projs.length > 0) {
         setActiveProjectId(projs[0].id);
@@ -53,7 +62,37 @@ export function App() {
           setSelectedBlockPath([rootBlocks[0].id]);
         }
       }
+    }).catch(error => console.error('Workspace initialiseren is mislukt.', error));
+  }, []);
+
+  useEffect(() => {
+    if (!window.electronAPI?.onWorkspaceFlushRequested) return;
+    return window.electronAPI.onWorkspaceFlushRequested(() => {
+      repository.flush()
+        .catch(error => console.error('Laatste workspace-opslag is mislukt.', error))
+        .finally(() => window.electronAPI?.workspaceFlushed());
     });
+  }, []);
+
+  useEffect(() => {
+    if (!window.electronAPI?.workspace) return;
+    let focusTimeout: number | undefined;
+    const handleFocus = () => {
+      window.clearTimeout(focusTimeout);
+      focusTimeout = window.setTimeout(() => {
+        repository.reload().catch(error => console.error('Workspace herladen bij focus is mislukt.', error));
+      }, 300);
+    };
+    window.addEventListener('focus', handleFocus);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') handleFocus();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.clearTimeout(focusTimeout);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, []);
 
   useEffect(() => {
@@ -68,7 +107,9 @@ export function App() {
           error: error instanceof Error ? error.message : 'Onbekende DeepScribe-fout.'
         }));
     });
-    window.deepScribeMcp.ready();
+    repository.initialize()
+      .then(() => window.deepScribeMcp?.ready())
+      .catch(error => console.error('Agentbridge wacht op een geldige workspace.', error));
     return unsubscribe;
   }, []);
 
@@ -83,6 +124,7 @@ export function App() {
 
   const activeBlockId = selectedBlockPath.length > 0 ? selectedBlockPath[selectedBlockPath.length - 1] : null;
   const activeBlock = useMemo(() => allBlocks.find(b => b.id === activeBlockId) || null, [allBlocks, activeBlockId]);
+  const agentEditCounts = useMemo(() => calculateAgentEditCounts(allBlocks), [allBlocks]);
   const activeAttachments = useLiveQuery(
     () => activeBlockId ? db.attachments.where('blockId').equals(activeBlockId).sortBy('createdAt') : Promise.resolve([] as Attachment[]),
     [activeBlockId],
@@ -91,6 +133,31 @@ export function App() {
 
   const activeInspectorItem = activeBlock || activeProject;
   const activeInspectorType: 'project' | 'block' | null = activeBlock ? 'block' : activeProject ? 'project' : null;
+
+  useEffect(() => {
+    if (!activeBlockId || !isWritingPanelOpen) return;
+    let timeout: number | undefined;
+    const scheduleMarkSeen = () => {
+      if (document.visibilityState !== 'visible' || !document.hasFocus()) return;
+      window.clearTimeout(timeout);
+      timeout = window.setTimeout(async () => {
+        const block = await db.blocks.get(activeBlockId);
+        if (!block?.lastAgentEditAt || block.lastAgentEditAt <= (block.lastSeenAgentEditAt ?? 0)) return;
+        await db.blocks.update(activeBlockId, { lastSeenAgentEditAt: block.lastAgentEditAt });
+      }, 1200);
+    };
+    scheduleMarkSeen();
+    window.addEventListener('focus', scheduleMarkSeen);
+    document.addEventListener('visibilitychange', scheduleMarkSeen);
+    return () => {
+      window.clearTimeout(timeout);
+      window.removeEventListener('focus', scheduleMarkSeen);
+      document.removeEventListener('visibilitychange', scheduleMarkSeen);
+    };
+  }, [activeBlockId, isWritingPanelOpen]);
+  const blockReferences = useMemo(() => activeBlock
+    ? resolveBlockReferences(activeBlock, allBlocks.filter(block => block.projectId === activeBlock.projectId))
+    : { outgoing: [], backlinks: [] }, [activeBlock, allBlocks]);
 
   const blockTagSuggestions = useMemo(() => {
     if (!activeProjectId) return [];
@@ -227,6 +294,7 @@ export function App() {
         updatedAt: now
       };
       await db.projects.add(newProj);
+      await recordActivity({ projectId: newProjId, action: 'project-created', summary: `Project “${newProj.title}” aangemaakt` });
       setActiveProjectId(newProjId);
       setSelectedBlockPath([]);
       setIsWritingPanelOpen(true);
@@ -256,6 +324,7 @@ export function App() {
       };
 
       await db.blocks.add(newBlock);
+      await recordActivity({ projectId: activeProjectId, blockId: newBlockId, action: 'block-created', summary: `Blok “${newBlock.title}” aangemaakt` });
 
       const newPath = selectedBlockPath.slice(0, level - 1);
       newPath.push(newBlockId);
@@ -293,6 +362,7 @@ export function App() {
 
     await db.blocks.add(newBlock);
     await db.blocks.update(parentId, { childCount: children.length + 1 });
+    await recordActivity({ projectId: activeProjectId, blockId: newBlockId, action: 'block-created', summary: `Kindblok “${newBlock.title}” aangemaakt` });
 
     const parentIndex = selectedBlockPath.indexOf(parentId);
     if (parentIndex !== -1) {
@@ -325,6 +395,7 @@ export function App() {
         const attachmentCount = await db.attachments.where('blockId').equals(blockId).count();
         await db.blocks.update(blockId, { attachmentCount, updatedAt: Date.now() });
       });
+      await recordActivity({ projectId: block.projectId, blockId, action: 'attachments-added', summary: `${attachments.length} bijlage${attachments.length === 1 ? '' : 'n'} toegevoegd aan “${block.title}”` });
     } catch (error) {
       await Promise.allSettled(attachments
         .filter(attachment => attachment.localPath)
@@ -357,6 +428,8 @@ export function App() {
       const attachmentCount = await db.attachments.where('blockId').equals(attachment.blockId).count();
       await db.blocks.update(attachment.blockId, { attachmentCount, updatedAt: Date.now() });
     });
+    const block = allBlocks.find(item => item.id === attachment.blockId);
+    await recordActivity({ projectId: block?.projectId, blockId: attachment.blockId, action: 'attachment-removed', summary: `Bijlage “${attachment.fileName}” verwijderd` });
   };
 
   // Explicit Save Handler called by WritingPanel on blur, navigation, 10s timer, beforeunload
@@ -379,6 +452,7 @@ export function App() {
           tags: sanitizeTags(tags),
           updatedAt: Date.now()
         });
+        await recordActivity({ projectId: itemId, action: 'project-updated', summary: `Project “${title}” bijgewerkt` });
       } else {
         await saveBlockDraft(itemId, {
           title,
@@ -388,6 +462,8 @@ export function App() {
           completedTaskCount,
           tags
         });
+        const block = await db.blocks.get(itemId);
+        await recordActivity({ projectId: block?.projectId, blockId: itemId, action: 'block-updated', summary: `Blok “${title}” bijgewerkt` });
       }
       setSaveStatus({ state: 'saved', lastSavedAt: Date.now() });
     } catch (err) {
@@ -445,6 +521,7 @@ export function App() {
     if (type === 'project') {
       if (window.confirm(`Project "${item.title}" naar de prullenbak verplaatsen?`)) {
         await trashProject(item.id);
+        await recordActivity({ projectId: item.id, action: 'project-trashed', summary: `Project “${item.title}” naar de prullenbak verplaatst` });
         setActiveProjectId(null);
         setSelectedBlockPath([]);
       }
@@ -452,9 +529,18 @@ export function App() {
       const block = item as Block;
       const fallback = getDeleteFallbackTarget(block, allBlocks, selectedBlockPath);
       await trashBlock(block.id);
+      await recordActivity({ projectId: block.projectId, blockId: block.id, action: 'block-trashed', summary: `Blok “${block.title}” naar de prullenbak verplaatst` });
       setSelectedBlockPath(fallback.newPath);
       if (fallback.focusedId) setFocusedCardId(fallback.focusedId);
       setFocusedLevel(fallback.focusedLevel);
+    }
+  };
+
+  const handleMarkAsRead = async (item: Block | Project, type: 'project' | 'block') => {
+    if (type === 'project') {
+      await markProjectAsRead(item.id);
+    } else {
+      await markBlockSubtreeAsRead(item.id);
     }
   };
 
@@ -473,16 +559,13 @@ export function App() {
     if (type === 'block') {
       const source = draggedItem.item as Block;
       const target = targetItem as Block;
-      if (source.projectId !== target.projectId || source.parentId !== target.parentId) {
+      if (source.projectId !== target.projectId) {
         setDragTarget(null);
         return;
       }
     }
     e.dataTransfer.dropEffect = 'move';
-    const measuredPosition = getDropPosition(e as unknown as React.DragEvent<HTMLElement>);
-    const position = measuredPosition === 'inside'
-      ? (e.clientY < e.currentTarget.getBoundingClientRect().top + e.currentTarget.getBoundingClientRect().height / 2 ? 'above' : 'below')
-      : measuredPosition;
+    const position = getDropPosition(e as unknown as React.DragEvent<HTMLElement>);
     setDragTarget({ itemId: targetItem.id, position });
   };
 
@@ -498,11 +581,33 @@ export function App() {
       return;
     }
 
-    if (dragTarget.position !== 'inside') {
-      if (type === 'project') {
+    if (type === 'project') {
+      if (dragTarget.position !== 'inside') {
         await reorderProject(draggedItem.item.id, targetItem.id, dragTarget.position);
-      } else {
-        await reorderBlockWithinParent(draggedItem.item.id, targetItem.id, dragTarget.position);
+        await recordActivity({ projectId: draggedItem.item.id, action: 'project-reordered', summary: `Project “${draggedItem.item.title}” verplaatst` });
+      }
+    } else {
+      const block = draggedItem.item as Block;
+      if (!(await isDescendantOrSelf(block.id, targetItem.id))) {
+        const moved = await moveBlockInTree(block.id, targetItem.id, dragTarget.position);
+        if (moved) {
+          const byId = new Map(allBlocks.map(item => [item.id, item]));
+          const movedBlock = await db.blocks.get(block.id);
+          if (movedBlock) byId.set(movedBlock.id, movedBlock);
+          const path: string[] = [];
+          let current: Block | undefined = movedBlock;
+          const visited = new Set<string>();
+          while (current && !visited.has(current.id)) {
+            visited.add(current.id);
+            path.unshift(current.id);
+            current = current.parentId ? byId.get(current.parentId) : undefined;
+          }
+          setActiveProjectId(block.projectId);
+          setSelectedBlockPath(path);
+          setFocusedLevel(path.length);
+          setFocusedCardId(block.id);
+          await recordActivity({ projectId: block.projectId, blockId: block.id, action: 'block-reordered', summary: `Blok “${block.title}” verplaatst` });
+        }
       }
     }
     setDragTarget(null);
@@ -584,7 +689,8 @@ export function App() {
     },
     onToggleWritingPanel: () => setIsWritingPanelOpen(prev => !prev),
     onOpenHelp: () => setIsHelpOpen(true),
-    onOpenSettings: () => setIsSettingsOpen(true)
+    onOpenSettings: () => setIsSettingsOpen(true),
+    onSwitchView: setActiveView
   });
 
   const handleSelectSearchResult = (blockId: string, projectId: string, pathSegmentIds: string[]) => {
@@ -595,39 +701,118 @@ export function App() {
     setFocusedCardId(blockId);
   };
 
+  const openBlockById = useCallback((blockId: string) => {
+    const block = allBlocks.find(item => item.id === blockId);
+    if (!block) return;
+    const byId = new Map(allBlocks.map(item => [item.id, item]));
+    const path: string[] = [];
+    let current: Block | undefined = block;
+    while (current) {
+      path.unshift(current.id);
+      current = current.parentId ? byId.get(current.parentId) : undefined;
+    }
+    setActiveProjectId(block.projectId);
+    setSelectedBlockPath(path);
+    setFocusedLevel(path.length);
+    setFocusedCardId(block.id);
+    setIsWritingPanelOpen(true);
+  }, [allBlocks]);
+
+  const handleApplyTemplate = async (template: BlockTemplate) => {
+    if (!activeProjectId) throw new Error('Open eerst een project.');
+    const parentId = activeBlock?.parentId ?? null;
+    const siblings = allBlocks.filter(block => block.projectId === activeProjectId && block.parentId === parentId);
+    const id = createId('block');
+    const taskCount = (template.content.match(/data-type="taskItem"/g) ?? []).length;
+    const completedTaskCount = (template.content.match(/data-checked="true"/g) ?? []).length;
+    const now = Date.now();
+    await db.blocks.add({
+      id, projectId: activeProjectId, parentId, title: template.title, content: template.content,
+      plainText: template.plainText, order: siblings.length, childCount: 0, taskCount, completedTaskCount,
+      attachmentCount: 0, tags: template.tags, isTrash: false, createdAt: now, updatedAt: now
+    });
+    await recordActivity({ projectId: activeProjectId, blockId: id, action: 'template-applied', summary: `Template “${template.name}” toegepast` });
+    const byId = new Map(allBlocks.map(block => [block.id, block]));
+    const path: string[] = [];
+    let current = parentId ? byId.get(parentId) : undefined;
+    while (current) {
+      path.unshift(current.id);
+      current = current.parentId ? byId.get(current.parentId) : undefined;
+    }
+    path.push(id);
+    setSelectedBlockPath(path);
+    setFocusedLevel(path.length);
+    setFocusedCardId(id);
+    setIsWritingPanelOpen(true);
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100vw', height: '100vh', background: 'var(--bg-dark)' }}>
       <Breadcrumbs
         pathSegments={pathSegments}
         onSelectSegment={handleSelectBreadcrumbSegment}
+        activeView={activeView}
+        onViewChange={setActiveView}
         onOpenSearch={() => setIsSearchOpen(true)}
         onOpenTrash={() => setIsTrashOpen(true)}
         onOpenExportImport={() => setIsExportImportOpen(true)}
         onOpenHelp={() => setIsHelpOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenWorkspace={() => setIsWorkspaceOpen(true)}
         isWritingPanelOpen={isWritingPanelOpen}
         onToggleWritingPanel={() => setIsWritingPanelOpen(prev => !prev)}
       />
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }}>
-        <HorizontalLayout
-          columns={columns}
-          activeLevel={focusedLevel}
-          focusedCardId={focusedCardId}
-          onSelectItem={handleSelectItem}
-          onAddNewItem={handleAddNewItem}
-          onAddChildItem={handleAddChildItem}
-          onContextMenuItem={(e, item, type) => {
-            e.preventDefault();
-            setContextMenu({ x: e.clientX, y: e.clientY, item, type });
-          }}
-          dragTarget={dragTarget}
-          onDragStart={handleDragStart}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDragEnd={handleDragEnd}
-          onDrop={handleDrop}
-        />
+        {activeView === 'columns' && (
+          <HorizontalLayout
+            columns={columns}
+            activeLevel={focusedLevel}
+            focusedCardId={focusedCardId}
+            unseenAgentEditsByProject={agentEditCounts.byProject}
+            unseenAgentEditsByBlock={agentEditCounts.byBlock}
+            onSelectItem={handleSelectItem}
+            onAddNewItem={handleAddNewItem}
+            onAddChildItem={handleAddChildItem}
+            onContextMenuItem={(e, item, type) => {
+              e.preventDefault();
+              setContextMenu({ x: e.clientX, y: e.clientY, item, type });
+            }}
+            dragTarget={dragTarget}
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDragEnd={handleDragEnd}
+            onDrop={handleDrop}
+          />
+        )}
+
+        {activeView === 'graph' && (
+          <GraphView
+            projects={projects}
+            blocks={allBlocks}
+            activeProjectId={activeProjectId}
+            selectedBlockId={activeBlock?.id ?? null}
+            onSelectBlock={(blockId) => openBlockById(blockId)}
+            onSelectProject={(projId) => {
+              setActiveProjectId(projId);
+              setSelectedBlockPath([]);
+            }}
+          />
+        )}
+
+        {activeView === 'stats' && (
+          <StatisticsView
+            projects={projects}
+            blocks={allBlocks}
+            activeProjectId={activeProjectId}
+            onSelectProject={(projId) => {
+              setActiveProjectId(projId);
+              setSelectedBlockPath([]);
+              setActiveView('columns');
+            }}
+          />
+        )}
 
         <WritingPanel
           isOpen={isWritingPanelOpen}
@@ -650,6 +835,8 @@ export function App() {
           onOpenAttachment={handleOpenAttachment}
           onRemoveAttachment={handleRemoveAttachment}
           onShowAttachmentsFolder={projectId => window.electronAPI?.showAttachmentsFolder(projectId) ?? Promise.reject(new Error('De projectmap is alleen beschikbaar in de desktop-app.'))}
+          references={blockReferences}
+          onOpenReferencedBlock={openBlockById}
           onClose={() => setIsWritingPanelOpen(false)}
         />
       </div>
@@ -663,6 +850,7 @@ export function App() {
           onClose={() => setContextMenu(null)}
           onAddChild={handleAddChildItem}
           onDuplicate={handleDuplicate}
+          onMarkAsRead={handleMarkAsRead}
           onDelete={handleDeleteToTrash}
         />
       )}
@@ -696,6 +884,16 @@ export function App() {
         settings={settings}
         onUpdateSettings={updateSettings}
         onResetSettings={resetSettings}
+      />
+
+      <WorkspaceModal
+        isOpen={isWorkspaceOpen}
+        onClose={() => setIsWorkspaceOpen(false)}
+        activeProject={activeProject}
+        activeBlock={activeBlock}
+        blocks={allBlocks}
+        onOpenBlock={openBlockById}
+        onApplyTemplate={handleApplyTemplate}
       />
     </div>
   );

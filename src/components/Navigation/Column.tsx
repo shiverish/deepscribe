@@ -13,6 +13,8 @@ interface ColumnProps {
   focusedCardId?: string | null;
   isActiveLevel: boolean;
   isCurrentLevel: boolean;
+  unseenAgentEditsByProject?: Record<string, number>;
+  unseenAgentEditsByBlock?: Record<string, number>;
   onSelectItem: (item: Project | Block) => void;
   onAddNewItem: () => void;
   onAddChildItem?: (parentId: string) => void;
@@ -34,6 +36,8 @@ export const Column: React.FC<ColumnProps> = ({
   focusedCardId,
   isActiveLevel,
   isCurrentLevel,
+  unseenAgentEditsByProject = {},
+  unseenAgentEditsByBlock = {},
   onSelectItem,
   onAddNewItem,
   onAddChildItem,
@@ -73,7 +77,7 @@ export const Column: React.FC<ColumnProps> = ({
   };
 
   return (
-    <div className={`miller-column ${isActiveLevel ? 'active-level' : ''}`}>
+    <div className={`miller-column ${isActiveLevel ? 'active-level' : ''}`} data-level={level}>
       <div className="column-header">
         <div className="column-title">
           <span className="column-badge">L{level}</span>
@@ -192,6 +196,9 @@ export const Column: React.FC<ColumnProps> = ({
               isSelected={selectedId === item.id}
               isCurrent={isCurrentLevel && selectedId === item.id}
               isKeyboardFocused={focusedCardId === item.id}
+              unseenAgentEditCount={type === 'project'
+                ? unseenAgentEditsByProject[item.id] ?? 0
+                : unseenAgentEditsByBlock[item.id] ?? 0}
               onSelect={() => onSelectItem(item)}
               onContextMenu={onContextMenuItem}
               onAddChild={onAddChildItem}

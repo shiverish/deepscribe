@@ -6,6 +6,8 @@ import {
   collectDescendantIds,
   deleteTagFromProject,
   getAllProjectTags,
+  markBlockSubtreeAsRead,
+  markProjectAsRead,
   permanentlyDeleteProject,
   removeTagFromBlock,
   renameTagInProject,
@@ -70,6 +72,26 @@ describe('local data safety operations', () => {
     expect(moved?.parentId).toBeNull();
     const roots = await db.blocks.filter(item => item.parentId === null).sortBy('order');
     expect(roots.map(item => item.id)).toEqual(['root', 'sibling', 'child']);
+    expect((await db.blocks.get('root'))?.childCount).toBe(0);
+  });
+
+  it('makes a card the last child and refreshes both parent counts', async () => {
+    await db.blocks.add(block('destination-child', 'sibling', 0));
+    await db.blocks.update('sibling', { childCount: 1 });
+
+    expect(await moveBlockInTree('child', 'sibling', 'inside')).toBe(true);
+    const children = await db.blocks.where('parentId').equals('sibling').sortBy('order');
+    expect(children.map(item => item.id)).toEqual(['destination-child', 'child']);
+    expect((await db.blocks.get('root'))?.childCount).toBe(0);
+    expect((await db.blocks.get('sibling'))?.childCount).toBe(2);
+  });
+
+  it('refuses to move blocks across projects', async () => {
+    const otherProject = { ...project, id: 'project-2' };
+    await db.projects.add(otherProject);
+    await db.blocks.add({ ...block('foreign', null, 0), projectId: otherProject.id });
+    expect(await moveBlockInTree('child', 'foreign', 'inside')).toBe(false);
+    expect((await db.blocks.get('child'))?.parentId).toBe('root');
   });
 
   it('reorders blocks within one column but never changes their parent', async () => {
@@ -147,5 +169,44 @@ describe('local data safety operations', () => {
       taskCount: 0, completedTaskCount: 0, tags: ['belangrijk']
     });
     expect((await db.blocks.get('root'))?.tags).toEqual(['belangrijk']);
+  });
+
+  it('marks a block and its active descendants as read without touching siblings', async () => {
+    await db.blocks.add({
+      ...block('grandchild', 'child', 0),
+      lastAgentEditAt: 30
+    });
+    await db.blocks.update('root', { lastAgentEditAt: 10, updatedAt: 100 });
+    await db.blocks.update('child', { lastAgentEditAt: 20, lastSeenAgentEditAt: 20 });
+    await db.blocks.update('sibling', { lastAgentEditAt: 40 });
+
+    expect(await markBlockSubtreeAsRead('root')).toBe(2);
+    expect((await db.blocks.get('root'))?.lastSeenAgentEditAt).toBe(10);
+    expect((await db.blocks.get('root'))?.updatedAt).toBe(100);
+    expect((await db.blocks.get('child'))?.lastSeenAgentEditAt).toBe(20);
+    expect((await db.blocks.get('grandchild'))?.lastSeenAgentEditAt).toBe(30);
+    expect((await db.blocks.get('sibling'))?.lastSeenAgentEditAt).toBeUndefined();
+  });
+
+  it('marks only active blocks in the requested project as read', async () => {
+    const otherProject: Project = { ...project, id: 'project-2', title: 'Ander project' };
+    await db.projects.add(otherProject);
+    await db.blocks.update('root', { lastAgentEditAt: 10 });
+    await db.blocks.update('child', { lastAgentEditAt: 20, isTrash: true });
+    await db.blocks.add({ ...block('other', null, 0), projectId: otherProject.id, lastAgentEditAt: 30 });
+
+    expect(await markProjectAsRead(project.id)).toBe(1);
+    expect((await db.blocks.get('root'))?.lastSeenAgentEditAt).toBe(10);
+    expect((await db.blocks.get('child'))?.lastSeenAgentEditAt).toBeUndefined();
+    expect((await db.blocks.get('other'))?.lastSeenAgentEditAt).toBeUndefined();
+  });
+
+  it('handles cyclic block relationships while marking a subtree as read', async () => {
+    await db.blocks.update('root', { parentId: 'child', lastAgentEditAt: 10 });
+    await db.blocks.update('child', { lastAgentEditAt: 20 });
+
+    expect(await markBlockSubtreeAsRead('root')).toBe(2);
+    expect((await db.blocks.get('root'))?.lastSeenAgentEditAt).toBe(10);
+    expect((await db.blocks.get('child'))?.lastSeenAgentEditAt).toBe(20);
   });
 });

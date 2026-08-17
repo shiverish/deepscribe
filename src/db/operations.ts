@@ -51,6 +51,35 @@ export function collectDescendantIds(blocks: Block[], rootId: string): Set<strin
   return result;
 }
 
+function markUnseenAgentEditsRead(block: Block): boolean {
+  if (block.isTrash || typeof block.lastAgentEditAt !== 'number') return false;
+  if (block.lastAgentEditAt <= (block.lastSeenAgentEditAt ?? 0)) return false;
+  block.lastSeenAgentEditAt = block.lastAgentEditAt;
+  return true;
+}
+
+export async function markBlockSubtreeAsRead(blockId: string): Promise<number> {
+  return db.transaction('rw', db.blocks, async () => {
+    const allBlocks = await db.blocks.toArray();
+    const ids = [...collectDescendantIds(allBlocks, blockId)];
+    let changed = 0;
+    await db.blocks.where('id').anyOf(ids).modify(block => {
+      if (markUnseenAgentEditsRead(block)) changed += 1;
+    });
+    return changed;
+  });
+}
+
+export async function markProjectAsRead(projectId: string): Promise<number> {
+  return db.transaction('rw', db.blocks, async () => {
+    let changed = 0;
+    await db.blocks.where('projectId').equals(projectId).modify(block => {
+      if (markUnseenAgentEditsRead(block)) changed += 1;
+    });
+    return changed;
+  });
+}
+
 function collectAncestorIds(blocks: Block[], blockId: string): Set<string> {
   const byId = new Map(blocks.map(block => [block.id, block]));
   const result = new Set<string>();
@@ -141,8 +170,9 @@ export async function permanentlyDeleteBlock(blockId: string): Promise<void> {
   if (!root) return;
   const ids = [...collectDescendantIds(allBlocks, blockId)];
   await removeLocalAttachmentFiles(ids);
-  await db.transaction('rw', db.blocks, db.attachments, async () => {
+  await db.transaction('rw', db.blocks, db.attachments, db.activities, async () => {
     await db.attachments.where('blockId').anyOf(ids).delete();
+    await db.activities.where('blockId').anyOf(ids).delete();
     await db.blocks.where('id').anyOf(ids).delete();
     await refreshChildCount(root.parentId);
   });
@@ -151,8 +181,9 @@ export async function permanentlyDeleteBlock(blockId: string): Promise<void> {
 export async function permanentlyDeleteProject(projectId: string): Promise<void> {
   const blockIds = await db.blocks.where('projectId').equals(projectId).primaryKeys();
   await removeLocalAttachmentFiles(blockIds);
-  await db.transaction('rw', db.projects, db.blocks, db.attachments, async () => {
+  await db.transaction('rw', db.projects, db.blocks, db.attachments, db.activities, async () => {
     if (blockIds.length) await db.attachments.where('blockId').anyOf(blockIds).delete();
+    await db.activities.where('projectId').equals(projectId).delete();
     await db.blocks.where('projectId').equals(projectId).delete();
     await db.projects.delete(projectId);
   });

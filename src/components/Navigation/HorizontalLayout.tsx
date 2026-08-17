@@ -15,6 +15,8 @@ interface HorizontalLayoutProps {
   columns: ColumnData[];
   activeLevel: number;
   focusedCardId?: string | null;
+  unseenAgentEditsByProject?: Record<string, number>;
+  unseenAgentEditsByBlock?: Record<string, number>;
   onSelectItem: (level: number, item: Project | Block) => void;
   onAddNewItem: (level: number, parentId: string | null) => void;
   onAddChildItem?: (parentId: string) => void;
@@ -31,6 +33,8 @@ export const HorizontalLayout: React.FC<HorizontalLayoutProps> = ({
   columns,
   activeLevel,
   focusedCardId,
+  unseenAgentEditsByProject = {},
+  unseenAgentEditsByBlock = {},
   onSelectItem,
   onAddNewItem,
   onAddChildItem,
@@ -49,13 +53,35 @@ export const HorizontalLayout: React.FC<HorizontalLayoutProps> = ({
   );
 
   useEffect(() => {
-    if (containerRef.current) {
-      containerRef.current.scrollTo({
-        left: containerRef.current.scrollWidth,
-        behavior: 'smooth'
-      });
+    const container = containerRef.current;
+    if (!container) return;
+    const activeColumn = Array.from(container.querySelectorAll<HTMLElement>('.miller-column'))
+      .find(column => column.dataset.level === String(activeLevel));
+    if (!activeColumn) return;
+
+    const containerRect = container.getBoundingClientRect();
+    const columnRect = activeColumn.getBoundingClientRect();
+    const horizontalMargin = 16;
+    if (columnRect.left < containerRect.left + horizontalMargin) {
+      container.scrollBy({ left: columnRect.left - containerRect.left - horizontalMargin, behavior: 'smooth' });
+    } else if (columnRect.right > containerRect.right - horizontalMargin) {
+      container.scrollBy({ left: columnRect.right - containerRect.right + horizontalMargin, behavior: 'smooth' });
     }
-  }, [columns.length]);
+
+    if (!focusedCardId) return;
+    const focusedCard = Array.from(activeColumn.querySelectorAll<HTMLElement>('.miller-card'))
+      .find(card => card.dataset.itemId === focusedCardId);
+    const columnBody = focusedCard?.closest<HTMLElement>('.column-body');
+    if (!focusedCard || !columnBody) return;
+    const bodyRect = columnBody.getBoundingClientRect();
+    const cardRect = focusedCard.getBoundingClientRect();
+    const verticalMargin = 8;
+    if (cardRect.top < bodyRect.top + verticalMargin) {
+      columnBody.scrollBy({ top: cardRect.top - bodyRect.top - verticalMargin, behavior: 'smooth' });
+    } else if (cardRect.bottom > bodyRect.bottom - verticalMargin) {
+      columnBody.scrollBy({ top: cardRect.bottom - bodyRect.bottom + verticalMargin, behavior: 'smooth' });
+    }
+  }, [activeLevel, focusedCardId, columns.length]);
 
   return (
     <div className="miller-container" ref={containerRef}>
@@ -68,6 +94,8 @@ export const HorizontalLayout: React.FC<HorizontalLayoutProps> = ({
           type={col.type}
           selectedId={col.selectedId}
           focusedCardId={focusedCardId}
+          unseenAgentEditsByProject={unseenAgentEditsByProject}
+          unseenAgentEditsByBlock={unseenAgentEditsByBlock}
           isActiveLevel={activeLevel === col.level}
           isCurrentLevel={currentSelectionLevel === col.level}
           onSelectItem={(item) => onSelectItem(col.level, item)}

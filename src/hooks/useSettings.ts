@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { db } from '../db/db';
 import { type UserSettings, DEFAULT_USER_SETTINGS } from '../types';
+import { repository } from '../db/repository';
 
 const STORAGE_KEY = 'deepscribe_settings';
 
@@ -12,6 +13,7 @@ export const PRESET_PALETTES = {
     text: '#FAF6EE',
     accent: '#3b82f6',
     atmosphere: '#EBDEC3',
+    selected: '#322C25',
     mode: 'dark' as const
   },
   cyberpunk: {
@@ -21,6 +23,7 @@ export const PRESET_PALETTES = {
     text: '#e2d9f3',
     accent: '#00f0ff',
     atmosphere: '#00f0ff',
+    selected: '#241735',
     mode: 'dark' as const
   },
   nord: {
@@ -30,6 +33,7 @@ export const PRESET_PALETTES = {
     text: '#eceff4',
     accent: '#88c0d0',
     atmosphere: '#88c0d0',
+    selected: '#465064',
     mode: 'dark' as const
   },
   dracula: {
@@ -39,6 +43,7 @@ export const PRESET_PALETTES = {
     text: '#f8f8f2',
     accent: '#bd93f9',
     atmosphere: '#bd93f9',
+    selected: '#3A3D51',
     mode: 'dark' as const
   },
   sepia: {
@@ -48,6 +53,7 @@ export const PRESET_PALETTES = {
     text: '#433422',
     accent: '#b45309',
     atmosphere: '#b45309',
+    selected: '#E4CFAA',
     mode: 'light' as const
   },
   obsidian: {
@@ -57,6 +63,7 @@ export const PRESET_PALETTES = {
     text: '#e0e0e0',
     accent: '#6366f1',
     atmosphere: '#6366f1',
+    selected: '#242424',
     mode: 'dark' as const
   }
 };
@@ -73,14 +80,17 @@ function hexToRgbChannels(hex: string): string {
   return `${(value >> 16) & 255}, ${(value >> 8) & 255}, ${value & 255}`;
 }
 
-function mergeStoredSettings(value: Partial<UserSettings>): UserSettings {
+export function mergeStoredSettings(value: Partial<UserSettings>): UserSettings {
   const preset = value.preset || DEFAULT_USER_SETTINGS.preset;
   const palette = preset === 'custom' ? undefined : PRESET_PALETTES[preset];
 
   return {
     ...DEFAULT_USER_SETTINGS,
     ...value,
-    atmosphereColor: value.atmosphereColor || palette?.atmosphere || DEFAULT_USER_SETTINGS.atmosphereColor
+    savedThemes: Array.isArray(value.savedThemes) ? value.savedThemes : [],
+    atmosphereColor: value.atmosphereColor || palette?.atmosphere || DEFAULT_USER_SETTINGS.atmosphereColor,
+    selectedCardColor: value.selectedCardColor || palette?.selected || value.customBgColor || DEFAULT_USER_SETTINGS.selectedCardColor,
+    agentAlertColor: value.agentAlertColor || DEFAULT_USER_SETTINGS.agentAlertColor
   };
 }
 
@@ -91,6 +101,11 @@ export function applySettingsToDOM(settings: UserSettings) {
   const atmosphereColor = settings.atmosphereColor || '#EBDEC3';
   root.style.setProperty('--atmosphere-color', atmosphereColor);
   root.style.setProperty('--atmosphere-rgb', hexToRgbChannels(atmosphereColor));
+  root.style.setProperty('--selected-card-color', settings.selectedCardColor);
+  root.style.setProperty('--selected-card-rgb', hexToRgbChannels(settings.selectedCardColor));
+  root.style.setProperty('--agent-alert-color', settings.agentAlertColor);
+  root.style.setProperty('--agent-alert-rgb', hexToRgbChannels(settings.agentAlertColor));
+  root.style.setProperty('--bg-card-active', `rgba(${hexToRgbChannels(settings.selectedCardColor)}, 0.92)`);
 
   // Preset or Custom Theme Colors
   if (settings.preset !== 'custom' && PRESET_PALETTES[settings.preset]) {
@@ -156,6 +171,7 @@ export function applySettingsToDOM(settings: UserSettings) {
 
 export function useSettings() {
   const [settings, setSettings] = useState<UserSettings>(() => {
+    if (typeof window !== 'undefined' && window.electronAPI?.workspace) return DEFAULT_USER_SETTINGS;
     try {
       const cached = localStorage.getItem(STORAGE_KEY);
       if (cached) {
@@ -170,12 +186,12 @@ export function useSettings() {
   // Load from Dexie DB on mount
   useEffect(() => {
     let isMounted = true;
-    db.settings.get('user_settings').then(record => {
+    repository.initialize().then(() => db.settings.get('user_settings')).then(record => {
       if (isMounted && record && record.value) {
         const merged = mergeStoredSettings(record.value);
         setSettings(merged);
         applySettingsToDOM(merged);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+        if (!window.electronAPI?.workspace) localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
       }
     }).catch(() => {
       // Ignore fallback
@@ -194,16 +210,19 @@ export function useSettings() {
   const updateSettings = useCallback(async (partial: Partial<UserSettings>) => {
     setSettings(prev => {
       const updated = { ...prev, ...partial };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      if (!window.electronAPI?.workspace) localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
       db.settings.put({ key: 'user_settings', value: updated }).catch(() => {});
       return updated;
     });
   }, []);
 
   const resetSettings = useCallback(async () => {
-    setSettings(DEFAULT_USER_SETTINGS);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_USER_SETTINGS));
-    await db.settings.put({ key: 'user_settings', value: DEFAULT_USER_SETTINGS }).catch(() => {});
+    setSettings(previous => {
+      const reset = { ...DEFAULT_USER_SETTINGS, savedThemes: previous.savedThemes };
+      if (!window.electronAPI?.workspace) localStorage.setItem(STORAGE_KEY, JSON.stringify(reset));
+      db.settings.put({ key: 'user_settings', value: reset }).catch(() => {});
+      return reset;
+    });
   }, []);
 
   return {

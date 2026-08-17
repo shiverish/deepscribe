@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie';
-import type { Project, Block, Attachment } from '../types';
+import type { Project, Block, Attachment, ActivityEntry, BlockTemplate } from '../types';
 import { sanitizeTags } from '../utils/tagUtils';
 
 export class DeepScribeDatabase extends Dexie {
@@ -7,6 +7,8 @@ export class DeepScribeDatabase extends Dexie {
   blocks!: Table<Block, string>;
   attachments!: Table<Attachment, string>;
   settings!: Table<{ key: string; value: any }, string>;
+  activities!: Table<ActivityEntry, string>;
+  templates!: Table<BlockTemplate, string>;
 
   constructor() {
     super('DeepScribeDB');
@@ -58,10 +60,47 @@ export class DeepScribeDatabase extends Dexie {
     }).upgrade(transaction => transaction.table<Project>('projects').toCollection().modify(project => {
       project.tags = sanitizeTags(project.tags);
     }));
+    this.version(8).stores({
+      projects: 'id, title, isTrash, *tags, createdAt, updatedAt',
+      blocks: 'id, projectId, parentId, order, isTrash, *tags, plainText, updatedAt',
+      attachments: 'id, blockId, fileName, createdAt',
+      settings: 'key',
+      activities: 'id, projectId, blockId, source, action, createdAt',
+      templates: 'id, name, createdAt'
+    });
   }
 }
 
 export const db = new DeepScribeDatabase();
+
+const mutationListeners = new Set<() => void>();
+
+db.use({
+  stack: 'dbcore',
+  name: 'deepscribe-workspace-sync',
+  create(downlevelDatabase) {
+    return {
+      ...downlevelDatabase,
+      table(tableName) {
+        const downlevelTable = downlevelDatabase.table(tableName);
+        return {
+          ...downlevelTable,
+          mutate(request) {
+            return downlevelTable.mutate(request).then(result => {
+              mutationListeners.forEach(listener => listener());
+              return result;
+            });
+          }
+        };
+      }
+    };
+  }
+});
+
+export function subscribeToDatabaseMutations(listener: () => void): () => void {
+  mutationListeners.add(listener);
+  return () => mutationListeners.delete(listener);
+}
 
 export async function requestPersistentStorage(): Promise<boolean> {
   if (typeof navigator === 'undefined' || !navigator.storage?.persist) return false;

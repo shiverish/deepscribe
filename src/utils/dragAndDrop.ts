@@ -121,52 +121,50 @@ export async function moveBlockInTree(
 
   if (!sourceBlock || !targetBlock) return false;
 
+  if (sourceBlock.projectId !== targetBlock.projectId) return false;
+
   const oldParentId = sourceBlock.parentId;
+  const newParentId = position === 'inside' ? targetBlock.id : targetBlock.parentId;
+  const now = Date.now();
 
-  if (position === 'inside') {
-    const newParentId = targetBlock.id;
-
-    const childrenCount = await db.blocks
-      .where('parentId')
-      .equals(newParentId)
-      .and(b => !b.isTrash)
-      .count();
-
-    await db.blocks.update(sourceBlockId, {
-      parentId: newParentId,
-      order: childrenCount,
-      updatedAt: Date.now()
-    });
-
-    await updateBlockCounts(newParentId);
-  } else {
-    const newParentId = targetBlock.parentId;
-    const siblings = await db.blocks
-      .filter(b => b.projectId === targetBlock.projectId && b.parentId === newParentId && !b.isTrash)
+  await db.transaction('rw', db.blocks, async () => {
+    const destinationSiblings = await db.blocks
+      .filter(block => block.projectId === targetBlock.projectId
+        && block.parentId === newParentId
+        && !block.isTrash
+        && block.id !== sourceBlockId)
       .toArray();
+    destinationSiblings.sort((a, b) => a.order - b.order);
 
-    siblings.sort((a, b) => a.order - b.order);
+    const insertIndex = position === 'inside'
+      ? destinationSiblings.length
+      : Math.max(0, destinationSiblings.findIndex(block => block.id === targetBlockId)
+        + (position === 'below' ? 1 : 0));
+    destinationSiblings.splice(insertIndex, 0, sourceBlock);
 
-    const filteredSiblings = siblings.filter(b => b.id !== sourceBlockId);
-    const targetIndex = filteredSiblings.findIndex(b => b.id === targetBlockId);
+    await Promise.all(destinationSiblings.map((block, order) => db.blocks.update(block.id, {
+      parentId: newParentId,
+      order,
+      updatedAt: now
+    })));
 
-    const insertIndex = position === 'above' ? targetIndex : targetIndex + 1;
-    filteredSiblings.splice(insertIndex, 0, sourceBlock);
+    if (oldParentId !== newParentId) {
+      const oldSiblings = await db.blocks
+        .filter(block => block.projectId === sourceBlock.projectId
+          && block.parentId === oldParentId
+          && !block.isTrash
+          && block.id !== sourceBlockId)
+        .toArray();
+      oldSiblings.sort((a, b) => a.order - b.order);
+      await Promise.all(oldSiblings.map((block, order) => db.blocks.update(block.id, { order, updatedAt: now })));
+    }
 
-    await db.transaction('rw', db.blocks, async () => {
-      for (let i = 0; i < filteredSiblings.length; i++) {
-        await db.blocks.update(filteredSiblings[i].id, {
-          parentId: newParentId,
-          order: i,
-          updatedAt: Date.now()
-        });
-      }
-    });
-  }
-
-  if (oldParentId && oldParentId !== (position === 'inside' ? targetBlock.id : targetBlock.parentId)) {
-    await updateBlockCounts(oldParentId);
-  }
+    for (const parentId of new Set([oldParentId, newParentId])) {
+      if (!parentId) continue;
+      const childCount = await db.blocks.filter(block => block.parentId === parentId && !block.isTrash).count();
+      await db.blocks.update(parentId, { childCount, updatedAt: now });
+    }
+  });
 
   return true;
 }

@@ -1,8 +1,11 @@
 import { db } from '../db/db';
-import type { Block, Project } from '../types';
+import type { Attachment, Block, Project } from '../types';
 import { sanitizeTags } from '../utils/tagUtils';
+import { recordActivity } from '../db/activity';
+import { rankBlocksLocally } from '../utils/semanticSearch';
 
 type JsonObject = Record<string, unknown>;
+const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
 function asObject(value: unknown): JsonObject {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
@@ -24,19 +27,138 @@ function clampLimit(value: unknown, fallback = 50): number {
   return Math.max(1, Math.min(100, typeof value === 'number' ? Math.floor(value) : fallback));
 }
 
-function htmlDocument(content: string): Document {
-  return new DOMParser().parseFromString(content || '<p></p>', 'text/html');
+function htmlDocument(content: string): Document | null {
+  if (typeof DOMParser !== 'undefined') {
+    try {
+      return new DOMParser().parseFromString(content || '<p></p>', 'text/html');
+    } catch {
+      // Fall through to non-browser handling
+    }
+  }
+  return null;
 }
 
-function htmlFromPlainText(text: string): string {
-  const document = htmlDocument('');
-  document.body.replaceChildren();
-  for (const paragraphText of text.split(/\n{2,}/)) {
-    const paragraph = document.createElement('p');
-    paragraph.textContent = paragraphText || '';
-    document.body.appendChild(paragraph);
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, character => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  })[character]!);
+}
+
+function inlineMarkdown(value: string): string {
+  const pattern = /(`[^`\n]+`|\*\*[^*\n]+\*\*|__[^_\n]+__|~~[^~\n]+~~|\*[^*\n]+\*|_[^_\n]+_|\[[^\]\n]+\]\([^\s)]+\))/g;
+  let result = '';
+  let cursor = 0;
+  for (const match of value.matchAll(pattern)) {
+    const token = match[0];
+    const index = match.index ?? 0;
+    result += escapeHtml(value.slice(cursor, index));
+    if (token.startsWith('`')) result += `<code>${escapeHtml(token.slice(1, -1))}</code>`;
+    else if (token.startsWith('**') || token.startsWith('__')) result += `<strong>${escapeHtml(token.slice(2, -2))}</strong>`;
+    else if (token.startsWith('~~')) result += `<s>${escapeHtml(token.slice(2, -2))}</s>`;
+    else if (token.startsWith('*') || token.startsWith('_')) result += `<em>${escapeHtml(token.slice(1, -1))}</em>`;
+    else {
+      const link = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(token);
+      const href = link?.[2] || '';
+      result += link && /^(https?:\/\/|mailto:)/i.test(href)
+        ? `<a href="${escapeHtml(href)}">${escapeHtml(link[1])}</a>`
+        : escapeHtml(token);
+    }
+    cursor = index + token.length;
   }
-  return document.body.innerHTML || '<p></p>';
+  return result + escapeHtml(value.slice(cursor));
+}
+
+export function markdownToHtml(text: string): string {
+  const lines = text.replace(/\r\n?/g, '\n').split('\n');
+  const output: string[] = [];
+  let paragraph: string[] = [];
+  let list: { type: 'bullet' | 'ordered' | 'task'; start?: number; items: Array<{ text: string; checked?: boolean }> } | null = null;
+
+  const flushParagraph = () => {
+    if (paragraph.length === 0) return;
+    output.push(`<p>${paragraph.map(line => inlineMarkdown(line.trim())).join('<br>')}</p>`);
+    paragraph = [];
+  };
+  const flushList = () => {
+    if (!list) return;
+    if (list.type === 'task') {
+      output.push(`<ul data-type="taskList">${list.items.map(item => `<li data-type="taskItem" data-checked="${item.checked === true}"><label><input type="checkbox"${item.checked ? ' checked' : ''}><span></span></label><div><p>${inlineMarkdown(item.text)}</p></div></li>`).join('')}</ul>`);
+    } else {
+      const tag = list.type === 'ordered' ? 'ol' : 'ul';
+      const start = tag === 'ol' && list.start && list.start !== 1 ? ` start="${list.start}"` : '';
+      output.push(`<${tag}${start}>${list.items.map(item => `<li><p>${inlineMarkdown(item.text)}</p></li>`).join('')}</${tag}>`);
+    }
+    list = null;
+  };
+  const addListItem = (type: 'bullet' | 'ordered' | 'task', item: { text: string; checked?: boolean }, start?: number) => {
+    flushParagraph();
+    if (!list || list.type !== type) {
+      flushList();
+      list = { type, start, items: [] };
+    }
+    list.items.push(item);
+  };
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (/^```/.test(line.trim())) {
+      flushParagraph();
+      flushList();
+      const language = line.trim().slice(3).trim();
+      const code: string[] = [];
+      while (index + 1 < lines.length && !/^```\s*$/.test(lines[index + 1])) code.push(lines[++index]);
+      if (index + 1 < lines.length) index += 1;
+      const className = language && /^[a-z0-9_-]+$/i.test(language) ? ` class="language-${language}"` : '';
+      output.push(`<pre><code${className}>${escapeHtml(code.join('\n'))}</code></pre>`);
+      continue;
+    }
+    if (!line.trim()) {
+      flushParagraph();
+      flushList();
+      continue;
+    }
+    const heading = /^(#{1,6})\s+(.+)$/.exec(line.trim());
+    if (heading) {
+      flushParagraph();
+      flushList();
+      const level = heading[1].length;
+      output.push(`<h${level}>${inlineMarkdown(heading[2])}</h${level}>`);
+      continue;
+    }
+    if (/^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/.test(line)) {
+      flushParagraph();
+      flushList();
+      output.push('<hr>');
+      continue;
+    }
+    const task = /^\s*[-*+]\s+\[([ xX])\]\s+(.+)$/.exec(line);
+    if (task) {
+      addListItem('task', { text: task[2], checked: task[1].toLowerCase() === 'x' });
+      continue;
+    }
+    const bullet = /^\s*[-*+]\s+(.+)$/.exec(line);
+    if (bullet) {
+      addListItem('bullet', { text: bullet[1] });
+      continue;
+    }
+    const ordered = /^\s*(\d+)[.)]\s+(.+)$/.exec(line);
+    if (ordered) {
+      addListItem('ordered', { text: ordered[2] }, Number(ordered[1]));
+      continue;
+    }
+    const quote = /^\s*>\s?(.*)$/.exec(line);
+    if (quote) {
+      flushParagraph();
+      flushList();
+      output.push(`<blockquote><p>${inlineMarkdown(quote[1])}</p></blockquote>`);
+      continue;
+    }
+    flushList();
+    paragraph.push(line);
+  }
+  flushParagraph();
+  flushList();
+  return output.join('') || '<p></p>';
 }
 
 function plainTextFromDocument(document: Document): string {
@@ -56,12 +178,34 @@ function plainTextFromDocument(document: Document): string {
 
 function contentStats(content: string) {
   const document = htmlDocument(content);
-  const tasks = [...document.querySelectorAll<HTMLElement>('li[data-type="taskItem"]')];
+  if (document) {
+    const tasks = [...document.querySelectorAll<HTMLElement>('li[data-type="taskItem"]')];
+    return {
+      content: document.body.innerHTML,
+      plainText: plainTextFromDocument(document),
+      taskCount: tasks.length,
+      completedTaskCount: tasks.filter(task => task.dataset.checked === 'true' || task.querySelector('input')?.checked).length
+    };
+  }
+  const taskMatches = [...content.matchAll(/<li\s+[^>]*data-type="taskItem"[^>]*>/gi)];
+  const completedMatches = [...content.matchAll(/<li\s+[^>]*data-type="taskItem"[^>]*data-checked="true"[^>]*>/gi)];
   return {
-    content: document.body.innerHTML,
-    plainText: plainTextFromDocument(document),
-    taskCount: tasks.length,
-    completedTaskCount: tasks.filter(task => task.dataset.checked === 'true' || task.querySelector('input')?.checked).length
+    content: content || '<p></p>',
+    plainText: content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim(),
+    taskCount: taskMatches.length,
+    completedTaskCount: completedMatches.length
+  };
+}
+
+function attachmentMetadata(attachment: Attachment) {
+  return {
+    id: attachment.id,
+    blockId: attachment.blockId,
+    fileName: attachment.fileName,
+    fileType: attachment.fileType || 'application/octet-stream',
+    fileSize: attachment.fileSize,
+    createdAt: attachment.createdAt,
+    uri: `deepscribe://attachment/${encodeURIComponent(attachment.id)}`
   };
 }
 
@@ -77,8 +221,33 @@ function blockSummary(block: Block) {
     childCount: block.childCount,
     taskCount: block.taskCount,
     completedTaskCount: block.completedTaskCount,
+    attachmentCount: block.attachmentCount,
     updatedAt: block.updatedAt
   };
+}
+
+async function getActiveAttachment(attachmentId: string): Promise<Attachment> {
+  const attachment = await db.attachments.get(attachmentId);
+  if (!attachment) throw new Error('Bijlage niet gevonden.');
+  const block = await db.blocks.get(attachment.blockId);
+  if (!block || block.isTrash) throw new Error('Het gekoppelde blok is niet beschikbaar.');
+  const project = await db.projects.get(block.projectId);
+  if (!project || project.isTrash) throw new Error('Het gekoppelde project is niet beschikbaar.');
+  return attachment;
+}
+
+async function readAttachmentBase64(attachment: Attachment): Promise<string> {
+  if (attachment.fileSize > MAX_ATTACHMENT_BYTES) throw new Error('Deze bijlage is groter dan 25 MB.');
+  if (attachment.localPath) {
+    if (!window.electronAPI?.readAttachment) throw new Error('Bijlagen lezen is alleen beschikbaar in de desktop-app.');
+    return await window.electronAPI.readAttachment(attachment.localPath);
+  }
+  if (attachment.dataUrl) {
+    const separator = attachment.dataUrl.indexOf(',');
+    if (separator < 0 || !attachment.dataUrl.slice(0, separator).includes(';base64')) throw new Error('De opgeslagen bijlage heeft een ongeldig formaat.');
+    return attachment.dataUrl.slice(separator + 1);
+  }
+  throw new Error('Het bijlagebestand is niet meer beschikbaar.');
 }
 
 async function projectWithCounts(project: Project) {
@@ -105,6 +274,7 @@ async function createProject(params: JsonObject) {
     updatedAt: now
   };
   await db.projects.add(project);
+  await recordActivity({ projectId: project.id, source: 'agent', action: 'project-created', summary: `Agent maakte project “${project.title}”` });
   return project;
 }
 
@@ -120,7 +290,7 @@ async function createBlock(params: JsonObject) {
   }
 
   const rawContent = optionalString(params, 'content') || '';
-  const stats = contentStats(htmlFromPlainText(rawContent));
+  const stats = contentStats(markdownToHtml(rawContent));
   const siblingCount = await db.blocks.filter(block => block.projectId === projectId && block.parentId === parentId && !block.isTrash).count();
   const now = Date.now();
   const block: Block = {
@@ -133,6 +303,7 @@ async function createBlock(params: JsonObject) {
     childCount: 0,
     attachmentCount: 0,
     tags: sanitizeTags(Array.isArray(params.tags) ? params.tags.filter((tag): tag is string => typeof tag === 'string') : []),
+    lastAgentEditAt: now,
     isTrash: false,
     createdAt: now,
     updatedAt: now
@@ -142,7 +313,29 @@ async function createBlock(params: JsonObject) {
     await db.blocks.add(block);
     if (parentId) await db.blocks.update(parentId, { childCount: await db.blocks.filter(item => item.parentId === parentId && !item.isTrash).count(), updatedAt: now });
   });
+  await recordActivity({ projectId, blockId: block.id, source: 'agent', action: 'block-created', summary: `Agent maakte blok “${block.title}”` });
   return block;
+}
+
+export function formatWorkItemContent(goal: string, context: string, acceptanceCriteria: string[]): string {
+  return `## Doel\n\n${goal}\n\n## Context\n\n${context}\n\n## Acceptatiecriteria\n\n${acceptanceCriteria.map(criterion => `- ${criterion}`).join('\n')}`;
+}
+
+async function createWorkItem(params: JsonObject) {
+  const goal = requiredString(params, 'goal');
+  const context = requiredString(params, 'context');
+  const acceptanceCriteria = Array.isArray(params.acceptanceCriteria)
+    ? params.acceptanceCriteria.filter((criterion): criterion is string => typeof criterion === 'string' && Boolean(criterion.trim())).map(criterion => criterion.trim())
+    : [];
+  if (goal.length < 10) throw new Error('goal moet minimaal 10 tekens bevatten.');
+  if (context.length < 20) throw new Error('context moet minimaal 20 tekens bevatten.');
+  if (acceptanceCriteria.length === 0) throw new Error('Minimaal één acceptanceCriterion is verplicht.');
+  const suppliedTags = Array.isArray(params.tags) ? params.tags.filter((tag): tag is string => typeof tag === 'string') : [];
+  return await createBlock({
+    ...params,
+    content: formatWorkItemContent(goal, context, acceptanceCriteria),
+    tags: ['todo', 'agent-ready', ...suppliedTags]
+  });
 }
 
 async function updateBlock(params: JsonObject) {
@@ -150,12 +343,15 @@ async function updateBlock(params: JsonObject) {
   const block = await db.blocks.get(blockId);
   if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
 
-  const update: Partial<Block> = { updatedAt: Date.now() };
+  const now = Date.now();
+  const update: Partial<Block> = { updatedAt: now, lastAgentEditAt: now };
   if (typeof params.title === 'string' && params.title.trim()) update.title = params.title.trim();
-  if (typeof params.content === 'string') Object.assign(update, contentStats(htmlFromPlainText(params.content)));
+  if (typeof params.content === 'string') Object.assign(update, contentStats(markdownToHtml(params.content)));
   if (Array.isArray(params.tags)) update.tags = sanitizeTags(params.tags.filter((tag): tag is string => typeof tag === 'string'));
   await db.blocks.update(blockId, update);
-  return await db.blocks.get(blockId);
+  const updated = await db.blocks.get(blockId);
+  await recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'block-updated', summary: `Agent wijzigde “${updated?.title ?? block.title}”` });
+  return updated;
 }
 
 async function appendToBlock(params: JsonObject) {
@@ -165,23 +361,50 @@ async function appendToBlock(params: JsonObject) {
   if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
 
   const document = htmlDocument(block.content);
-  const paragraph = document.createElement('p');
-  paragraph.textContent = text;
-  document.body.appendChild(paragraph);
-  const stats = contentStats(document.body.innerHTML);
-  await db.blocks.update(blockId, { ...stats, updatedAt: Date.now() });
+  const addition = markdownToHtml(text);
+  let newContent = '';
+  if (document) {
+    const additionDoc = htmlDocument(addition);
+    if (additionDoc) {
+      for (const node of [...additionDoc.body.childNodes]) document.body.appendChild(document.importNode(node, true));
+      newContent = document.body.innerHTML;
+    } else {
+      newContent = `${block.content}${addition}`;
+    }
+  } else {
+    newContent = `${block.content}${addition}`;
+  }
+  const stats = contentStats(newContent);
+  const now = Date.now();
+  await db.blocks.update(blockId, { ...stats, updatedAt: now, lastAgentEditAt: now });
+  await recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'block-appended', summary: `Agent voegde tekst toe aan “${block.title}”` });
   return await db.blocks.get(blockId);
 }
 
 function todosFromBlock(block: Block) {
   const document = htmlDocument(block.content);
-  return [...document.querySelectorAll<HTMLElement>('li[data-type="taskItem"]')].map((task, index) => ({
-    blockId: block.id,
-    blockTitle: block.title,
-    taskIndex: index,
-    text: task.textContent?.replace(/\s+/g, ' ').trim() || '',
-    completed: task.dataset.checked === 'true' || Boolean(task.querySelector('input')?.checked)
-  }));
+  if (document) {
+    return [...document.querySelectorAll<HTMLElement>('li[data-type="taskItem"]')].map((task, index) => ({
+      blockId: block.id,
+      blockTitle: block.title,
+      taskIndex: index,
+      text: task.textContent?.replace(/\s+/g, ' ').trim() || '',
+      completed: task.dataset.checked === 'true' || Boolean(task.querySelector('input')?.checked)
+    }));
+  }
+  const taskRegex = /<li\s+[^>]*data-type="taskItem"[^>]*data-checked="([^"]+)"[^>]*>([\s\S]*?)<\/li>/gi;
+  const matches = [...block.content.matchAll(taskRegex)];
+  return matches.map((match, index) => {
+    const completed = match[1] === 'true';
+    const text = match[2].replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    return {
+      blockId: block.id,
+      blockTitle: block.title,
+      taskIndex: index,
+      text,
+      completed
+    };
+  });
 }
 
 async function addTodo(params: JsonObject) {
@@ -192,29 +415,42 @@ async function addTodo(params: JsonObject) {
   if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
 
   const document = htmlDocument(block.content);
-  let taskList = document.querySelector<HTMLUListElement>('ul[data-type="taskList"]');
-  if (!taskList) {
-    taskList = document.createElement('ul');
-    taskList.dataset.type = 'taskList';
-    document.body.appendChild(taskList);
+  let newContent = '';
+  if (document) {
+    let taskList = document.querySelector<HTMLUListElement>('ul[data-type="taskList"]');
+    if (!taskList) {
+      taskList = document.createElement('ul');
+      taskList.dataset.type = 'taskList';
+      document.body.appendChild(taskList);
+    }
+    const item = document.createElement('li');
+    item.dataset.type = 'taskItem';
+    item.dataset.checked = String(completed);
+    const label = document.createElement('label');
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = completed;
+    label.append(input, document.createElement('span'));
+    const wrapper = document.createElement('div');
+    const paragraph = document.createElement('p');
+    paragraph.textContent = text;
+    wrapper.appendChild(paragraph);
+    item.append(label, wrapper);
+    taskList.appendChild(item);
+    newContent = document.body.innerHTML;
+  } else {
+    const itemHtml = `<li data-type="taskItem" data-checked="${completed}"><label><input type="checkbox"${completed ? ' checked' : ''}><span></span></label><div><p>${escapeHtml(text)}</p></div></li>`;
+    if (block.content.includes('</ul>')) {
+      newContent = block.content.replace(/<\/ul>$/, `${itemHtml}</ul>`);
+    } else {
+      newContent = `${block.content}<ul data-type="taskList">${itemHtml}</ul>`;
+    }
   }
-  const item = document.createElement('li');
-  item.dataset.type = 'taskItem';
-  item.dataset.checked = String(completed);
-  const label = document.createElement('label');
-  const input = document.createElement('input');
-  input.type = 'checkbox';
-  input.checked = completed;
-  label.append(input, document.createElement('span'));
-  const wrapper = document.createElement('div');
-  const paragraph = document.createElement('p');
-  paragraph.textContent = text;
-  wrapper.appendChild(paragraph);
-  item.append(label, wrapper);
-  taskList.appendChild(item);
 
-  const stats = contentStats(document.body.innerHTML);
-  await db.blocks.update(blockId, { ...stats, updatedAt: Date.now() });
+  const stats = contentStats(newContent);
+  const now = Date.now();
+  await db.blocks.update(blockId, { ...stats, updatedAt: now, lastAgentEditAt: now });
+  await recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'todo-added', summary: `Agent voegde todo “${text}” toe aan “${block.title}”` });
   return todosFromBlock((await db.blocks.get(blockId))!);
 }
 
@@ -227,14 +463,158 @@ async function setTodoStatus(params: JsonObject) {
   if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
 
   const document = htmlDocument(block.content);
-  const item = [...document.querySelectorAll<HTMLElement>('li[data-type="taskItem"]')][taskIndex];
-  if (!item) throw new Error('Todo niet gevonden.');
-  item.dataset.checked = String(params.completed);
-  const input = item.querySelector<HTMLInputElement>('input[type="checkbox"]');
-  if (input) input.checked = params.completed;
-  const stats = contentStats(document.body.innerHTML);
-  await db.blocks.update(blockId, { ...stats, updatedAt: Date.now() });
+  let newContent = '';
+  if (document) {
+    const item = [...document.querySelectorAll<HTMLElement>('li[data-type="taskItem"]')][taskIndex];
+    if (!item) throw new Error('Todo niet gevonden.');
+    item.dataset.checked = String(params.completed);
+    const input = item.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    if (input) input.checked = params.completed;
+    newContent = document.body.innerHTML;
+  } else {
+    let currentIndex = 0;
+    let replaced = false;
+    newContent = block.content.replace(/(<li\s+[^>]*data-type="taskItem"[^>]*data-checked=")(true|false)("[^>]*>)/gi, (match, prefix, _state, suffix) => {
+      if (currentIndex === taskIndex) {
+        replaced = true;
+        currentIndex += 1;
+        return `${prefix}${params.completed}${suffix}`;
+      }
+      currentIndex += 1;
+      return match;
+    });
+    if (!replaced) throw new Error('Todo niet gevonden.');
+  }
+
+  const stats = contentStats(newContent);
+  const now = Date.now();
+  await db.blocks.update(blockId, { ...stats, updatedAt: now, lastAgentEditAt: now });
+  await recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'todo-status', summary: `Agent markeerde een todo in “${block.title}” als ${params.completed ? 'afgerond' : 'open'}` });
   return todosFromBlock((await db.blocks.get(blockId))!)[taskIndex];
+}
+
+function parseDailyPlanDate(dateParam?: string) {
+  if (dateParam && dateParam.trim()) {
+    const trimmed = dateParam.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      const [year, month, day] = trimmed.split('-').map(Number);
+      const parsed = new Date(year, month - 1, day);
+      if (!Number.isNaN(parsed.getTime())) {
+        const formatter = new Intl.DateTimeFormat('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
+        const humanDate = formatter.format(parsed);
+        return { isoDate: trimmed, humanDate, title: `Dagplanning — ${humanDate}` };
+      }
+    }
+    return {
+      isoDate: trimmed.toLowerCase().replace(/[^a-z0-9_-]+/g, '-'),
+      humanDate: trimmed,
+      title: trimmed.startsWith('Dagplanning') ? trimmed : `Dagplanning — ${trimmed}`
+    };
+  }
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const isoDate = `${year}-${month}-${day}`;
+  const formatter = new Intl.DateTimeFormat('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
+  const humanDate = formatter.format(now);
+  return { isoDate, humanDate, title: `Dagplanning — ${humanDate}` };
+}
+
+export function formatDailyPlanContent(
+  focus?: string,
+  openTasks?: Array<{ projectTitle: string; blockTitle: string; text: string }>
+): string {
+  const sections: string[] = [];
+
+  sections.push(`## Focus van de dag\n\n${focus?.trim() || 'Definieer het hoofddoel en de belangrijkste prioriteiten van vandaag.'}`);
+
+  sections.push(`## Taken voor Developer (Solo Dev)\n\n- [ ] Architectuur, keuzes en richting bepalen\n- [ ] Review en afronding van agent-werk`);
+
+  sections.push(`## Taken voor AI-Agent(s)\n\n- [ ] Actieve werkitems implementeren en testen\n- [ ] Voortgang en documentatie bijwerken`);
+
+  if (openTasks && openTasks.length > 0) {
+    const taskItems = openTasks.map(t => `- [ ] **${t.projectTitle}** (${t.blockTitle}): ${t.text}`).join('\n');
+    sections.push(`## Openstaande projecttaken\n\n${taskItems}`);
+  } else {
+    sections.push(`## Openstaande projecttaken\n\n- [ ] Geen openstaande taken gevonden in andere projecten`);
+  }
+
+  sections.push(`## Dagrecap & Notities\n\n- `);
+
+  return sections.join('\n\n');
+}
+
+async function getOrCreateDailyPlan(params: JsonObject) {
+  const dateInfo = parseDailyPlanDate(optionalString(params, 'date'));
+  const focus = optionalString(params, 'focus');
+  const includeOpenTasks = params.includeOpenTasks !== false;
+
+  const projects = await db.projects.filter(p => !p.isTrash).toArray();
+  let project = projects.find(p => p.tags.includes('planning') || p.tags.includes('daily-log') || /dagplanning|daily planning/i.test(p.title));
+
+  if (!project) {
+    project = await createProject({
+      title: 'Dagplanning & Focus',
+      description: 'Centrale dagplanningen, dagelijkse doelstellingen en werkverdeling tussen ontwikkelaar en AI-agents.',
+      color: '#10b981',
+      tags: ['planning', 'daily-log', 'focus']
+    });
+  }
+
+  const projectBlocks = await db.blocks.where('projectId').equals(project.id).filter(b => !b.isTrash).toArray();
+  let block = projectBlocks.find(b =>
+    b.tags.includes(`date-${dateInfo.isoDate}`) ||
+    b.title.toLowerCase() === dateInfo.title.toLowerCase() ||
+    b.title.toLowerCase().includes(dateInfo.isoDate) ||
+    b.title.toLowerCase().includes(dateInfo.humanDate.toLowerCase())
+  );
+
+  if (!block) {
+    const openTasks: Array<{ projectTitle: string; blockTitle: string; text: string }> = [];
+    if (includeOpenTasks) {
+      const activeProjects = await db.projects.filter(p => !p.isTrash && p.id !== project!.id).toArray();
+      const projectMap = new Map(activeProjects.map(p => [p.id, p.title]));
+      const allBlocks = await db.blocks.filter(b => !b.isTrash && b.projectId !== project!.id).toArray();
+
+      for (const b of allBlocks) {
+        const projectTitle = projectMap.get(b.projectId);
+        if (!projectTitle) continue;
+        const todos = todosFromBlock(b).filter(t => !t.completed);
+        if (todos.length > 0) {
+          for (const todo of todos) {
+            openTasks.push({ projectTitle, blockTitle: b.title, text: todo.text });
+          }
+        } else if (b.tags.includes('todo') || b.tags.includes('agent-ready')) {
+          openTasks.push({ projectTitle, blockTitle: b.title, text: b.title });
+        }
+      }
+    }
+
+    const content = formatDailyPlanContent(focus, openTasks);
+    block = await createBlock({
+      projectId: project.id,
+      title: dateInfo.title,
+      content,
+      tags: ['planning', 'daily-log', 'agent-ready', `date-${dateInfo.isoDate}`]
+    });
+  }
+
+  const allBlocks = await db.blocks.where('projectId').equals(project.id).toArray();
+  const byId = new Map(allBlocks.map(item => [item.id, item]));
+  const path: Array<{ id: string; title: string }> = [];
+  let current: Block | undefined = block;
+  while (current) {
+    path.unshift({ id: current.id, title: current.title });
+    current = current.parentId ? byId.get(current.parentId) : undefined;
+  }
+  const attachments = await db.attachments.where('blockId').equals(block.id).sortBy('createdAt');
+  return {
+    ...block,
+    path,
+    attachments: attachments.map(attachmentMetadata),
+    todos: todosFromBlock(block)
+  };
 }
 
 export async function handleMcpBridgeRequest(method: string, rawParams: unknown): Promise<unknown> {
@@ -274,7 +654,31 @@ export async function handleMcpBridgeRequest(method: string, rawParams: unknown)
         path.unshift({ id: current.id, title: current.title });
         current = current.parentId ? byId.get(current.parentId) : undefined;
       }
-      return { ...block, path };
+      const attachments = await db.attachments.where('blockId').equals(block.id).sortBy('createdAt');
+      return { ...block, path, attachments: attachments.map(attachmentMetadata) };
+    }
+    case 'list_attachments': {
+      const blockId = optionalString(params, 'blockId');
+      const projectId = optionalString(params, 'projectId');
+      if (blockId) {
+        const block = await db.blocks.get(blockId);
+        if (!block || block.isTrash || (projectId && block.projectId !== projectId)) throw new Error('Blok niet gevonden.');
+      }
+      const attachments = blockId
+        ? await db.attachments.where('blockId').equals(blockId).sortBy('createdAt')
+        : await db.attachments.orderBy('createdAt').reverse().toArray();
+      const visible: Attachment[] = [];
+      for (const attachment of attachments) {
+        const block = await db.blocks.get(attachment.blockId);
+        if (!block || block.isTrash || (projectId && block.projectId !== projectId)) continue;
+        const project = await db.projects.get(block.projectId);
+        if (project && !project.isTrash) visible.push(attachment);
+      }
+      return visible.slice(0, clampLimit(params.limit, 100)).map(attachmentMetadata);
+    }
+    case 'read_attachment': {
+      const attachment = await getActiveAttachment(requiredString(params, 'attachmentId'));
+      return { ...attachmentMetadata(attachment), dataBase64: await readAttachmentBase64(attachment) };
     }
     case 'search': {
       const query = optionalString(params, 'query')?.trim().toLocaleLowerCase() || '';
@@ -282,14 +686,18 @@ export async function handleMcpBridgeRequest(method: string, rawParams: unknown)
       const tags = sanitizeTags(Array.isArray(params.tags) ? params.tags.filter((tag): tag is string => typeof tag === 'string') : []);
       const blocks = await db.blocks.filter(block => !block.isTrash
         && (!projectId || block.projectId === projectId)
-        && (!query || `${block.title} ${block.plainText}`.toLocaleLowerCase().includes(query))
         && tags.every(tag => block.tags.includes(tag))).toArray();
-      return blocks.sort((left, right) => right.updatedAt - left.updatedAt).slice(0, clampLimit(params.limit)).map(blockSummary);
+      const ranked = query
+        ? rankBlocksLocally(blocks, query).map(result => result.block)
+        : blocks.sort((left, right) => right.updatedAt - left.updatedAt);
+      return ranked.slice(0, clampLimit(params.limit)).map(blockSummary);
     }
     case 'create_project':
       return await createProject(params);
     case 'create_block':
       return await createBlock(params);
+    case 'create_work_item':
+      return await createWorkItem(params);
     case 'update_project': {
       const projectId = requiredString(params, 'projectId');
       const project = await db.projects.get(projectId);
@@ -300,7 +708,9 @@ export async function handleMcpBridgeRequest(method: string, rawParams: unknown)
       if (typeof params.color === 'string') update.color = params.color;
       if (Array.isArray(params.tags)) update.tags = sanitizeTags(params.tags.filter((tag): tag is string => typeof tag === 'string'));
       await db.projects.update(projectId, update);
-      return await db.projects.get(projectId);
+      const updated = await db.projects.get(projectId);
+      await recordActivity({ projectId, source: 'agent', action: 'project-updated', summary: `Agent wijzigde project “${updated?.title ?? project.title}”` });
+      return updated;
     }
     case 'update_block':
       return await updateBlock(params);
@@ -318,6 +728,8 @@ export async function handleMcpBridgeRequest(method: string, rawParams: unknown)
       return await addTodo(params);
     case 'set_todo_status':
       return await setTodoStatus(params);
+    case 'get_or_create_daily_plan':
+      return await getOrCreateDailyPlan(params);
     default:
       throw new Error(`Onbekende DeepScribe-methode: ${method}`);
   }

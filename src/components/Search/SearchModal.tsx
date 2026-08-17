@@ -5,6 +5,7 @@ import { TagBadge } from '../Navigation/TagBadge';
 import { Search, FileText, ChevronRight, X, Tag as TagIcon } from 'lucide-react';
 import { parseSearchQuery } from '../../utils/searchUtils';
 import { sanitizeTags } from '../../utils/tagUtils';
+import { rankBlocksLocally } from '../../utils/semanticSearch';
 
 interface SearchModalProps {
   isOpen: boolean;
@@ -67,13 +68,9 @@ export const SearchModal: React.FC<SearchModalProps> = ({
       const blockMap = new Map<string, Block>(navigationBlocks.map(b => [b.id, b]));
 
       const matchedResults: SearchResultItem[] = [];
+      const rankedBlocks = parsed.text ? rankBlocksLocally(allBlocks, parsed.text).map(result => result.block) : allBlocks;
 
-      for (const block of allBlocks) {
-        const titleMatch = parsed.text ? block.title.toLowerCase().includes(parsed.text) : true;
-        const textMatch = parsed.text ? block.plainText.toLowerCase().includes(parsed.text) : true;
-        const textMatches = titleMatch || textMatch;
-
-        if (textMatches) {
+      for (const block of rankedBlocks) {
           const project = projectMap.get(block.projectId);
           const projectTitle = project?.title || 'Onbekend Project';
 
@@ -108,13 +105,12 @@ export const SearchModal: React.FC<SearchModalProps> = ({
             snippet = snippet.substring(0, 100);
           }
 
-          matchedResults.push({
+        matchedResults.push({
             block,
             projectTitle,
             pathSegments,
             snippet
-          });
-        }
+        });
       }
 
       if (requestId === searchRequestRef.current) {
@@ -199,7 +195,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Zoek door alle projecten en tekstblokken... (Ctrl + K)"
+            placeholder="Zoek lokaal op woorden, betekenis of tags... (Ctrl + K)"
             style={{
               flex: 1,
               background: 'transparent',
@@ -240,7 +236,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
         <div style={{ maxHeight: '420px', overflowY: 'auto', padding: '8px' }}>
           {!query.trim() ? (
             <div style={{ padding: '30px 20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-              Typ een zoekterm in om snel door je hele kennisboom te zoeken of klik hierboven op een tag.
+              Zoek lokaal op woorden of verwante begrippen, of klik hierboven op een tag.
             </div>
           ) : results.length === 0 ? (
             <div style={{ padding: '30px 20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>

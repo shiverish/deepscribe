@@ -76,7 +76,7 @@ export const TagManagerModal: React.FC<TagManagerModalProps> = ({ isOpen, tags, 
               <label style={{ display: 'grid', gap: 6, fontSize: '0.8rem' }}>
                 Bestaande tag
                 <select value={selected} onChange={event => setSelected(event.target.value)} disabled={isWorking} style={{ padding: '8px 10px', color: 'var(--text-primary)', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 6 }}>
-                  {tags.map(item => <option key={item.tag} value={item.tag}>#{item.tag} ({item.count})</option>)}
+                  {tags.map(item => <option key={item.tag} value={item.tag}>{item.tag} ({item.count})</option>)}
                 </select>
               </label>
               <label style={{ display: 'grid', gap: 6, fontSize: '0.8rem' }}>

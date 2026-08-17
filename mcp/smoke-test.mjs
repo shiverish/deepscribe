@@ -5,10 +5,11 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
+const serverPath = process.env.DEEPSCRIBE_MCP_SERVER || path.join(directory, 'server.mjs');
 const client = new Client({ name: 'deepscribe-smoke-test', version: '0.1.0' });
 const transport = new StdioClientTransport({
   command: process.execPath,
-  args: [path.join(directory, 'server.mjs')],
+  args: [serverPath],
   env: { ...process.env }
 });
 
@@ -20,13 +21,20 @@ function parsed(result) {
 try {
   await client.connect(transport);
   const tools = await client.listTools();
-  const expectedTools = ['status', 'list_projects', 'get_block', 'search', 'create_block', 'list_todos', 'add_todo', 'set_todo_status'];
+  const expectedTools = ['status', 'list_projects', 'get_block', 'list_attachments', 'read_attachment', 'search', 'create_block', 'create_work_item', 'list_todos', 'add_todo', 'set_todo_status', 'get_or_create_daily_plan'];
   for (const name of expectedTools) {
     if (!tools.tools.some(tool => tool.name === name)) throw new Error(`MCP-tool ontbreekt: ${name}`);
   }
   const status = await client.callTool({ name: 'status', arguments: {} });
   const projects = await client.callTool({ name: 'list_projects', arguments: {} });
+  const templates = await client.listResourceTemplates();
+  if (!templates.resourceTemplates.some(template => template.uriTemplate === 'deepscribe://attachment/{attachmentId}')) {
+    throw new Error('MCP-resourcetemplate voor bijlagen ontbreekt.');
+  }
   const report = { toolCount: tools.tools.length, status: parsed(status), projects: parsed(projects) };
+  if (process.env.DEEPSCRIBE_MCP_RESOURCE_TEST === '1') {
+    report.resourceCount = (await client.listResources()).resources.length;
+  }
 
   if (process.env.DEEPSCRIBE_MCP_WRITE_TEST === '1') {
     const project = parsed(await client.callTool({

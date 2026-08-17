@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { initialTagComposerState, tagComposerReducer } from '../../utils/tagComposer';
 
 describe('WritingPanel resizing logic', () => {
   const MIN_WIDTH = 320;
@@ -22,5 +23,28 @@ describe('WritingPanel resizing logic', () => {
   it('allows valid widths within limits', () => {
     const clamped = clampPanelWidth(600, 1920);
     expect(clamped).toBe(600);
+  });
+});
+
+describe('WritingPanel tag composer state', () => {
+  it('opens with a clean value and clears stale errors while editing', () => {
+    const opened = tagComposerReducer(initialTagComposerState, { type: 'open' });
+    const invalid = tagComposerReducer(opened, { type: 'invalid', error: 'Ongeldige tag.' });
+    const edited = tagComposerReducer(invalid, { type: 'change', value: 'nieuwe-tag' });
+
+    expect(edited).toEqual({ isOpen: true, value: 'nieuwe-tag', error: null });
+  });
+
+  it('keeps invalid input editable', () => {
+    const editing = { isOpen: true, value: 'twee woorden', error: null };
+    const invalid = tagComposerReducer(editing, { type: 'invalid', error: 'Gebruik alleen letters.' });
+
+    expect(invalid).toEqual({ isOpen: true, value: 'twee woorden', error: 'Gebruik alleen letters.' });
+  });
+
+  it('fully resets the composer when cancelled or when the active item changes', () => {
+    const editing = { isOpen: true, value: 'half-af', error: 'Controleer deze tag.' };
+
+    expect(tagComposerReducer(editing, { type: 'close' })).toEqual(initialTagComposerState);
   });
 });

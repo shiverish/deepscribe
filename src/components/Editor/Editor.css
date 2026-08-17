@@ -90,6 +90,53 @@
   border-bottom-color: rgba(var(--atmosphere-rgb), 0.35);
 }
 
+.tag-composer {
+  display: inline-flex;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.tag-composer:focus-within {
+  border-color: rgba(var(--atmosphere-rgb), 0.45);
+  box-shadow: 0 0 0 2px rgba(var(--atmosphere-rgb), 0.08);
+}
+
+.tag-composer input {
+  width: 132px;
+  min-width: 0;
+  padding: 2px 8px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.75rem;
+}
+
+.tag-composer button {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-left: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.tag-composer button:hover,
+.tag-composer button:focus-visible {
+  background: rgba(var(--atmosphere-rgb), 0.1);
+  color: var(--atmosphere-color);
+  outline: none;
+}
+
 .attachments-panel {
   margin: 0 20px 12px;
   padding: 8px;
@@ -504,3 +551,52 @@
   color: var(--text-muted);
   background: rgba(22, 20, 18, 0.7);
 }
+
+.references-panel {
+  margin: 0 20px 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: rgba(var(--atmosphere-rgb), 0.025);
+}
+
+.references-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
+.references-help, .references-empty {
+  margin: 5px 0 0;
+  color: var(--text-muted);
+  font-size: 0.68rem;
+}
+
+.references-help code { color: var(--atmosphere-color); }
+.references-group { margin-top: 8px; }
+.references-group > span {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--text-muted);
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.references-group > div { display: flex; flex-wrap: wrap; gap: 5px; }
+.references-group button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 7px;
+  border: 1px solid rgba(var(--atmosphere-rgb), 0.2);
+  border-radius: 7px;
+  background: rgba(var(--atmosphere-rgb), 0.06);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+.references-group button:hover { border-color: var(--atmosphere-color); color: var(--text-primary); }

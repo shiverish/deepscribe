@@ -1,3 +1,5 @@
+export type ActiveView = 'columns' | 'graph' | 'stats';
+
 export interface Project {
   id: string;
   title: string;
@@ -28,6 +30,8 @@ export interface Block {
   trashedAt?: number;
   trashedWithProject?: boolean;
   tags: string[];
+  lastAgentEditAt?: number;
+  lastSeenAgentEditAt?: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -40,6 +44,47 @@ export interface Attachment {
   fileSize: number;
   dataUrl?: string; // Kept for archive compatibility with imported projects.
   localPath?: string;
+  createdAt: number;
+}
+
+export interface WorkspaceStatus {
+  state: 'ready' | 'migrating' | 'error';
+  path: string;
+  workspaceId: string;
+  formatVersion: number;
+  encrypted: false;
+  counts: { projects: number; blocks: number; attachments: number };
+  previousPath?: string;
+}
+
+export interface WorkspaceSnapshot {
+  projects: Project[];
+  blocks: Block[];
+  attachments: Attachment[];
+  settings: Array<{ key: string; value: unknown }>;
+  activities: ActivityEntry[];
+  templates: BlockTemplate[];
+}
+
+export type ActivitySource = 'user' | 'agent' | 'system';
+
+export interface ActivityEntry {
+  id: string;
+  projectId?: string;
+  blockId?: string;
+  source: ActivitySource;
+  action: string;
+  summary: string;
+  createdAt: number;
+}
+
+export interface BlockTemplate {
+  id: string;
+  name: string;
+  title: string;
+  content: string;
+  plainText: string;
+  tags: string[];
   createdAt: number;
 }
 
@@ -74,11 +119,26 @@ export type ThemePreset = 'vanilla' | 'cyberpunk' | 'nord' | 'dracula' | 'sepia'
 export type FontFamily = 'sans' | 'serif' | 'mono';
 export type ContentWidth = 'narrow' | 'standard' | 'full';
 
+export interface SavedTheme {
+  id: string;
+  name: string;
+  theme: ThemeMode;
+  accentColor: string;
+  atmosphereColor: string;
+  selectedCardColor: string;
+  backgroundColor: string;
+  textColor: string;
+  createdAt: number;
+}
+
 export interface UserSettings {
   theme: ThemeMode;
   preset: ThemePreset;
   accentColor: string;
   atmosphereColor: string;
+  selectedCardColor: string;
+  agentAlertColor: string;
+  savedThemes: SavedTheme[];
   customBgColor?: string;
   customTextColor?: string;
   enableGlassmorphism: boolean;
@@ -89,6 +149,7 @@ export interface UserSettings {
   contentWidth: ContentWidth;
   columnWidth: number;
   spellcheck: boolean;
+  allowOfflineAgentAccess: boolean;
 }
 
 export const DEFAULT_USER_SETTINGS: UserSettings = {
@@ -96,6 +157,9 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
   preset: 'vanilla',
   accentColor: '#3b82f6',
   atmosphereColor: '#EBDEC3',
+  selectedCardColor: '#322C25',
+  agentAlertColor: '#38BDF8',
+  savedThemes: [],
   customBgColor: '#141312',
   customTextColor: '#faf6ee',
   enableGlassmorphism: true,
@@ -105,5 +169,6 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
   lineHeight: 1.6,
   contentWidth: 'standard',
   columnWidth: 320,
-  spellcheck: true
+  spellcheck: true,
+  allowOfflineAgentAccess: true
 };

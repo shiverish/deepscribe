@@ -1,0 +1,4 @@
+interface:
+  display_name: "DeepScribe"
+  short_description: "Gebruik je lokale DeepScribe-kennis zorgvuldig"
+  default_prompt: "Gebruik $deepscribe om mijn relevante DeepScribe-inhoud te vinden en overzichtelijk samen te vatten."
