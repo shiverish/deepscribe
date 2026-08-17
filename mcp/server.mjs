@@ -227,14 +227,15 @@ registerTool('create_block', {
     parentId: z.string().nullable().optional(),
     title: z.string().min(1),
     content: z.string().optional(),
-    tags: z.array(z.string()).max(20).optional()
+    tags: z.array(z.string()).max(20).optional(),
+    dependsOn: z.array(z.string()).max(20).optional()
   },
   annotations: write
 });
 
 registerTool('create_work_item', {
   title: 'Werkitem met context aanmaken',
-  description: 'Maak een todo- of agentwerkblok aan met een concreet doel, overdraagbare context en toetsbare acceptatiecriteria. Gebruik dit voor voorgenomen implementaties in plaats van een blok met alleen een titel.',
+  description: 'Maak een todo- of agentwerkblok aan met een concreet doel, overdraagbare context, acceptatiecriteria en eventuele taakafhankelijkheden (dependsOn). Gebruik dit voor voorgenomen implementaties in plaats van een blok met alleen een titel.',
   inputSchema: {
     projectId: z.string().min(1),
     parentId: z.string().nullable().optional(),
@@ -242,7 +243,8 @@ registerTool('create_work_item', {
     goal: z.string().min(10),
     context: z.string().min(20),
     acceptanceCriteria: z.array(z.string().min(3)).min(1).max(20),
-    tags: z.array(z.string()).max(20).optional()
+    tags: z.array(z.string()).max(20).optional(),
+    dependsOn: z.array(z.string()).max(20).optional()
   },
   annotations: write
 });
@@ -262,14 +264,24 @@ registerTool('update_project', {
 
 registerTool('update_block', {
   title: 'Blok bijwerken',
-  description: 'Werk titel, volledige inhoud en/of tags van een blok bij. content ondersteunt veilige Markdown voor koppen, alinea’s, links, code en lijsten. Gebruik append_to_block wanneer bestaande inhoud behouden moet blijven.',
+  description: 'Werk titel, volledige inhoud, tags en/of afhankelijkheden van een blok bij. content ondersteunt veilige Markdown voor koppen, alinea’s, links, code en lijsten. Gebruik append_to_block wanneer bestaande inhoud behouden moet blijven.',
   inputSchema: {
     blockId: z.string().min(1),
     title: z.string().min(1).optional(),
     content: z.string().optional(),
-    tags: z.array(z.string()).max(20).optional()
+    tags: z.array(z.string()).max(20).optional(),
+    dependsOn: z.array(z.string()).max(20).optional()
   },
   annotations: write
+});
+
+registerTool('get_block_dependencies', {
+  title: 'Blokafhankelijkheden tonen',
+  description: 'Toon de afhankelijkheids- en blokkadestatus van een blok, inclusief openstaande voorwaarden en blokken die op dit blok wachten.',
+  inputSchema: {
+    blockId: z.string().min(1)
+  },
+  annotations: readOnly
 });
 
 registerTool('append_to_block', {

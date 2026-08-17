@@ -256,5 +256,55 @@ describe('DirectWorkspaceStore offline MCP engine', () => {
       store.close();
     }
   });
+
+  it('handles task dependencies (dependsOn) and prevents cycles in direct SQLite mode', async () => {
+    const wsPath = temporaryWorkspace();
+    const store = new DirectWorkspaceStore({ workspacePath: wsPath });
+    try {
+      const project = await store.handleRequest('create_project', { title: 'Direct Dependency Project' });
+      const taskA = await store.handleRequest('create_work_item', {
+        projectId: project.id,
+        title: 'Taak A: Basis API',
+        goal: 'Bouw de API endpoint',
+        context: 'Nodig voor de frontend client',
+        acceptanceCriteria: ['API reageert']
+      });
+
+      const taskB = await store.handleRequest('create_work_item', {
+        projectId: project.id,
+        title: 'Taak B: Frontend Client',
+        goal: 'Bouw de UI componenten',
+        context: 'Wacht op de Basis API',
+        acceptanceCriteria: ['UI toont data'],
+        dependsOn: [taskA.id]
+      });
+
+      expect(taskB.dependsOn).toEqual([taskA.id]);
+
+      // Check dependencies of Task B
+      const depsB = await store.handleRequest('get_block_dependencies', { blockId: taskB.id });
+      expect(depsB.isBlocked).toBe(true);
+      expect(depsB.pendingDependencies).toHaveLength(1);
+      expect(depsB.pendingDependencies[0].id).toBe(taskA.id);
+
+      // Check circular dependency prevention
+      await expect(store.handleRequest('update_block', {
+        blockId: taskA.id,
+        dependsOn: [taskB.id]
+      })).rejects.toThrow(/Circulaire afhankelijkheid/);
+
+      // Complete Task A and verify Task B unblocked
+      await store.handleRequest('update_block', {
+        blockId: taskA.id,
+        tags: ['done']
+      });
+
+      const depsBAfter = await store.handleRequest('get_block_dependencies', { blockId: taskB.id });
+      expect(depsBAfter.isBlocked).toBe(false);
+      expect(depsBAfter.pendingDependencies).toHaveLength(0);
+    } finally {
+      store.close();
+    }
+  });
 });
 

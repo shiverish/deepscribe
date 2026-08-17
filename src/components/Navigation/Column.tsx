@@ -15,6 +15,7 @@ interface ColumnProps {
   isCurrentLevel: boolean;
   unseenAgentEditsByProject?: Record<string, number>;
   unseenAgentEditsByBlock?: Record<string, number>;
+  blockedBlockIds?: Set<string>;
   onSelectItem: (item: Project | Block) => void;
   onAddNewItem: () => void;
   onAddChildItem?: (parentId: string) => void;
@@ -38,6 +39,7 @@ export const Column: React.FC<ColumnProps> = ({
   isCurrentLevel,
   unseenAgentEditsByProject = {},
   unseenAgentEditsByBlock = {},
+  blockedBlockIds,
   onSelectItem,
   onAddNewItem,
   onAddChildItem,
@@ -196,6 +198,7 @@ export const Column: React.FC<ColumnProps> = ({
               isSelected={selectedId === item.id}
               isCurrent={isCurrentLevel && selectedId === item.id}
               isKeyboardFocused={focusedCardId === item.id}
+              isBlocked={type === 'block' && Boolean(blockedBlockIds?.has(item.id))}
               unseenAgentEditCount={type === 'project'
                 ? unseenAgentEditsByProject[item.id] ?? 0
                 : unseenAgentEditsByBlock[item.id] ?? 0}

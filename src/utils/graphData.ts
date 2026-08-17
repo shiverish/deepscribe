@@ -2,7 +2,7 @@ import type { Block, Project } from '../types';
 import { extractWikiLinks } from './references';
 
 export type GraphNodeType = 'block' | 'project' | 'tag';
-export type GraphEdgeType = 'wiki-link' | 'hierarchy' | 'tag' | 'project';
+export type GraphEdgeType = 'wiki-link' | 'hierarchy' | 'tag' | 'project' | 'dependency';
 export type GraphScope = 'project' | 'workspace';
 
 export interface GraphNode {
@@ -172,6 +172,17 @@ export function buildGraphData(
         const targetBlock = blockTitleMap.get(linkTitle.toLowerCase());
         if (targetBlock && targetBlock.id !== block.id && nodeIds.has(targetBlock.id)) {
           addEdge(block.id, targetBlock.id, 'wiki-link', 'links to');
+        }
+      }
+    }
+  }
+
+  // 5b. Dependency Edges (Prerequisite -> Dependent Block)
+  for (const block of targetBlocks) {
+    if (block.dependsOn && Array.isArray(block.dependsOn)) {
+      for (const depId of block.dependsOn) {
+        if (nodeIds.has(depId)) {
+          addEdge(depId, block.id, 'dependency', 'blocks');
         }
       }
     }

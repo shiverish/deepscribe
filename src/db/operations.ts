@@ -1,6 +1,7 @@
 import { db } from './db';
 import type { Block } from '../types';
 import { parseTag, sanitizeTags } from '../utils/tagUtils';
+import { sanitizeDependsOn } from '../utils/dependencyUtils';
 
 async function removeLocalAttachmentFiles(blockIds: string[]): Promise<void> {
   if (typeof window === 'undefined' || !window.electronAPI?.removeAttachment || blockIds.length === 0) return;
@@ -17,12 +18,14 @@ export interface BlockDraftUpdate {
   taskCount: number;
   completedTaskCount: number;
   tags: string[];
+  dependsOn?: string[];
 }
 
 export async function saveBlockDraft(blockId: string, draft: BlockDraftUpdate): Promise<void> {
   await db.blocks.update(blockId, {
     ...draft,
     tags: sanitizeTags(draft.tags),
+    dependsOn: draft.dependsOn ? sanitizeDependsOn(draft.dependsOn) : undefined,
     updatedAt: Date.now()
   });
 }

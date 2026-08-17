@@ -291,6 +291,14 @@ export const GraphView: React.FC<GraphViewProps> = ({
             : 'rgba(234, 179, 8, 0.35)';
           ctx.lineWidth = isHighlighted ? 1.8 : 1;
           ctx.setLineDash([2, 3]);
+        } else if (edge.type === 'dependency') {
+          ctx.strokeStyle = isHighlighted
+            ? '#f59e0b'
+            : isDimmed
+            ? 'rgba(245, 158, 11, 0.1)'
+            : 'rgba(245, 158, 11, 0.45)';
+          ctx.lineWidth = isHighlighted ? 2.4 : 1.4;
+          ctx.setLineDash([5, 3]);
         } else {
           // Project link
           ctx.strokeStyle = isHighlighted

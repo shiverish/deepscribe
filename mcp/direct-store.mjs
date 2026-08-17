@@ -193,8 +193,110 @@ export function sanitizeTags(tags = []) {
   return Array.from(result);
 }
 
-export function formatWorkItemContent(goal, context, acceptanceCriteria) {
-  return `## Doel\n\n${goal}\n\n## Context\n\n${context}\n\n## Acceptatiecriteria\n\n${acceptanceCriteria.map(criterion => `- ${criterion}`).join('\n')}`;
+export function isBlockCompleted(block) {
+  if (block.isTrash) return false;
+  const tags = (block.tags || []).map(t => String(t).toLowerCase().trim());
+  if (tags.some(t => t === 'done' || t === 'agent-done' || t === 'completed' || t === 'klaar' || t === 'afgerond')) {
+    return true;
+  }
+  if (block.taskCount > 0 && block.completedTaskCount >= block.taskCount) {
+    return true;
+  }
+  return false;
+}
+
+export function sanitizeDependsOn(raw) {
+  if (!Array.isArray(raw)) return [];
+  const unique = new Set();
+  for (const item of raw) {
+    if (typeof item === 'string') {
+      const trimmed = item.trim();
+      if (trimmed.length > 0) unique.add(trimmed);
+    }
+  }
+  return Array.from(unique);
+}
+
+export function detectCircularDependency(allBlocks, blockId, candidateDependencyId) {
+  if (blockId === candidateDependencyId) return true;
+  const byId = new Map(allBlocks.filter(b => !b.isTrash).map(b => [b.id, b]));
+  const visited = new Set();
+  const queue = [candidateDependencyId];
+
+  while (queue.length > 0) {
+    const currentId = queue.shift();
+    if (currentId === blockId) return true;
+    if (visited.has(currentId)) continue;
+    visited.add(currentId);
+
+    const currentBlock = byId.get(currentId);
+    if (currentBlock && Array.isArray(currentBlock.dependsOn)) {
+      for (const nextId of currentBlock.dependsOn) {
+        if (!visited.has(nextId)) queue.push(nextId);
+      }
+    }
+  }
+  return false;
+}
+
+export function getBlockDependencyStatus(block, allBlocks) {
+  const activeBlocks = allBlocks.filter(b => !b.isTrash);
+  const byId = new Map(activeBlocks.map(b => [b.id, b]));
+
+  const dependsOnIds = sanitizeDependsOn(block.dependsOn);
+  const pendingDependencies = [];
+  const completedDependencies = [];
+  const missingDependencyIds = [];
+
+  for (const depId of dependsOnIds) {
+    const targetBlock = byId.get(depId);
+    if (!targetBlock) {
+      missingDependencyIds.push(depId);
+      continue;
+    }
+    if (isBlockCompleted(targetBlock)) {
+      completedDependencies.push(targetBlock);
+    } else {
+      pendingDependencies.push(targetBlock);
+    }
+  }
+
+  const blocking = activeBlocks.filter(other => {
+    if (other.id === block.id) return false;
+    const otherDepends = sanitizeDependsOn(other.dependsOn);
+    return otherDepends.includes(block.id);
+  });
+
+  return {
+    isBlocked: pendingDependencies.length > 0,
+    pendingDependencies,
+    completedDependencies,
+    missingDependencyIds,
+    blocking
+  };
+}
+
+export function formatDependencyMarkdown(dependencies) {
+  if (!dependencies || dependencies.length === 0) return '';
+  const lines = dependencies.map(dep => {
+    const completed = isBlockCompleted(dep);
+    const check = completed ? '[x]' : '[ ]';
+    const statusText = completed ? 'Afgerond' : 'Openstaand';
+    return `- ${check} [[${dep.title}]] (\`${dep.id}\`) — *${statusText}*`;
+  });
+  return `## Afhankelijkheden\n\n${lines.join('\n')}`;
+}
+
+export function formatWorkItemContent(goal, context, acceptanceCriteria, dependencyBlocks = []) {
+  const sections = [
+    `## Doel\n\n${goal}`,
+    `## Context\n\n${context}`,
+    `## Acceptatiecriteria\n\n${acceptanceCriteria.map(criterion => `- ${criterion}`).join('\n')}`
+  ];
+  if (dependencyBlocks.length > 0) {
+    sections.push(formatDependencyMarkdown(dependencyBlocks));
+  }
+  return sections.join('\n\n');
 }
 
 export function parseDailyPlanDate(dateParam) {
@@ -532,6 +634,7 @@ export class DirectWorkspaceStore {
       title: block.title,
       plainText: block.plainText,
       tags: block.tags || [],
+      dependsOn: block.dependsOn || [],
       order: block.order ?? 0,
       childCount: block.childCount ?? 0,
       taskCount: block.taskCount ?? 0,
@@ -623,7 +726,26 @@ export class DirectWorkspaceStore {
         const attachments = this.getAllAttachments()
           .filter(a => a.blockId === block.id)
           .sort((a, b) => a.createdAt - b.createdAt);
-        return { ...block, path: breadcrumbPath, attachments: attachments.map(a => this.attachmentMetadata(a)) };
+        const dependencyStatus = getBlockDependencyStatus(block, allBlocks);
+        return {
+          ...block,
+          path: breadcrumbPath,
+          attachments: attachments.map(a => this.attachmentMetadata(a)),
+          todos: todosFromBlock(block),
+          dependencyStatus
+        };
+      }
+
+      case 'get_block_dependencies': {
+        const block = this.getBlock(requireString('blockId'));
+        if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
+        const allBlocks = this.getAllBlocks().filter(b => b.projectId === block.projectId);
+        const status = getBlockDependencyStatus(block, allBlocks);
+        return {
+          blockId: block.id,
+          blockTitle: block.title,
+          ...status
+        };
       }
 
       case 'list_attachments': {
@@ -707,6 +829,8 @@ export class DirectWorkspaceStore {
         const stats = contentStats(markdownToHtml(rawContent));
         const siblingCount = this.getAllBlocks().filter(b => b.projectId === projectId && b.parentId === parentId && !b.isTrash).length;
         const now = Date.now();
+        const rawDependsOn = sanitizeDependsOn(params.dependsOn);
+
         const block = {
           id: `block-${crypto.randomUUID()}`,
           projectId,
@@ -717,6 +841,7 @@ export class DirectWorkspaceStore {
           childCount: 0,
           attachmentCount: 0,
           tags: sanitizeTags(Array.isArray(params.tags) ? params.tags.filter(t => typeof t === 'string') : []),
+          dependsOn: rawDependsOn.length > 0 ? rawDependsOn : undefined,
           lastAgentEditAt: now,
           isTrash: false,
           createdAt: now,
@@ -746,9 +871,14 @@ export class DirectWorkspaceStore {
         if (context.length < 20) throw new Error('context moet minimaal 20 tekens bevatten.');
         if (acceptanceCriteria.length === 0) throw new Error('Minimaal één acceptanceCriterion is verplicht.');
         const suppliedTags = Array.isArray(params.tags) ? params.tags.filter(t => typeof t === 'string') : [];
+
+        const rawDependsOn = sanitizeDependsOn(params.dependsOn);
+        const dependencyBlocks = rawDependsOn.map(id => this.getBlock(id)).filter(b => Boolean(b && !b.isTrash));
+
         return await this.handleRequest('create_block', {
           ...params,
-          content: formatWorkItemContent(goal, context, acceptanceCriteria),
+          content: formatWorkItemContent(goal, context, acceptanceCriteria, dependencyBlocks),
+          dependsOn: rawDependsOn,
           tags: ['todo', 'agent-ready', ...suppliedTags]
         });
       }
@@ -778,6 +908,16 @@ export class DirectWorkspaceStore {
         if (typeof params.title === 'string' && params.title.trim()) updated.title = params.title.trim();
         if (typeof params.content === 'string') Object.assign(updated, contentStats(markdownToHtml(params.content)));
         if (Array.isArray(params.tags)) updated.tags = sanitizeTags(params.tags.filter(t => typeof t === 'string'));
+        if (Array.isArray(params.dependsOn)) {
+          const sanitized = sanitizeDependsOn(params.dependsOn);
+          const allBlocks = this.getAllBlocks().filter(b => !b.isTrash && b.projectId === block.projectId);
+          for (const depId of sanitized) {
+            if (detectCircularDependency(allBlocks, blockId, depId)) {
+              throw new Error(`Circulaire afhankelijkheid gedetecteerd: blok kan niet afhangen van ${depId}.`);
+            }
+          }
+          updated.dependsOn = sanitized;
+        }
         this.saveBlock(updated);
         this.recordBlockRevision(updated, 'agent', `Agent wijzigde “${updated.title}”`);
         this.recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'block-updated', summary: `Agent wijzigde “${updated.title}”` });
@@ -916,16 +1056,22 @@ export class DirectWorkspaceStore {
           if (includeOpenTasks) {
             const activeProjects = this.getAllProjects().filter(p => !p.isTrash && p.id !== project.id);
             const projectMap = new Map(activeProjects.map(p => [p.id, p.title]));
-            const allOtherBlocks = this.getAllBlocks().filter(b => !b.isTrash && b.projectId !== project.id);
+            const allOtherBlocks = this.getAllBlocks().filter(b => !b.isTrash);
 
             for (const b of allOtherBlocks) {
+              if (b.projectId === project.id) continue;
               const projectTitle = projectMap.get(b.projectId);
               if (!projectTitle) continue;
+              const depStatus = getBlockDependencyStatus(b, allOtherBlocks);
+              const statusLabel = depStatus.isBlocked
+                ? `[GEBLOKKEERD door: ${depStatus.pendingDependencies.map(d => d.title).join(', ')}]`
+                : '[READY]';
+
               const todos = todosFromBlock(b).filter(t => !t.completed);
               if (todos.length > 0) {
-                for (const todo of todos) openTasks.push({ projectTitle, blockTitle: b.title, text: todo.text });
+                for (const todo of todos) openTasks.push({ projectTitle, blockTitle: b.title, text: `${statusLabel} ${todo.text}` });
               } else if ((b.tags || []).includes('todo') || (b.tags || []).includes('agent-ready')) {
-                openTasks.push({ projectTitle, blockTitle: b.title, text: b.title });
+                openTasks.push({ projectTitle, blockTitle: b.title, text: `${statusLabel} ${b.title}` });
               }
             }
           }

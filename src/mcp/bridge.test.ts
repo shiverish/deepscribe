@@ -181,3 +181,93 @@ describe('DeepScribe MCP block revisions & diff history', () => {
   });
 });
 
+describe('DeepScribe MCP task dependencies (Feature A)', () => {
+  it('creates work item with dependsOn, prevents circular dependencies, and reports dependency status', async () => {
+    const project = await handleMcpBridgeRequest('create_project', { title: 'Dependency Project' }) as Project;
+
+    // 1. Create prerequisite task (Taak A)
+    const taskA = await handleMcpBridgeRequest('create_work_item', {
+      projectId: project.id,
+      title: 'Database Migratie',
+      goal: 'Migreer het datamodel naar v2 schema',
+      context: 'Nodig voor de nieuwe auth flow',
+      acceptanceCriteria: ['Schema gemigreerd', 'Tests groen']
+    }) as Block;
+
+    // 2. Create dependent task (Taak B) depending on Taak A
+    const taskB = await handleMcpBridgeRequest('create_work_item', {
+      projectId: project.id,
+      title: 'OAuth Integratie',
+      goal: 'Implementeer OAuth login met Google',
+      context: 'Vereist dat de database migratie afgerond is',
+      acceptanceCriteria: ['OAuth flow werkt'],
+      dependsOn: [taskA.id]
+    }) as Block;
+
+    expect(taskB.dependsOn).toEqual([taskA.id]);
+    expect(taskB.content).toContain('Database Migratie');
+
+    // 3. Inspect dependency status for Task B (should be blocked by Task A)
+    const statusB = await handleMcpBridgeRequest('get_block_dependencies', {
+      blockId: taskB.id
+    }) as { isBlocked: boolean; pendingDependencies: Array<{ id: string; title: string }>; blocking: Array<{ id: string }> };
+
+    expect(statusB.isBlocked).toBe(true);
+    expect(statusB.pendingDependencies.length).toBe(1);
+    expect(statusB.pendingDependencies[0].id).toBe(taskA.id);
+
+    // 4. Inspect dependency status for Task A (should block Task B)
+    const statusA = await handleMcpBridgeRequest('get_block_dependencies', {
+      blockId: taskA.id
+    }) as { isBlocked: boolean; blocking: Array<{ id: string; title: string }> };
+
+    expect(statusA.isBlocked).toBe(false);
+    expect(statusA.blocking.length).toBe(1);
+    expect(statusA.blocking[0].id).toBe(taskB.id);
+
+    // 5. Circular dependency prevention: Task A cannot depend on Task B
+    await expect(handleMcpBridgeRequest('update_block', {
+      blockId: taskA.id,
+      dependsOn: [taskB.id]
+    })).rejects.toThrow(/Circulaire afhankelijkheid/);
+
+    // 6. Completing Task A unblocks Task B
+    await handleMcpBridgeRequest('update_block', {
+      blockId: taskA.id,
+      tags: ['done']
+    });
+
+    const statusBAfter = await handleMcpBridgeRequest('get_block_dependencies', {
+      blockId: taskB.id
+    }) as { isBlocked: boolean; pendingDependencies: Array<unknown> };
+
+    expect(statusBAfter.isBlocked).toBe(false);
+    expect(statusBAfter.pendingDependencies.length).toBe(0);
+  });
+
+  it('tags blocked tasks appropriately in daily plan generation', async () => {
+    const proj = await handleMcpBridgeRequest('create_project', { title: 'Release Plan' }) as Project;
+    const prereq = await handleMcpBridgeRequest('create_block', {
+      projectId: proj.id,
+      title: 'Backend API',
+      content: 'API endpoints'
+    }) as Block;
+
+    const blockedTask = await handleMcpBridgeRequest('create_block', {
+      projectId: proj.id,
+      title: 'Frontend Dashboard',
+      content: 'Dashboard UI',
+      tags: ['todo'],
+      dependsOn: [prereq.id]
+    }) as Block;
+    expect(blockedTask.id).toBeDefined();
+
+    const plan = await handleMcpBridgeRequest('get_or_create_daily_plan', {
+      date: '2026-08-18'
+    }) as Block;
+
+    expect(plan.content).toContain('[GEBLOKKEERD door: Backend API]');
+    expect(plan.content).toContain('Frontend Dashboard');
+  });
+});
+

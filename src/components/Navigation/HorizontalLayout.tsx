@@ -17,6 +17,7 @@ interface HorizontalLayoutProps {
   focusedCardId?: string | null;
   unseenAgentEditsByProject?: Record<string, number>;
   unseenAgentEditsByBlock?: Record<string, number>;
+  blockedBlockIds?: Set<string>;
   onSelectItem: (level: number, item: Project | Block) => void;
   onAddNewItem: (level: number, parentId: string | null) => void;
   onAddChildItem?: (parentId: string) => void;
@@ -35,6 +36,7 @@ export const HorizontalLayout: React.FC<HorizontalLayoutProps> = ({
   focusedCardId,
   unseenAgentEditsByProject = {},
   unseenAgentEditsByBlock = {},
+  blockedBlockIds,
   onSelectItem,
   onAddNewItem,
   onAddChildItem,
@@ -96,6 +98,7 @@ export const HorizontalLayout: React.FC<HorizontalLayoutProps> = ({
           focusedCardId={focusedCardId}
           unseenAgentEditsByProject={unseenAgentEditsByProject}
           unseenAgentEditsByBlock={unseenAgentEditsByBlock}
+          blockedBlockIds={blockedBlockIds}
           isActiveLevel={activeLevel === col.level}
           isCurrentLevel={currentSelectionLevel === col.level}
           onSelectItem={(item) => onSelectItem(col.level, item)}

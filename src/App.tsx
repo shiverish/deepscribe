@@ -23,6 +23,7 @@ import { getDeleteFallbackTarget } from './utils/selectionUtils';
 import { handleMcpBridgeRequest } from './mcp/bridge';
 import { recordActivity } from './db/activity';
 import { recordBlockRevision } from './db/revisions';
+import { getBlockDependencyStatus } from './utils/dependencyUtils';
 import { resolveBlockReferences } from './utils/references';
 import { calculateAgentEditCounts } from './utils/agentEdits';
 import { repository } from './db/repository';
@@ -126,6 +127,16 @@ export function App() {
   const activeBlockId = selectedBlockPath.length > 0 ? selectedBlockPath[selectedBlockPath.length - 1] : null;
   const activeBlock = useMemo(() => allBlocks.find(b => b.id === activeBlockId) || null, [allBlocks, activeBlockId]);
   const agentEditCounts = useMemo(() => calculateAgentEditCounts(allBlocks), [allBlocks]);
+  const blockedBlockIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const block of allBlocks) {
+      if (block.dependsOn && block.dependsOn.length > 0) {
+        const status = getBlockDependencyStatus(block, allBlocks);
+        if (status.isBlocked) set.add(block.id);
+      }
+    }
+    return set;
+  }, [allBlocks]);
   const activeAttachments = useLiveQuery(
     () => activeBlockId ? db.attachments.where('blockId').equals(activeBlockId).sortBy('createdAt') : Promise.resolve([] as Attachment[]),
     [activeBlockId],
@@ -442,7 +453,8 @@ export function App() {
     plainText: string,
     taskCount: number,
     completedTaskCount: number,
-    tags: string[]
+    tags: string[],
+    dependsOn?: string[]
   ) => {
     setSaveStatus({ state: 'saving' });
     try {
@@ -465,7 +477,8 @@ export function App() {
           plainText,
           taskCount,
           completedTaskCount,
-          tags
+          tags,
+          dependsOn
         });
         const block = await db.blocks.get(itemId);
         if (block) {
@@ -779,6 +792,7 @@ export function App() {
             focusedCardId={focusedCardId}
             unseenAgentEditsByProject={agentEditCounts.byProject}
             unseenAgentEditsByBlock={agentEditCounts.byBlock}
+            blockedBlockIds={blockedBlockIds}
             onSelectItem={handleSelectItem}
             onAddNewItem={handleAddNewItem}
             onAddChildItem={handleAddChildItem}
@@ -829,6 +843,7 @@ export function App() {
           pathSegments={pathSegments}
           saveStatus={saveStatus}
           focusTitleSignal={focusTitleSignal}
+          allProjectBlocks={activeProjectId ? allBlocks.filter(b => b.projectId === activeProjectId) : []}
           onReturnFocusToCards={() => {
             if (document.activeElement instanceof HTMLElement) {
               document.activeElement.blur();

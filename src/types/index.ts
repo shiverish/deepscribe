@@ -30,10 +30,19 @@ export interface Block {
   trashedAt?: number;
   trashedWithProject?: boolean;
   tags: string[];
+  dependsOn?: string[];
   lastAgentEditAt?: number;
   lastSeenAgentEditAt?: number;
   createdAt: number;
   updatedAt: number;
+}
+
+export interface BlockDependencyStatus {
+  isBlocked: boolean;
+  pendingDependencies: Block[];
+  completedDependencies: Block[];
+  missingDependencyIds: string[];
+  blocking: Block[];
 }
 
 export interface Attachment {

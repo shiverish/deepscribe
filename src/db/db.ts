@@ -78,6 +78,15 @@ export class DeepScribeDatabase extends Dexie {
       templates: 'id, name, createdAt',
       revisions: 'id, blockId, projectId, source, createdAt'
     });
+    this.version(10).stores({
+      projects: 'id, title, isTrash, *tags, createdAt, updatedAt',
+      blocks: 'id, projectId, parentId, order, isTrash, *tags, *dependsOn, plainText, updatedAt',
+      attachments: 'id, blockId, fileName, createdAt',
+      settings: 'key',
+      activities: 'id, projectId, blockId, source, action, createdAt',
+      templates: 'id, name, createdAt',
+      revisions: 'id, blockId, projectId, source, createdAt'
+    });
   }
 }
 

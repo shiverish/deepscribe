@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useReducer } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useReducer, useMemo } from 'react';
 import type { Project, Block, Attachment, SaveStatus, PathSegment } from '../../types';
 import { TipTapEditor, type TipTapEditorHandle } from './TipTapEditor';
 import { TagBadge } from '../Navigation/TagBadge';
@@ -6,7 +6,8 @@ import { TagManagerModal } from '../Modals/TagManagerModal';
 import { VersionHistoryModal } from '../Modals/VersionHistoryModal';
 import { extractHashtags, mergeTags, parseTag, sanitizeTags } from '../../utils/tagUtils';
 import { initialTagComposerState, tagComposerReducer } from '../../utils/tagComposer';
-import { Check, Loader2, AlertCircle, FileText, Folder, FolderOpen, Paperclip, PanelRightClose, Edit3, Plus, Tag as TagIcon, Settings2, Trash2, Link2, ArrowUpRight, X, History } from 'lucide-react';
+import { getBlockDependencyStatus, detectCircularDependency, sanitizeDependsOn, isBlockCompleted } from '../../utils/dependencyUtils';
+import { Check, Loader2, AlertCircle, FileText, Folder, FolderOpen, Paperclip, PanelRightClose, Edit3, Plus, Tag as TagIcon, Settings2, Trash2, Link2, ArrowUpRight, X, History, Lock, CheckCircle2, Clock } from 'lucide-react';
 import './Editor.css';
 
 interface WritingPanelProps {
@@ -16,6 +17,7 @@ interface WritingPanelProps {
   pathSegments: PathSegment[];
   saveStatus: SaveStatus;
   focusTitleSignal?: number;
+  allProjectBlocks?: Block[];
   onReturnFocusToCards?: () => void;
   onSaveItem: (
     itemId: string,
@@ -25,7 +27,8 @@ interface WritingPanelProps {
     plainText: string,
     taskCount: number,
     completedTaskCount: number,
-    tags: string[]
+    tags: string[],
+    dependsOn?: string[]
   ) => Promise<void>;
   tagSuggestions?: Array<{ tag: string; count: number }>;
   onRenameProjectTag?: (from: string, to: string) => Promise<number>;
@@ -47,6 +50,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
   itemType,
   saveStatus,
   focusTitleSignal,
+  allProjectBlocks = [],
   onReturnFocusToCards,
   onSaveItem,
   tagSuggestions = [],
@@ -68,6 +72,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
   const [taskCount, setTaskCount] = useState(0);
   const [completedTaskCount, setCompletedTaskCount] = useState(0);
   const [tags, setTags] = useState<string[]>([]);
+  const [dependsOn, setDependsOn] = useState<string[]>([]);
   const [tagComposer, dispatchTagComposer] = useReducer(tagComposerReducer, initialTagComposerState);
   const [isTagManagerOpen, setIsTagManagerOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
@@ -106,19 +111,14 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
     if (!isResizing) return;
 
     const handleMouseMove = (e: MouseEvent) => {
-      const windowWidth = window.innerWidth;
-      const newWidth = windowWidth - e.clientX;
-      const maxWidth = Math.floor(windowWidth * 0.8);
-      const clampedWidth = Math.min(Math.max(newWidth, MIN_WIDTH), maxWidth);
-      setPanelWidth(clampedWidth);
+      const newWidth = window.innerWidth - e.clientX;
+      const currentWidth = Math.max(MIN_WIDTH, Math.min(newWidth, window.innerWidth * 0.8));
+      localStorage.setItem('deepscribe_panel_width', currentWidth.toString());
+      setPanelWidth(currentWidth);
     };
 
     const handleMouseUp = () => {
       setIsResizing(false);
-      setPanelWidth(currentWidth => {
-        localStorage.setItem('deepscribe_panel_width', currentWidth.toString());
-        return currentWidth;
-      });
     };
 
     window.addEventListener('mousemove', handleMouseMove);
@@ -141,6 +141,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
     taskCount: 0,
     completedTaskCount: 0,
     tags: [] as string[],
+    dependsOn: [] as string[],
     isDirty: false,
     itemType: null as 'project' | 'block' | null
   });
@@ -153,10 +154,11 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
       taskCount,
       completedTaskCount,
       tags,
+      dependsOn,
       isDirty,
       itemType
     };
-  }, [title, htmlContent, plainTextContent, taskCount, completedTaskCount, tags, isDirty, itemType]);
+  }, [title, htmlContent, plainTextContent, taskCount, completedTaskCount, tags, dependsOn, isDirty, itemType]);
 
   const flushSave = useCallback(async () => {
     const currentId = activeItemIdRef.current;
@@ -177,7 +179,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
       setTags(finalTags);
     }
 
-    const { title, htmlContent, plainTextContent, taskCount, completedTaskCount, itemType } = draftRef.current;
+    const { title, htmlContent, plainTextContent, taskCount, completedTaskCount, itemType, dependsOn: currentDependsOn } = draftRef.current;
 
     // Reset dirty flag BEFORE async save so any typing during save marks state dirty again
     setIsDirty(false);
@@ -186,7 +188,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
 
     try {
       if (itemType) {
-        await onSaveItem(currentId, itemType, title, htmlContent, plainTextContent, taskCount, completedTaskCount, finalTags);
+        await onSaveItem(currentId, itemType, title, htmlContent, plainTextContent, taskCount, completedTaskCount, finalTags, currentDependsOn);
       }
     } finally {
       isSavingRef.current = false;
@@ -220,6 +222,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
         let nextTaskCount: number;
         let nextCompletedTaskCount: number;
         let nextTags: string[];
+        let nextDependsOn: string[] = [];
 
         if (itemType === 'block') {
           const b = activeItem as Block;
@@ -228,6 +231,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
           nextTaskCount = b.taskCount || 0;
           nextCompletedTaskCount = b.completedTaskCount || 0;
           nextTags = sanitizeTags(b.tags);
+          nextDependsOn = sanitizeDependsOn(b.dependsOn);
           observedHashtagsRef.current = new Set(extractHashtags(b.content || ''));
         } else {
           const p = activeItem as Project;
@@ -236,6 +240,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
           nextTaskCount = 0;
           nextCompletedTaskCount = 0;
           nextTags = sanitizeTags(p.tags);
+          nextDependsOn = [];
           observedHashtagsRef.current = new Set();
         }
 
@@ -246,6 +251,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
           taskCount: nextTaskCount,
           completedTaskCount: nextCompletedTaskCount,
           tags: nextTags,
+          dependsOn: nextDependsOn,
           isDirty: false,
           itemType
         };
@@ -255,6 +261,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
         setTaskCount(nextTaskCount);
         setCompletedTaskCount(nextCompletedTaskCount);
         setTags(nextTags);
+        setDependsOn(nextDependsOn);
         setIsDirty(false);
         loadedUpdatedAtRef.current = activeItem.updatedAt;
         setAttachmentError(null);
@@ -263,6 +270,43 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeItem?.id, activeItem?.updatedAt, itemType, flushSave]);
+
+  const isBlock = itemType === 'block';
+
+  const dependencyStatus = useMemo(() => {
+    if (!isBlock || !activeItem) return null;
+    return getBlockDependencyStatus(activeItem as Block, allProjectBlocks);
+  }, [isBlock, activeItem, allProjectBlocks, dependsOn]);
+
+  const candidateDependencyBlocks = useMemo(() => {
+    if (!isBlock || !activeItem || !allProjectBlocks) return [];
+    const currentId = activeItem.id;
+    return allProjectBlocks.filter(other => {
+      if (other.id === currentId) return false;
+      if (dependsOn.includes(other.id)) return false;
+      if (detectCircularDependency(allProjectBlocks, currentId, other.id)) return false;
+      return true;
+    });
+  }, [isBlock, activeItem, allProjectBlocks, dependsOn]);
+
+  const handleAddDependency = (depId: string) => {
+    if (!depId || dependsOn.includes(depId)) return;
+    const next = [...dependsOn, depId];
+    setDependsOn(next);
+    draftRef.current.dependsOn = next;
+    draftRef.current.isDirty = true;
+    setIsDirty(true);
+    flushSave();
+  };
+
+  const handleRemoveDependency = (depId: string) => {
+    const next = dependsOn.filter(id => id !== depId);
+    setDependsOn(next);
+    draftRef.current.dependsOn = next;
+    draftRef.current.isDirty = true;
+    setIsDirty(true);
+    flushSave();
+  };
 
   useEffect(() => {
     if (focusTitleSignal && focusTitleSignal > 0) {
@@ -365,7 +409,6 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
     setIsDirty(true);
   };
 
-  const isBlock = itemType === 'block';
   const blockProjectId = isBlock ? (activeItem as Block | null)?.projectId : null;
 
   const formatFileSize = (bytes: number) => {
@@ -614,6 +657,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                   taskCount: restoredBlock.taskCount,
                   completedTaskCount: restoredBlock.completedTaskCount,
                   tags: restoredBlock.tags,
+                  dependsOn: restoredBlock.dependsOn || [],
                   isDirty: false,
                   itemType: 'block'
                 };
@@ -699,6 +743,149 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                 </div>
               ))}
               {attachmentError && <p role="alert" className="attachment-error">{attachmentError}</p>}
+            </section>
+          )}
+
+          {isBlock && (
+            <section className="references-panel" style={{ marginTop: '8px' }}>
+              <div className="references-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Lock size={13} color={dependencyStatus?.isBlocked ? '#F59E0B' : 'var(--text-muted)'} />
+                  <span style={{ fontWeight: 600, fontSize: '0.8rem' }}>Afhankelijkheden</span>
+                  {dependencyStatus?.isBlocked && (
+                    <span style={{
+                      fontSize: '0.68rem',
+                      padding: '1px 6px',
+                      borderRadius: '4px',
+                      background: 'rgba(245, 158, 11, 0.15)',
+                      color: '#F59E0B',
+                      border: '1px solid rgba(245, 158, 11, 0.3)',
+                      fontWeight: 500
+                    }}>
+                      Geblokkeerd
+                    </span>
+                  )}
+                </div>
+
+                {candidateDependencyBlocks.length > 0 && (
+                  <select
+                    style={{
+                      background: 'rgba(0, 0, 0, 0.25)',
+                      color: 'var(--text-secondary)',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: '4px',
+                      fontSize: '0.72rem',
+                      padding: '2px 6px',
+                      cursor: 'pointer',
+                      maxWidth: '160px'
+                    }}
+                    value=""
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        handleAddDependency(e.target.value);
+                      }
+                    }}
+                  >
+                    <option value="" disabled>+ Voorwaarde toevoegen...</option>
+                    {candidateDependencyBlocks.map((c: Block) => (
+                      <option key={c.id} value={c.id}>{c.title}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              {/* Prerequisite dependencies list */}
+              {dependsOn.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {dependsOn.map(depId => {
+                    const depBlock = allProjectBlocks.find(b => b.id === depId);
+                    const isDone = depBlock ? isBlockCompleted(depBlock) : false;
+
+                    return (
+                      <div
+                        key={depId}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          background: isDone ? 'rgba(34, 197, 94, 0.08)' : 'rgba(245, 158, 11, 0.08)',
+                          border: isDone ? '1px solid rgba(34, 197, 94, 0.2)' : '1px solid rgba(245, 158, 11, 0.25)',
+                          borderRadius: '6px',
+                          padding: '4px 8px',
+                          fontSize: '0.75rem'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden' }}>
+                          {isDone ? (
+                            <CheckCircle2 size={13} color="#4ADE80" />
+                          ) : (
+                            <Clock size={13} color="#F59E0B" />
+                          )}
+                          {depBlock ? (
+                            <button
+                              type="button"
+                              onClick={() => onOpenReferencedBlock?.(depBlock.id)}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                color: isDone ? '#4ADE80' : 'var(--text-primary)',
+                                cursor: 'pointer',
+                                padding: 0,
+                                fontWeight: 500,
+                                textAlign: 'left',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap'
+                              }}
+                              title={`Open ${depBlock.title}`}
+                            >
+                              {depBlock.title}
+                            </button>
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                              Verwijderd blok ({depId})
+                            </span>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveDependency(depId)}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: 'var(--text-muted)',
+                            cursor: 'pointer',
+                            padding: 2,
+                            borderRadius: 4
+                          }}
+                          title="Voorwaarde ontkoppelen"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="references-empty" style={{ margin: '4px 0 0 0' }}>
+                  Geen voorwaarden gekoppeld. Deze taak kan direct worden uitgevoerd.
+                </p>
+              )}
+
+              {/* Dependent blocks waiting on this block */}
+              {dependencyStatus && dependencyStatus.blocking.length > 0 && (
+                <div className="references-group" style={{ marginTop: 8 }}>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>Blokkeert {dependencyStatus.blocking.length} andere taak/taken</span>
+                  <div>
+                    {dependencyStatus.blocking.map((block: Block) => (
+                      <button key={block.id} onClick={() => onOpenReferencedBlock?.(block.id)} title={`Open ${block.title}`}>
+                        {block.title}<ArrowUpRight size={11} />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </section>
           )}
 

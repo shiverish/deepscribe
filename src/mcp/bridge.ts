@@ -1,14 +1,10 @@
 import { db } from '../db/db';
+import { recordActivity } from '../db/activity';
+import { recordBlockRevision, getBlockRevisions, getBlockRevision, restoreBlockRevision } from '../db/revisions';
+import { sanitizeDependsOn, detectCircularDependency, getBlockDependencyStatus, formatDependencyMarkdown } from '../utils/dependencyUtils';
 import type { Attachment, Block, Project } from '../types';
 import { sanitizeTags } from '../utils/tagUtils';
-import { recordActivity } from '../db/activity';
 import { rankBlocksLocally } from '../utils/semanticSearch';
-import {
-  recordBlockRevision,
-  getBlockRevisions,
-  getBlockRevision,
-  restoreBlockRevision
-} from '../db/revisions';
 
 type JsonObject = Record<string, unknown>;
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
@@ -223,6 +219,7 @@ function blockSummary(block: Block) {
     title: block.title,
     plainText: block.plainText,
     tags: block.tags,
+    dependsOn: block.dependsOn || [],
     order: block.order,
     childCount: block.childCount,
     taskCount: block.taskCount,
@@ -299,6 +296,8 @@ async function createBlock(params: JsonObject) {
   const stats = contentStats(markdownToHtml(rawContent));
   const siblingCount = await db.blocks.filter(block => block.projectId === projectId && block.parentId === parentId && !block.isTrash).count();
   const now = Date.now();
+  const dependsOn = sanitizeDependsOn(params.dependsOn);
+
   const block: Block = {
     id: `block-${crypto.randomUUID()}`,
     projectId,
@@ -309,6 +308,7 @@ async function createBlock(params: JsonObject) {
     childCount: 0,
     attachmentCount: 0,
     tags: sanitizeTags(Array.isArray(params.tags) ? params.tags.filter((tag): tag is string => typeof tag === 'string') : []),
+    dependsOn: dependsOn.length > 0 ? dependsOn : undefined,
     lastAgentEditAt: now,
     isTrash: false,
     createdAt: now,
@@ -324,8 +324,21 @@ async function createBlock(params: JsonObject) {
   return block;
 }
 
-export function formatWorkItemContent(goal: string, context: string, acceptanceCriteria: string[]): string {
-  return `## Doel\n\n${goal}\n\n## Context\n\n${context}\n\n## Acceptatiecriteria\n\n${acceptanceCriteria.map(criterion => `- ${criterion}`).join('\n')}`;
+export function formatWorkItemContent(
+  goal: string,
+  context: string,
+  acceptanceCriteria: string[],
+  dependencyBlocks: Block[] = []
+): string {
+  const sections: string[] = [
+    `## Doel\n\n${goal}`,
+    `## Context\n\n${context}`,
+    `## Acceptatiecriteria\n\n${acceptanceCriteria.map(criterion => `- ${criterion}`).join('\n')}`
+  ];
+  if (dependencyBlocks.length > 0) {
+    sections.push(formatDependencyMarkdown(dependencyBlocks, dependencyBlocks));
+  }
+  return sections.join('\n\n');
 }
 
 async function createWorkItem(params: JsonObject) {
@@ -338,9 +351,17 @@ async function createWorkItem(params: JsonObject) {
   if (context.length < 20) throw new Error('context moet minimaal 20 tekens bevatten.');
   if (acceptanceCriteria.length === 0) throw new Error('Minimaal één acceptanceCriterion is verplicht.');
   const suppliedTags = Array.isArray(params.tags) ? params.tags.filter((tag): tag is string => typeof tag === 'string') : [];
+
+  const rawDependsOn = sanitizeDependsOn(params.dependsOn);
+  let dependencyBlocks: Block[] = [];
+  if (rawDependsOn.length > 0) {
+    dependencyBlocks = await db.blocks.where('id').anyOf(rawDependsOn).filter(b => !b.isTrash).toArray();
+  }
+
   return await createBlock({
     ...params,
-    content: formatWorkItemContent(goal, context, acceptanceCriteria),
+    content: formatWorkItemContent(goal, context, acceptanceCriteria, dependencyBlocks),
+    dependsOn: rawDependsOn,
     tags: ['todo', 'agent-ready', ...suppliedTags]
   });
 }
@@ -356,6 +377,16 @@ async function updateBlock(params: JsonObject) {
   if (typeof params.title === 'string' && params.title.trim()) update.title = params.title.trim();
   if (typeof params.content === 'string') Object.assign(update, contentStats(markdownToHtml(params.content)));
   if (Array.isArray(params.tags)) update.tags = sanitizeTags(params.tags.filter((tag): tag is string => typeof tag === 'string'));
+  if (Array.isArray(params.dependsOn)) {
+    const sanitized = sanitizeDependsOn(params.dependsOn);
+    const allBlocks = await db.blocks.filter(b => !b.isTrash && b.projectId === block.projectId).toArray();
+    for (const depId of sanitized) {
+      if (detectCircularDependency(allBlocks, blockId, depId)) {
+        throw new Error(`Circulaire afhankelijkheid gedetecteerd: blok kan niet afhangen van ${depId}.`);
+      }
+    }
+    update.dependsOn = sanitized;
+  }
   await db.blocks.update(blockId, update);
   const updated = await db.blocks.get(blockId);
   if (updated) await recordBlockRevision(updated, 'agent', `Agent wijzigde “${updated.title}”`);
@@ -593,18 +624,23 @@ async function getOrCreateDailyPlan(params: JsonObject) {
     if (includeOpenTasks) {
       const activeProjects = await db.projects.filter(p => !p.isTrash && p.id !== project!.id).toArray();
       const projectMap = new Map(activeProjects.map(p => [p.id, p.title]));
-      const allBlocks = await db.blocks.filter(b => !b.isTrash && b.projectId !== project!.id).toArray();
+      const allBlocks = await db.blocks.filter(b => !b.isTrash).toArray();
 
       for (const b of allBlocks) {
         const projectTitle = projectMap.get(b.projectId);
         if (!projectTitle) continue;
+        const depStatus = getBlockDependencyStatus(b, allBlocks);
+        const statusLabel = depStatus.isBlocked
+          ? `[GEBLOKKEERD door: ${depStatus.pendingDependencies.map(d => d.title).join(', ')}]`
+          : '[READY]';
+
         const todos = todosFromBlock(b).filter(t => !t.completed);
         if (todos.length > 0) {
           for (const todo of todos) {
-            openTasks.push({ projectTitle, blockTitle: b.title, text: todo.text });
+            openTasks.push({ projectTitle, blockTitle: b.title, text: `${statusLabel} ${todo.text}` });
           }
         } else if (b.tags.includes('todo') || b.tags.includes('agent-ready')) {
-          openTasks.push({ projectTitle, blockTitle: b.title, text: b.title });
+          openTasks.push({ projectTitle, blockTitle: b.title, text: `${statusLabel} ${b.title}` });
         }
       }
     }
@@ -662,7 +698,8 @@ export async function handleMcpBridgeRequest(method: string, rawParams: unknown)
       return blocks.slice(0, clampLimit(params.limit, 100)).map(blockSummary);
     }
     case 'get_block': {
-      const block = await db.blocks.get(requiredString(params, 'blockId'));
+      const blockId = requiredString(params, 'blockId');
+      const block = await db.blocks.get(blockId);
       if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
       const allBlocks = await db.blocks.where('projectId').equals(block.projectId).toArray();
       const byId = new Map(allBlocks.map(item => [item.id, item]));
@@ -673,7 +710,26 @@ export async function handleMcpBridgeRequest(method: string, rawParams: unknown)
         current = current.parentId ? byId.get(current.parentId) : undefined;
       }
       const attachments = await db.attachments.where('blockId').equals(block.id).sortBy('createdAt');
-      return { ...block, path, attachments: attachments.map(attachmentMetadata) };
+      const depStatus = getBlockDependencyStatus(block, allBlocks);
+      return { 
+        ...block, 
+        path, 
+        attachments: attachments.map(attachmentMetadata),
+        todos: todosFromBlock(block),
+        dependencyStatus: depStatus
+      };
+    }
+    case 'get_block_dependencies': {
+      const blockId = requiredString(params, 'blockId');
+      const block = await db.blocks.get(blockId);
+      if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
+      const allBlocks = await db.blocks.filter(b => !b.isTrash && b.projectId === block.projectId).toArray();
+      const status = getBlockDependencyStatus(block, allBlocks);
+      return {
+        blockId: block.id,
+        blockTitle: block.title,
+        ...status
+      };
     }
     case 'list_attachments': {
       const blockId = optionalString(params, 'blockId');

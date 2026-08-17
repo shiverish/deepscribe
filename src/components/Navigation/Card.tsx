@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { Block, Project, DragTarget } from '../../types';
 import { TagBadge } from './TagBadge';
-import { Bot, Folder, FileText, Layers, CheckSquare, MoreVertical, Paperclip, Plus, ExternalLink, Check, ClipboardCopy } from 'lucide-react';
+import { Bot, Folder, FileText, Layers, CheckSquare, MoreVertical, Paperclip, Plus, ExternalLink, Check, ClipboardCopy, Lock } from 'lucide-react';
 import { formatAgentEditBadgeLabel, hasUnseenAgentEdits } from '../../utils/agentEdits';
 import { copyAgentReference } from '../../utils/agentReferences';
 
@@ -12,6 +12,7 @@ interface CardProps {
   isCurrent?: boolean;
   isKeyboardFocused?: boolean;
   unseenAgentEditCount?: number;
+  isBlocked?: boolean;
   onSelect: () => void;
   onContextMenu?: (e: React.MouseEvent, item: Block | Project, type: 'project' | 'block') => void;
   onAddChild?: (parentId: string) => void;
@@ -38,6 +39,7 @@ export const Card: React.FC<CardProps> = ({
   isCurrent = false,
   isKeyboardFocused,
   unseenAgentEditCount = 0,
+  isBlocked = false,
   onSelect,
   onContextMenu,
   onAddChild,
@@ -223,6 +225,20 @@ export const Card: React.FC<CardProps> = ({
       )}
 
       <div className="card-meta-row">
+        {isBlocked && (
+          <span
+            className="card-badge blocked"
+            title="Deze taak is geblokkeerd door openstaande afhankelijkheden."
+            style={{
+              background: 'rgba(245, 158, 11, 0.15)',
+              color: '#F59E0B',
+              border: '1px solid rgba(245, 158, 11, 0.3)'
+            }}
+          >
+            <Lock size={10} /> Geblokkeerd
+          </span>
+        )}
+
         {hasAgentUpdates && (
           <span className="card-badge agent-update" title={agentBadgeTitle}>
             <Bot size={11} /> {agentBadgeLabel}
