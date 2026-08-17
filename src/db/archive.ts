@@ -1,4 +1,4 @@
-import type { Attachment, Block, Project } from '../types';
+import type { Attachment, Block, BlockRevision, Project } from '../types';
 import { sanitizeTags } from '../utils/tagUtils';
 
 export const MAX_ARCHIVE_FILE_BYTES = 250 * 1024 * 1024;
@@ -14,6 +14,7 @@ export interface ProjectArchive {
   blocks: Block[];
   attachmentsMeta: AttachmentMeta[];
   normalizedTagBlocks: number;
+  revisions?: BlockRevision[];
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>

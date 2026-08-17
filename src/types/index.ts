@@ -64,9 +64,24 @@ export interface WorkspaceSnapshot {
   settings: Array<{ key: string; value: unknown }>;
   activities: ActivityEntry[];
   templates: BlockTemplate[];
+  revisions?: BlockRevision[];
 }
 
 export type ActivitySource = 'user' | 'agent' | 'system';
+export type RevisionSource = 'user' | 'agent' | 'system' | 'restore';
+
+export interface BlockRevision {
+  id: string;
+  blockId: string;
+  projectId: string;
+  title: string;
+  content: string;
+  plainText: string;
+  tags: string[];
+  source: RevisionSource;
+  summary?: string;
+  createdAt: number;
+}
 
 export interface ActivityEntry {
   id: string;

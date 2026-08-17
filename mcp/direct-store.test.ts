@@ -212,4 +212,49 @@ describe('DirectWorkspaceStore offline MCP engine', () => {
       store.close();
     }
   });
+
+  it('manages block revisions and snapshot history in direct SQLite mode', async () => {
+    const wsPath = temporaryWorkspace();
+    const store = new DirectWorkspaceStore({ workspacePath: wsPath });
+    try {
+      const project = await store.handleRequest('create_project', { title: 'Direct Revisions Project' });
+      const block = await store.handleRequest('create_block', {
+        projectId: project.id,
+        title: 'Versie 1 Titel',
+        content: 'Tekst versie 1',
+        tags: ['v1']
+      });
+
+      const initialRevs = await store.handleRequest('list_block_revisions', { blockId: block.id });
+      expect(initialRevs).toHaveLength(1);
+      expect(initialRevs[0].title).toBe('Versie 1 Titel');
+      expect(initialRevs[0].source).toBe('agent');
+
+      // Update block
+      await store.handleRequest('update_block', {
+        blockId: block.id,
+        title: 'Versie 2 Titel',
+        content: 'Tekst versie 2'
+      });
+
+      const updatedRevs = await store.handleRequest('list_block_revisions', { blockId: block.id });
+      expect(updatedRevs.length).toBeGreaterThanOrEqual(2);
+      expect(updatedRevs[0].title).toBe('Versie 2 Titel');
+
+      // Get single revision
+      const rev1 = await store.handleRequest('get_block_revision', { revisionId: initialRevs[0].id });
+      expect(rev1.title).toBe('Versie 1 Titel');
+
+      // Restore to initial revision
+      const restored = await store.handleRequest('restore_block_revision', { revisionId: initialRevs[0].id });
+      expect(restored.title).toBe('Versie 1 Titel');
+      expect(restored.content).toContain('Tekst versie 1');
+
+      const currentBlock = await store.handleRequest('get_block', { blockId: block.id });
+      expect(currentBlock.title).toBe('Versie 1 Titel');
+    } finally {
+      store.close();
+    }
+  });
 });
+

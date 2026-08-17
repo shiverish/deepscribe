@@ -138,3 +138,46 @@ describe('DeepScribe MCP attachments', () => {
     expect(read).not.toHaveProperty('localPath');
   });
 });
+
+describe('DeepScribe MCP block revisions & diff history', () => {
+  it('records revisions across agent edits and supports listing and restoring', async () => {
+    const project = await handleMcpBridgeRequest('create_project', { title: 'Revision Project' }) as Project;
+    const block = await handleMcpBridgeRequest('create_block', {
+      projectId: project.id,
+      title: 'Origineel Blok',
+      content: 'Eerste inhoud',
+      tags: ['v1']
+    }) as Block;
+
+    // Initial creation should have 1 revision
+    const revs1 = await handleMcpBridgeRequest('list_block_revisions', { blockId: block.id }) as Array<{ id: string; title: string; source: string }>;
+    expect(revs1.length).toBe(1);
+    expect(revs1[0].source).toBe('agent');
+    expect(revs1[0].title).toBe('Origineel Blok');
+
+    // Agent modifies block
+    const updated = await handleMcpBridgeRequest('update_block', {
+      blockId: block.id,
+      title: 'Aangepast Blok',
+      content: 'Gewijzigde inhoud door agent',
+      tags: ['v2']
+    }) as Block;
+    expect(updated.title).toBe('Aangepast Blok');
+
+    const revs2 = await handleMcpBridgeRequest('list_block_revisions', { blockId: block.id }) as Array<{ id: string; title: string; source: string }>;
+    expect(revs2.length).toBe(2);
+    expect(revs2[0].title).toBe('Aangepast Blok');
+
+    // Get specific revision
+    const revDetail = await handleMcpBridgeRequest('get_block_revision', { revisionId: revs1[0].id }) as { title: string; content: string };
+    expect(revDetail.title).toBe('Origineel Blok');
+
+    // Restore to v1
+    const restored = await handleMcpBridgeRequest('restore_block_revision', { revisionId: revs1[0].id }) as Block;
+    expect(restored.title).toBe('Origineel Blok');
+
+    const checkBlock = await handleMcpBridgeRequest('get_block', { blockId: block.id }) as Block;
+    expect(checkBlock.title).toBe('Origineel Blok');
+  });
+});
+

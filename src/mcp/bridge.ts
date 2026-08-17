@@ -3,6 +3,12 @@ import type { Attachment, Block, Project } from '../types';
 import { sanitizeTags } from '../utils/tagUtils';
 import { recordActivity } from '../db/activity';
 import { rankBlocksLocally } from '../utils/semanticSearch';
+import {
+  recordBlockRevision,
+  getBlockRevisions,
+  getBlockRevision,
+  restoreBlockRevision
+} from '../db/revisions';
 
 type JsonObject = Record<string, unknown>;
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
@@ -313,6 +319,7 @@ async function createBlock(params: JsonObject) {
     await db.blocks.add(block);
     if (parentId) await db.blocks.update(parentId, { childCount: await db.blocks.filter(item => item.parentId === parentId && !item.isTrash).count(), updatedAt: now });
   });
+  await recordBlockRevision(block, 'agent', 'Initiële aanmaak door agent');
   await recordActivity({ projectId, blockId: block.id, source: 'agent', action: 'block-created', summary: `Agent maakte blok “${block.title}”` });
   return block;
 }
@@ -343,6 +350,7 @@ async function updateBlock(params: JsonObject) {
   const block = await db.blocks.get(blockId);
   if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
 
+  await recordBlockRevision(block, 'user', 'Status vóór agent-wijziging');
   const now = Date.now();
   const update: Partial<Block> = { updatedAt: now, lastAgentEditAt: now };
   if (typeof params.title === 'string' && params.title.trim()) update.title = params.title.trim();
@@ -350,6 +358,7 @@ async function updateBlock(params: JsonObject) {
   if (Array.isArray(params.tags)) update.tags = sanitizeTags(params.tags.filter((tag): tag is string => typeof tag === 'string'));
   await db.blocks.update(blockId, update);
   const updated = await db.blocks.get(blockId);
+  if (updated) await recordBlockRevision(updated, 'agent', `Agent wijzigde “${updated.title}”`);
   await recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'block-updated', summary: `Agent wijzigde “${updated?.title ?? block.title}”` });
   return updated;
 }
@@ -360,6 +369,7 @@ async function appendToBlock(params: JsonObject) {
   const block = await db.blocks.get(blockId);
   if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
 
+  await recordBlockRevision(block, 'user', 'Status vóór toevoeging door agent');
   const document = htmlDocument(block.content);
   const addition = markdownToHtml(text);
   let newContent = '';
@@ -377,8 +387,10 @@ async function appendToBlock(params: JsonObject) {
   const stats = contentStats(newContent);
   const now = Date.now();
   await db.blocks.update(blockId, { ...stats, updatedAt: now, lastAgentEditAt: now });
+  const updated = await db.blocks.get(blockId);
+  if (updated) await recordBlockRevision(updated, 'agent', `Agent voegde tekst toe`);
   await recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'block-appended', summary: `Agent voegde tekst toe aan “${block.title}”` });
-  return await db.blocks.get(blockId);
+  return updated;
 }
 
 function todosFromBlock(block: Block) {
@@ -447,9 +459,12 @@ async function addTodo(params: JsonObject) {
     }
   }
 
+  await recordBlockRevision(block, 'user', 'Status vóór toevoegen van todo');
   const stats = contentStats(newContent);
   const now = Date.now();
   await db.blocks.update(blockId, { ...stats, updatedAt: now, lastAgentEditAt: now });
+  const updated = await db.blocks.get(blockId);
+  if (updated) await recordBlockRevision(updated, 'agent', `Agent voegde todo “${text}” toe`);
   await recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'todo-added', summary: `Agent voegde todo “${text}” toe aan “${block.title}”` });
   return todosFromBlock((await db.blocks.get(blockId))!);
 }
@@ -462,6 +477,7 @@ async function setTodoStatus(params: JsonObject) {
   const block = await db.blocks.get(blockId);
   if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
 
+  await recordBlockRevision(block, 'user', 'Status vóór todo statuswijziging');
   const document = htmlDocument(block.content);
   let newContent = '';
   if (document) {
@@ -489,6 +505,8 @@ async function setTodoStatus(params: JsonObject) {
   const stats = contentStats(newContent);
   const now = Date.now();
   await db.blocks.update(blockId, { ...stats, updatedAt: now, lastAgentEditAt: now });
+  const updated = await db.blocks.get(blockId);
+  if (updated) await recordBlockRevision(updated, 'agent', `Agent markeerde todo als ${params.completed ? 'afgerond' : 'open'}`);
   await recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'todo-status', summary: `Agent markeerde een todo in “${block.title}” als ${params.completed ? 'afgerond' : 'open'}` });
   return todosFromBlock((await db.blocks.get(blockId))!)[taskIndex];
 }
@@ -730,6 +748,22 @@ export async function handleMcpBridgeRequest(method: string, rawParams: unknown)
       return await setTodoStatus(params);
     case 'get_or_create_daily_plan':
       return await getOrCreateDailyPlan(params);
+    case 'list_block_revisions': {
+      const blockId = requiredString(params, 'blockId');
+      const limit = clampLimit(params.limit, 50);
+      const revisions = await getBlockRevisions(blockId);
+      return revisions.slice(0, limit);
+    }
+    case 'get_block_revision': {
+      const revisionId = requiredString(params, 'revisionId');
+      const revision = await getBlockRevision(revisionId);
+      if (!revision) throw new Error('Revisie niet gevonden.');
+      return revision;
+    }
+    case 'restore_block_revision': {
+      const revisionId = requiredString(params, 'revisionId');
+      return await restoreBlockRevision(revisionId);
+    }
     default:
       throw new Error(`Onbekende DeepScribe-methode: ${method}`);
   }

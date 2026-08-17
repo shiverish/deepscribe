@@ -91,9 +91,15 @@ class WorkspaceStore {
       CREATE TABLE IF NOT EXISTS settings (id TEXT PRIMARY KEY, json TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS activities (id TEXT PRIMARY KEY, json TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS templates (id TEXT PRIMARY KEY, json TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS revisions (
+        id TEXT PRIMARY KEY,
+        block_id TEXT NOT NULL REFERENCES blocks(id) ON DELETE CASCADE,
+        json TEXT NOT NULL
+      );
       CREATE INDEX IF NOT EXISTS blocks_project_id ON blocks(project_id);
       CREATE INDEX IF NOT EXISTS blocks_parent_id ON blocks(parent_id);
       CREATE INDEX IF NOT EXISTS attachments_block_id ON attachments(block_id);
+      CREATE INDEX IF NOT EXISTS revisions_block_id ON revisions(block_id);
     `);
   }
 
@@ -115,16 +121,18 @@ class WorkspaceStore {
     const read = table => this.database.prepare(`SELECT json FROM ${table}`).all().map(row => JSON.parse(row.json));
     return {
       projects: read('projects'), blocks: read('blocks'), attachments: read('attachments'),
-      settings: read('settings'), activities: read('activities'), templates: read('templates')
+      settings: read('settings'), activities: read('activities'), templates: read('templates'),
+      revisions: read('revisions')
     };
   }
 
   saveSnapshot(snapshot) {
     this.open();
-    const tables = ['attachments', 'activities', 'templates', 'settings', 'blocks', 'projects'];
+    const tables = ['revisions', 'attachments', 'activities', 'templates', 'settings', 'blocks', 'projects'];
     const insertProject = this.database.prepare('INSERT INTO projects (id, json) VALUES (?, ?)');
     const insertBlock = this.database.prepare('INSERT INTO blocks (id, project_id, parent_id, json) VALUES (?, ?, ?, ?)');
     const insertAttachment = this.database.prepare('INSERT INTO attachments (id, block_id, json) VALUES (?, ?, ?)');
+    const insertRevision = this.database.prepare('INSERT INTO revisions (id, block_id, json) VALUES (?, ?, ?)');
     const insertSimple = Object.fromEntries(['settings', 'activities', 'templates'].map(table => [
       table, this.database.prepare(`INSERT INTO ${table} (id, json) VALUES (?, ?)`)
     ]));
@@ -134,6 +142,7 @@ class WorkspaceStore {
       for (const item of snapshot.projects ?? []) insertProject.run(item.id, JSON.stringify(item));
       for (const item of snapshot.blocks ?? []) insertBlock.run(item.id, item.projectId, item.parentId ?? null, JSON.stringify(item));
       for (const item of snapshot.attachments ?? []) insertAttachment.run(item.id, item.blockId, JSON.stringify(item));
+      for (const item of snapshot.revisions ?? []) insertRevision.run(item.id, item.blockId, JSON.stringify(item));
       for (const table of ['settings', 'activities', 'templates']) {
         for (const item of snapshot[table] ?? []) insertSimple[table].run(item.id ?? item.key, JSON.stringify(item));
       }

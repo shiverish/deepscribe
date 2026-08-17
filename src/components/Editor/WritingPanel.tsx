@@ -3,9 +3,10 @@ import type { Project, Block, Attachment, SaveStatus, PathSegment } from '../../
 import { TipTapEditor, type TipTapEditorHandle } from './TipTapEditor';
 import { TagBadge } from '../Navigation/TagBadge';
 import { TagManagerModal } from '../Modals/TagManagerModal';
+import { VersionHistoryModal } from '../Modals/VersionHistoryModal';
 import { extractHashtags, mergeTags, parseTag, sanitizeTags } from '../../utils/tagUtils';
 import { initialTagComposerState, tagComposerReducer } from '../../utils/tagComposer';
-import { Check, Loader2, AlertCircle, FileText, Folder, FolderOpen, Paperclip, PanelRightClose, Edit3, Plus, Tag as TagIcon, Settings2, Trash2, Link2, ArrowUpRight, X } from 'lucide-react';
+import { Check, Loader2, AlertCircle, FileText, Folder, FolderOpen, Paperclip, PanelRightClose, Edit3, Plus, Tag as TagIcon, Settings2, Trash2, Link2, ArrowUpRight, X, History } from 'lucide-react';
 import './Editor.css';
 
 interface WritingPanelProps {
@@ -69,6 +70,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
   const [tags, setTags] = useState<string[]>([]);
   const [tagComposer, dispatchTagComposer] = useReducer(tagComposerReducer, initialTagComposerState);
   const [isTagManagerOpen, setIsTagManagerOpen] = useState(false);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [isAddingAttachment, setIsAddingAttachment] = useState(false);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
@@ -421,6 +423,29 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
             )}
           </div>
 
+          {isBlock && (
+            <button
+              className="icon-btn-subtle"
+              type="button"
+              onClick={() => setIsHistoryModalOpen(true)}
+              title="Versiehistorie & Diffs bekijken"
+              aria-label="Versiehistorie & Diffs bekijken"
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--text-muted)',
+                cursor: 'pointer',
+                padding: 4,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: 4
+              }}
+            >
+              <History size={16} />
+            </button>
+          )}
+
           <button
             className="icon-btn-subtle"
             onClick={() => {
@@ -567,6 +592,32 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                 const changed = await onDeleteProjectTag(tag);
                 setTags(current => current.filter(value => value !== tag));
                 return changed;
+              }}
+            />
+          )}
+          {isBlock && isHistoryModalOpen && (
+            <VersionHistoryModal
+              isOpen={isHistoryModalOpen}
+              block={activeItem as Block}
+              onClose={() => setIsHistoryModalOpen(false)}
+              onRestored={(restoredBlock) => {
+                setTitle(restoredBlock.title);
+                setHtmlContent(restoredBlock.content);
+                setPlainTextContent(restoredBlock.plainText);
+                setTaskCount(restoredBlock.taskCount);
+                setCompletedTaskCount(restoredBlock.completedTaskCount);
+                setTags(restoredBlock.tags);
+                draftRef.current = {
+                  title: restoredBlock.title,
+                  htmlContent: restoredBlock.content,
+                  plainTextContent: restoredBlock.plainText,
+                  taskCount: restoredBlock.taskCount,
+                  completedTaskCount: restoredBlock.completedTaskCount,
+                  tags: restoredBlock.tags,
+                  isDirty: false,
+                  itemType: 'block'
+                };
+                setIsDirty(false);
               }}
             />
           )}

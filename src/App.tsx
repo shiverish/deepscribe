@@ -22,6 +22,7 @@ import { sanitizeTags } from './utils/tagUtils';
 import { getDeleteFallbackTarget } from './utils/selectionUtils';
 import { handleMcpBridgeRequest } from './mcp/bridge';
 import { recordActivity } from './db/activity';
+import { recordBlockRevision } from './db/revisions';
 import { resolveBlockReferences } from './utils/references';
 import { calculateAgentEditCounts } from './utils/agentEdits';
 import { repository } from './db/repository';
@@ -454,6 +455,10 @@ export function App() {
         });
         await recordActivity({ projectId: itemId, action: 'project-updated', summary: `Project “${title}” bijgewerkt` });
       } else {
+        const currentBlock = await db.blocks.get(itemId);
+        if (currentBlock) {
+          await recordBlockRevision(currentBlock, 'user', 'Status vóór ontwikkelaar-wijziging');
+        }
         await saveBlockDraft(itemId, {
           title,
           content,
@@ -463,6 +468,9 @@ export function App() {
           tags
         });
         const block = await db.blocks.get(itemId);
+        if (block) {
+          await recordBlockRevision(block, 'user', `Ontwikkelaar bewerkte “${title}”`);
+        }
         await recordActivity({ projectId: block?.projectId, blockId: itemId, action: 'block-updated', summary: `Blok “${title}” bijgewerkt` });
       }
       setSaveStatus({ state: 'saved', lastSavedAt: Date.now() });

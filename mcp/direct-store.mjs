@@ -348,9 +348,15 @@ export class DirectWorkspaceStore {
       CREATE TABLE IF NOT EXISTS settings (id TEXT PRIMARY KEY, json TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS activities (id TEXT PRIMARY KEY, json TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS templates (id TEXT PRIMARY KEY, json TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS revisions (
+        id TEXT PRIMARY KEY,
+        block_id TEXT NOT NULL REFERENCES blocks(id) ON DELETE CASCADE,
+        json TEXT NOT NULL
+      );
       CREATE INDEX IF NOT EXISTS blocks_project_id ON blocks(project_id);
       CREATE INDEX IF NOT EXISTS blocks_parent_id ON blocks(parent_id);
       CREATE INDEX IF NOT EXISTS attachments_block_id ON attachments(block_id);
+      CREATE INDEX IF NOT EXISTS revisions_block_id ON revisions(block_id);
     `);
   }
 
@@ -408,6 +414,79 @@ export class DirectWorkspaceStore {
     this.open();
     this.database.prepare('INSERT INTO blocks (id, project_id, parent_id, json) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET project_id = excluded.project_id, parent_id = excluded.parent_id, json = excluded.json')
       .run(block.id, block.projectId, block.parentId ?? null, JSON.stringify(block));
+  }
+
+  saveRevision(revision) {
+    this.open();
+    this.database.prepare('INSERT INTO revisions (id, block_id, json) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET block_id = excluded.block_id, json = excluded.json')
+      .run(revision.id, revision.blockId, JSON.stringify(revision));
+  }
+
+  getBlockRevisions(blockId) {
+    this.open();
+    const rows = this.database.prepare('SELECT json FROM revisions WHERE block_id = ?').all(blockId);
+    return rows.map(r => JSON.parse(r.json)).sort((a, b) => b.createdAt - a.createdAt);
+  }
+
+  getBlockRevision(id) {
+    this.open();
+    const row = this.database.prepare('SELECT json FROM revisions WHERE id = ?').get(id);
+    return row ? JSON.parse(row.json) : null;
+  }
+
+  recordBlockRevision(block, source = 'agent', summary, force = false) {
+    const existing = this.getBlockRevisions(block.id);
+    const latest = existing[0];
+    if (!force && latest && latest.title === block.title && latest.content === block.content && (latest.tags || []).join(',') === (block.tags || []).join(',')) {
+      return null;
+    }
+    const revision = {
+      id: `rev-${crypto.randomUUID()}`,
+      blockId: block.id,
+      projectId: block.projectId,
+      title: block.title,
+      content: block.content,
+      plainText: block.plainText,
+      tags: sanitizeTags(block.tags || []),
+      source,
+      summary,
+      createdAt: Date.now()
+    };
+    this.saveRevision(revision);
+    return revision;
+  }
+
+  restoreBlockRevision(revisionId) {
+    const revision = this.getBlockRevision(revisionId);
+    if (!revision) throw new Error('Revisie niet gevonden.');
+    const currentBlock = this.getBlock(revision.blockId);
+    if (!currentBlock || currentBlock.isTrash) throw new Error('Het bijbehorende blok is niet beschikbaar.');
+
+    // Backup current state
+    this.recordBlockRevision(currentBlock, 'restore', `Backup vóór herstel naar versie van ${new Date(revision.createdAt).toLocaleString('nl-NL')}`, true);
+
+    const taskMatches = [...revision.content.matchAll(/<li\s+[^>]*data-type="taskItem"[^>]*>/gi)];
+    const completedMatches = [...revision.content.matchAll(/<li\s+[^>]*data-type="taskItem"[^>]*data-checked="true"[^>]*>/gi)];
+
+    const updated = {
+      ...currentBlock,
+      title: revision.title,
+      content: revision.content,
+      plainText: revision.plainText,
+      taskCount: taskMatches.length,
+      completedTaskCount: completedMatches.length,
+      tags: sanitizeTags(revision.tags || []),
+      updatedAt: Date.now()
+    };
+    this.saveBlock(updated);
+    this.recordActivity({
+      projectId: currentBlock.projectId,
+      blockId: currentBlock.id,
+      source: 'agent',
+      action: 'block-restored',
+      summary: `Blok “${revision.title}” hersteld naar revisie van ${new Date(revision.createdAt).toLocaleDateString('nl-NL')}`
+    });
+    return updated;
   }
 
   recordActivity({ projectId, blockId, source = 'agent', action, summary }) {
@@ -652,6 +731,7 @@ export class DirectWorkspaceStore {
             this.saveBlock({ ...parent, childCount, updatedAt: now });
           }
         }
+        this.recordBlockRevision(block, 'agent', 'Initiële aanmaak door agent');
         this.recordActivity({ projectId, blockId: block.id, source: 'agent', action: 'block-created', summary: `Agent maakte blok “${block.title}”` });
         return block;
       }
@@ -692,12 +772,14 @@ export class DirectWorkspaceStore {
         const blockId = requireString('blockId');
         const block = this.getBlock(blockId);
         if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
+        this.recordBlockRevision(block, 'user', 'Status vóór agent-wijziging');
         const now = Date.now();
         const updated = { ...block, updatedAt: now, lastAgentEditAt: now };
         if (typeof params.title === 'string' && params.title.trim()) updated.title = params.title.trim();
         if (typeof params.content === 'string') Object.assign(updated, contentStats(markdownToHtml(params.content)));
         if (Array.isArray(params.tags)) updated.tags = sanitizeTags(params.tags.filter(t => typeof t === 'string'));
         this.saveBlock(updated);
+        this.recordBlockRevision(updated, 'agent', `Agent wijzigde “${updated.title}”`);
         this.recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'block-updated', summary: `Agent wijzigde “${updated.title}”` });
         return updated;
       }
@@ -707,12 +789,14 @@ export class DirectWorkspaceStore {
         const text = requireString('text');
         const block = this.getBlock(blockId);
         if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
+        this.recordBlockRevision(block, 'user', 'Status vóór toevoeging door agent');
         const addition = markdownToHtml(text);
         const newContent = `${block.content || '<p></p>'}${addition}`;
         const stats = contentStats(newContent);
         const now = Date.now();
         const updated = { ...block, ...stats, updatedAt: now, lastAgentEditAt: now };
         this.saveBlock(updated);
+        this.recordBlockRevision(updated, 'agent', `Agent voegde tekst toe`);
         this.recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'block-appended', summary: `Agent voegde tekst toe aan “${block.title}”` });
         return updated;
       }
@@ -735,6 +819,7 @@ export class DirectWorkspaceStore {
         const block = this.getBlock(blockId);
         if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
 
+        this.recordBlockRevision(block, 'user', 'Status vóór toevoegen van todo');
         const itemHtml = `<li data-type="taskItem" data-checked="${completed}"><label><input type="checkbox"${completed ? ' checked' : ''}><span></span></label><div><p>${escapeHtml(text)}</p></div></li>`;
         let newContent = '';
         if (block.content && block.content.includes('</ul>')) {
@@ -747,6 +832,7 @@ export class DirectWorkspaceStore {
         const now = Date.now();
         const updated = { ...block, ...stats, updatedAt: now, lastAgentEditAt: now };
         this.saveBlock(updated);
+        this.recordBlockRevision(updated, 'agent', `Agent voegde todo “${text}” toe`);
         this.recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'todo-added', summary: `Agent voegde todo “${text}” toe aan “${block.title}”` });
         return todosFromBlock(updated);
       }
@@ -759,6 +845,7 @@ export class DirectWorkspaceStore {
         const block = this.getBlock(blockId);
         if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
 
+        this.recordBlockRevision(block, 'user', 'Status vóór todo statuswijziging');
         let currentIndex = 0;
         let replaced = false;
         const newContent = (block.content || '').replace(/(<li\s+[^>]*data-type="taskItem"[^>]*data-checked=")(true|false)("[^>]*>)/gi, (match, prefix, _state, suffix) => {
@@ -776,8 +863,27 @@ export class DirectWorkspaceStore {
         const now = Date.now();
         const updated = { ...block, ...stats, updatedAt: now, lastAgentEditAt: now };
         this.saveBlock(updated);
+        this.recordBlockRevision(updated, 'agent', `Agent markeerde todo als ${params.completed ? 'afgerond' : 'open'}`);
         this.recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'todo-status', summary: `Agent markeerde een todo in “${block.title}” als ${params.completed ? 'afgerond' : 'open'}` });
         return todosFromBlock(updated)[taskIndex];
+      }
+
+      case 'list_block_revisions': {
+        const blockId = requireString('blockId');
+        const limit = clampLimit(params.limit, 50);
+        return this.getBlockRevisions(blockId).slice(0, limit);
+      }
+
+      case 'get_block_revision': {
+        const revisionId = requireString('revisionId');
+        const revision = this.getBlockRevision(revisionId);
+        if (!revision) throw new Error('Revisie niet gevonden.');
+        return revision;
+      }
+
+      case 'restore_block_revision': {
+        const revisionId = requireString('revisionId');
+        return this.restoreBlockRevision(revisionId);
       }
 
       case 'get_or_create_daily_plan': {

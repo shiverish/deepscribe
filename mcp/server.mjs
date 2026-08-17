@@ -324,6 +324,30 @@ registerTool('get_or_create_daily_plan', {
   annotations: write
 });
 
+registerTool('list_block_revisions', {
+  title: 'Blokrevisies tonen',
+  description: 'Toon de versiehistorie en snapshots van een kennisblok, gesorteerd van nieuw naar oud.',
+  inputSchema: {
+    blockId: z.string().min(1),
+    limit: z.number().int().min(1).max(50).optional()
+  },
+  annotations: readOnly
+});
+
+registerTool('get_block_revision', {
+  title: 'Blokrevisie lezen',
+  description: 'Haal de volledige inhoud en metadata van een specifieke historische blokversie op.',
+  inputSchema: { revisionId: z.string().min(1) },
+  annotations: readOnly
+});
+
+registerTool('restore_block_revision', {
+  title: 'Blokrevisie herstellen',
+  description: 'Herstel een kennisblok naar een eerdere historische versie. Maakt automatisch een backup van de huidige staat.',
+  inputSchema: { revisionId: z.string().min(1) },
+  annotations: write
+});
+
 const transport = new StdioServerTransport();
 await server.connect(transport);
 console.error('DeepScribe MCP-server is actief via stdio.');

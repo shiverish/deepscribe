@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie';
-import type { Project, Block, Attachment, ActivityEntry, BlockTemplate } from '../types';
+import type { Project, Block, Attachment, ActivityEntry, BlockTemplate, BlockRevision } from '../types';
 import { sanitizeTags } from '../utils/tagUtils';
 
 export class DeepScribeDatabase extends Dexie {
@@ -9,6 +9,7 @@ export class DeepScribeDatabase extends Dexie {
   settings!: Table<{ key: string; value: any }, string>;
   activities!: Table<ActivityEntry, string>;
   templates!: Table<BlockTemplate, string>;
+  revisions!: Table<BlockRevision, string>;
 
   constructor() {
     super('DeepScribeDB');
@@ -67,6 +68,15 @@ export class DeepScribeDatabase extends Dexie {
       settings: 'key',
       activities: 'id, projectId, blockId, source, action, createdAt',
       templates: 'id, name, createdAt'
+    });
+    this.version(9).stores({
+      projects: 'id, title, isTrash, *tags, createdAt, updatedAt',
+      blocks: 'id, projectId, parentId, order, isTrash, *tags, plainText, updatedAt',
+      attachments: 'id, blockId, fileName, createdAt',
+      settings: 'key',
+      activities: 'id, projectId, blockId, source, action, createdAt',
+      templates: 'id, name, createdAt',
+      revisions: 'id, blockId, projectId, source, createdAt'
     });
   }
 }
