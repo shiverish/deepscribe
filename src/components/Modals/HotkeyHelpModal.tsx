@@ -112,11 +112,16 @@ export const HotkeyHelpModal: React.FC<HotkeyHelpModalProps> = ({ isOpen, onClos
             borderTop: '1px solid var(--border-subtle)',
             fontSize: '0.75rem',
             color: 'var(--text-muted)',
-            textAlign: 'center',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 6,
             background: 'rgba(10, 15, 26, 0.8)'
           }}
         >
-          Tip: Alle acties zijn ook via de muis en het contextmenu bereikbaar.
+          <span>Tip: Alle acties zijn ook via de muis en het contextmenu bereikbaar.</span>
+          <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>DeepScribe v0.1.7</span>
         </div>
       </div>
     </div>

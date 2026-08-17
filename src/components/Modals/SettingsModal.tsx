@@ -236,6 +236,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Sliders size={20} className="modal-header-icon" />
             <h2>Instellingen</h2>
+            <span style={{
+              fontSize: '0.72rem',
+              color: 'var(--text-secondary)',
+              padding: '2px 6px',
+              background: 'rgba(255, 255, 255, 0.06)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: '4px',
+              fontWeight: 500
+            }}>
+              v{updaterState?.currentVersion || '0.1.7'}
+            </span>
           </div>
           <button className="icon-button" onClick={onClose} title="Sluiten (Esc)">
             <X size={18} />
