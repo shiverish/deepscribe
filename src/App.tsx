@@ -26,7 +26,7 @@ import { recordBlockRevision } from './db/revisions';
 import { getBlockDependencyStatus } from './utils/dependencyUtils';
 import { resolveBlockReferences } from './utils/references';
 import { calculateAgentEditCounts } from './utils/agentEdits';
-import { buildBlockPrintDocument, type BlockPrintDraft } from './utils/printDocument';
+import { buildBlockPrintDocument, type BlockPrintDraft, type BlockPrintSettings } from './utils/printDocument';
 import { repository } from './db/repository';
 import './styles/theme.css';
 import './components/Navigation/Navigation.css';
@@ -172,7 +172,7 @@ export function App() {
     ? resolveBlockReferences(activeBlock, allBlocks.filter(block => block.projectId === activeBlock.projectId))
     : { outgoing: [], backlinks: [] }, [activeBlock, allBlocks]);
 
-  const handlePrintBlock = useCallback(async (blockId: string, draft: BlockPrintDraft) => {
+  const handlePrintBlock = useCallback(async (blockId: string, draft: BlockPrintDraft, settings: BlockPrintSettings) => {
     if (!window.electronAPI?.printBlockDocument) {
       throw new Error('Printen is alleen beschikbaar in de DeepScribe desktop-app.');
     }
@@ -180,8 +180,8 @@ export function App() {
     const project = block ? projects.find(item => item.id === block.projectId) : null;
     if (!block || !project) throw new Error('Het te printen blok is niet beschikbaar.');
 
-    const document = buildBlockPrintDocument({ project, rootBlockId: blockId, blocks: allBlocks, draft });
-    return window.electronAPI.printBlockDocument({ html: document.html, jobName: document.jobName });
+    const document = buildBlockPrintDocument({ project, rootBlockId: blockId, blocks: allBlocks, draft, settings });
+    return window.electronAPI.printBlockDocument({ html: document.html, jobName: document.jobName, pageSize: settings.pageSize });
   }, [allBlocks, projects]);
 
   const blockTagSuggestions = useMemo(() => {

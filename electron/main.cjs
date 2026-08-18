@@ -232,6 +232,7 @@ function registerPrintIpc() {
     }
 
     const rawJobName = typeof payload.jobName === 'string' ? payload.jobName : 'DeepScribe';
+    const pageSize = payload.pageSize === 'A5' ? 'A5' : 'A4';
     const jobName = Array.from(rawJobName, character => {
       const code = character.charCodeAt(0);
       return code < 32 || code === 127 ? ' ' : character;
@@ -265,7 +266,7 @@ function registerPrintIpc() {
             silent: false,
             printBackground: true,
             landscape: false,
-            pageSize: 'A4',
+            pageSize,
             margins: { marginType: 'default' }
           }, (success, failureReason) => {
             if (success) {

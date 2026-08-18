@@ -5,6 +5,60 @@ export interface BlockPrintDraft {
   content: string;
 }
 
+export type PrintPageSize = 'A4' | 'A5';
+export type PrintFont = 'serif' | 'sans';
+export type PrintMargin = 'compact' | 'normal' | 'wide';
+export type PrintFontSize = 10 | 11 | 12 | 13 | 14;
+export type PrintHeaderStyle = 'full' | 'compact' | 'title' | 'none';
+export type PrintHeaderAlignment = 'left' | 'center';
+
+export interface BlockPrintSettings {
+  pageSize: PrintPageSize;
+  font: PrintFont;
+  fontSize: PrintFontSize;
+  margin: PrintMargin;
+  pageBreakPerBlock: boolean;
+  headerStyle: PrintHeaderStyle;
+  headerAlignment: PrintHeaderAlignment;
+  headerDivider: boolean;
+}
+
+export const DEFAULT_BLOCK_PRINT_SETTINGS: BlockPrintSettings = {
+  pageSize: 'A4',
+  font: 'serif',
+  fontSize: 11,
+  margin: 'normal',
+  pageBreakPerBlock: true,
+  headerStyle: 'full',
+  headerAlignment: 'left',
+  headerDivider: false
+};
+
+export const BLOCK_PRINT_PRESETS = {
+  a4Document: DEFAULT_BLOCK_PRINT_SETTINGS,
+  a5Book: { ...DEFAULT_BLOCK_PRINT_SETTINGS, pageSize: 'A5', margin: 'compact' },
+  largeText: { ...DEFAULT_BLOCK_PRINT_SETTINGS, fontSize: 13, margin: 'compact' }
+} as const satisfies Record<string, BlockPrintSettings>;
+
+export function normalizeBlockPrintSettings(value: unknown): BlockPrintSettings {
+  if (!value || typeof value !== 'object') return DEFAULT_BLOCK_PRINT_SETTINGS;
+  const candidate = value as Partial<BlockPrintSettings>;
+  return {
+    pageSize: candidate.pageSize === 'A5' ? 'A5' : 'A4',
+    font: candidate.font === 'sans' ? 'sans' : 'serif',
+    fontSize: [10, 11, 12, 13, 14].includes(Number(candidate.fontSize))
+      ? Number(candidate.fontSize) as PrintFontSize
+      : DEFAULT_BLOCK_PRINT_SETTINGS.fontSize,
+    margin: candidate.margin === 'compact' || candidate.margin === 'wide' ? candidate.margin : 'normal',
+    pageBreakPerBlock: candidate.pageBreakPerBlock !== false,
+    headerStyle: candidate.headerStyle === 'compact' || candidate.headerStyle === 'title' || candidate.headerStyle === 'none'
+      ? candidate.headerStyle
+      : 'full',
+    headerAlignment: candidate.headerAlignment === 'center' ? 'center' : 'left',
+    headerDivider: candidate.headerDivider === true
+  };
+}
+
 export interface BlockPrintDocument {
   html: string;
   jobName: string;
@@ -16,7 +70,14 @@ interface BuildBlockPrintDocumentInput {
   rootBlockId: string;
   blocks: Block[];
   draft?: BlockPrintDraft;
+  settings?: BlockPrintSettings;
 }
+
+const MARGIN_MM: Record<PrintMargin, number> = { compact: 10, normal: 16, wide: 22 };
+const FONT_STACKS: Record<PrintFont, string> = {
+  serif: 'Georgia, "Times New Roman", serif',
+  sans: '"Segoe UI", Arial, sans-serif'
+};
 
 const escapeHtml = (value: string) => value
   .replaceAll('&', '&amp;')
@@ -66,16 +127,25 @@ function getBlockPath(block: Block, blocksById: Map<string, Block>): Block[] {
   return path;
 }
 
-function renderBlockSection(block: Block, project: Project, blocksById: Map<string, Block>): string {
+function renderBlockSection(block: Block, project: Project, blocksById: Map<string, Block>, settings: BlockPrintSettings): string {
   const path = getBlockPath(block, blocksById)
     .map(segment => escapeHtml(segment.title || 'Naamloos blok'))
     .join('<span class="path-separator" aria-hidden="true">/</span>');
 
+  const headerClass = `block-header ${settings.headerStyle} align-${settings.headerAlignment}${settings.headerDivider ? ' with-divider' : ''}`;
+  const metadata = settings.headerStyle === 'full' || settings.headerStyle === 'compact'
+    ? `<div class="project-name">${escapeHtml(project.title || 'Naamloos project')}</div>
+      <nav class="block-path" aria-label="Blokpad">${path}</nav>`
+    : '';
+  const header = settings.headerStyle === 'none' ? '' : `
+      <header class="${headerClass}">
+        ${metadata}
+        <h1>${escapeHtml(block.title || 'Naamloos blok')}</h1>
+      </header>`;
+
   return `
     <section class="print-block" data-block-id="${escapeHtml(block.id)}">
-      <div class="project-name">${escapeHtml(project.title || 'Naamloos project')}</div>
-      <nav class="block-path" aria-label="Blokpad">${path}</nav>
-      <h1>${escapeHtml(block.title || 'Naamloos blok')}</h1>
+      ${header}
       <div class="block-content">${block.content || '<p></p>'}</div>
     </section>`;
 }
@@ -84,8 +154,10 @@ export function buildBlockPrintDocument({
   project,
   rootBlockId,
   blocks,
-  draft
+  draft,
+  settings: requestedSettings
 }: BuildBlockPrintDocumentInput): BlockPrintDocument {
+  const settings = normalizeBlockPrintSettings(requestedSettings);
   const projectBlocks = blocks.filter(block => block.projectId === project.id && !block.isTrash);
   const originalRoot = projectBlocks.find(block => block.id === rootBlockId);
   if (!originalRoot) throw new Error('Het te printen blok is niet beschikbaar.');
@@ -106,16 +178,24 @@ export function buildBlockPrintDocument({
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(documentTitle)}</title>
   <style>
-    @page { size: A4 portrait; margin: 18mm 16mm 20mm; }
+    @page { size: ${settings.pageSize} portrait; margin: ${MARGIN_MM[settings.margin]}mm; }
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; background: #fff; color: #171717; }
-    body { font-family: "Segoe UI", Arial, sans-serif; font-size: 11pt; line-height: 1.55; }
-    .print-block:not(:first-child) { break-before: page; page-break-before: always; }
+    body { font-family: "Segoe UI", Arial, sans-serif; font-size: ${settings.fontSize}pt; line-height: 1.55; }
+    ${settings.pageBreakPerBlock ? '.print-block:not(:first-child) { break-before: page; page-break-before: always; }' : ''}
+    .block-header.align-center { text-align: center; }
+    .block-header.with-divider { margin-bottom: 5mm; padding-bottom: 4mm; border-bottom: .3mm solid #d4d4d4; }
     .project-name { color: #525252; font-size: 9pt; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
     .block-path { margin-top: 2mm; color: #737373; font-size: 9pt; overflow-wrap: anywhere; }
     .path-separator { display: inline-block; margin: 0 1.5mm; color: #a3a3a3; }
-    h1 { margin: 6mm 0 5mm; font-size: 22pt; line-height: 1.2; overflow-wrap: anywhere; }
-    .block-content { overflow-wrap: anywhere; }
+    .block-header h1 { margin: 6mm 0 5mm; font-size: 22pt; line-height: 1.2; overflow-wrap: anywhere; }
+    .block-header.with-divider h1 { margin-bottom: 0; }
+    .block-header.compact .project-name, .block-header.compact .block-path { display: inline; }
+    .block-header.compact .project-name::after { content: " · "; color: #a3a3a3; }
+    .block-header.compact .block-path { margin-top: 0; }
+    .block-header.compact h1 { margin-top: 3mm; font-size: 17pt; }
+    .block-header.title h1 { margin-top: 0; font-size: 20pt; }
+    .block-content { font-family: ${FONT_STACKS[settings.font]}; overflow-wrap: anywhere; }
     .block-content h1 { margin: 7mm 0 3mm; font-size: 19pt; }
     .block-content h2 { margin: 6mm 0 2.5mm; font-size: 16pt; }
     .block-content h3 { margin: 5mm 0 2mm; font-size: 13pt; }
@@ -139,7 +219,7 @@ export function buildBlockPrintDocument({
     pre, blockquote, table, img { break-inside: avoid; page-break-inside: avoid; }
   </style>
 </head>
-<body>${printableBlocks.map(block => renderBlockSection(block, project, blocksById)).join('')}
+<body>${printableBlocks.map(block => renderBlockSection(block, project, blocksById, settings)).join('')}
 </body>
 </html>`;
 

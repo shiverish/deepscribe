@@ -19,7 +19,7 @@ declare global {
       readAttachment: (localPath: string) => Promise<string>;
       importAttachment: (payload: { projectId: string; blockId: string; fileName: string; base64: string }) => Promise<{ localPath: string }>;
       migrateLegacyAttachment: (payload: { projectId: string; blockId: string; localPath: string }) => Promise<{ localPath: string }>;
-      printBlockDocument: (payload: { html: string; jobName: string }) => Promise<{ status: 'printed' | 'cancelled' }>;
+      printBlockDocument: (payload: { html: string; jobName: string; pageSize: 'A4' | 'A5' }) => Promise<{ status: 'printed' | 'cancelled' }>;
       workspace: {
         status: () => Promise<WorkspaceStatus>;
         load: () => Promise<WorkspaceSnapshot>;

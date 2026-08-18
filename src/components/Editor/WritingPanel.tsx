@@ -4,9 +4,11 @@ import { TipTapEditor, type TipTapEditorHandle } from './TipTapEditor';
 import { TagBadge } from '../Navigation/TagBadge';
 import { TagManagerModal } from '../Modals/TagManagerModal';
 import { VersionHistoryModal } from '../Modals/VersionHistoryModal';
+import { PrintSettingsModal } from '../Modals/PrintSettingsModal';
 import { extractHashtags, mergeTags, parseTag, sanitizeTags } from '../../utils/tagUtils';
 import { initialTagComposerState, tagComposerReducer } from '../../utils/tagComposer';
 import { getBlockDependencyStatus, detectCircularDependency, sanitizeDependsOn, isBlockCompleted } from '../../utils/dependencyUtils';
+import { DEFAULT_BLOCK_PRINT_SETTINGS, normalizeBlockPrintSettings, type BlockPrintSettings } from '../../utils/printDocument';
 import { Check, Loader2, AlertCircle, FileText, Folder, FolderOpen, Paperclip, PanelRightClose, Edit3, Plus, Tag as TagIcon, Settings2, Trash2, Link2, ArrowUpRight, X, History, Lock, CheckCircle2, Clock, Bot, ClipboardCopy, Printer } from 'lucide-react';
 import './Editor.css';
 
@@ -42,7 +44,7 @@ interface WritingPanelProps {
   references?: { outgoing: Block[]; backlinks: Block[] };
   onOpenReferencedBlock?: (blockId: string) => void;
   onUploadImage?: (file: File) => Promise<string>;
-  onPrintBlock?: (blockId: string, draft: { title: string; content: string }) => Promise<{ status: 'printed' | 'cancelled' }>;
+  onPrintBlock?: (blockId: string, draft: { title: string; content: string }, settings: BlockPrintSettings) => Promise<{ status: 'printed' | 'cancelled' }>;
   onClose: () => void;
 }
 
@@ -85,6 +87,15 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [isPrinting, setIsPrinting] = useState(false);
   const [printError, setPrintError] = useState<string | null>(null);
+  const [isPrintSettingsOpen, setIsPrintSettingsOpen] = useState(false);
+  const [printSettings, setPrintSettings] = useState<BlockPrintSettings>(() => {
+    try {
+      const stored = localStorage.getItem('deepscribe_print_settings');
+      return stored ? normalizeBlockPrintSettings(JSON.parse(stored)) : DEFAULT_BLOCK_PRINT_SETTINGS;
+    } catch {
+      return DEFAULT_BLOCK_PRINT_SETTINGS;
+    }
+  });
   const titleInputRef = useRef<HTMLInputElement>(null);
   const tipTapEditorRef = useRef<TipTapEditorHandle>(null);
   const observedHashtagsRef = useRef<Set<string>>(new Set());
@@ -507,20 +518,9 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
               className="icon-btn-subtle"
               type="button"
               disabled={isPrinting}
-              onClick={async () => {
-                if (isPrinting) return;
-                setIsPrinting(true);
+              onClick={() => {
                 setPrintError(null);
-                try {
-                  await onPrintBlock(activeItem.id, {
-                    title: draftRef.current.title,
-                    content: draftRef.current.htmlContent
-                  });
-                } catch (error) {
-                  setPrintError(error instanceof Error ? error.message : 'Printen is mislukt.');
-                } finally {
-                  setIsPrinting(false);
-                }
+                setIsPrintSettingsOpen(true);
               }}
               title="Dit blok en onderliggende blokken printen"
               aria-label="Dit blok en onderliggende blokken printen"
@@ -744,6 +744,33 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                   itemType: 'block'
                 };
                 setIsDirty(false);
+              }}
+            />
+          )}
+          {isBlock && activeItem && onPrintBlock && (
+            <PrintSettingsModal
+              isOpen={isPrintSettingsOpen}
+              isPrinting={isPrinting}
+              settings={printSettings}
+              onChange={setPrintSettings}
+              onClose={() => setIsPrintSettingsOpen(false)}
+              onPrint={async () => {
+                if (isPrinting) return;
+                setIsPrinting(true);
+                setPrintError(null);
+                try {
+                  localStorage.setItem('deepscribe_print_settings', JSON.stringify(printSettings));
+                  await onPrintBlock(activeItem.id, {
+                    title: draftRef.current.title,
+                    content: draftRef.current.htmlContent
+                  }, printSettings);
+                  setIsPrintSettingsOpen(false);
+                } catch (error) {
+                  setPrintError(error instanceof Error ? error.message : 'Printen is mislukt.');
+                  setIsPrintSettingsOpen(false);
+                } finally {
+                  setIsPrinting(false);
+                }
               }}
             />
           )}

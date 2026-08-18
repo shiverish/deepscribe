@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Block, Project } from '../types';
-import { buildBlockPrintDocument } from './printDocument';
+import { BLOCK_PRINT_PRESETS, buildBlockPrintDocument, normalizeBlockPrintSettings } from './printDocument';
 
 const now = 1_700_000_000_000;
 const project: Project = {
@@ -91,6 +91,86 @@ describe('buildBlockPrintDocument', () => {
     expect(result.html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
     expect(result.html).toContain("default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:");
     expect(result.html).toContain('@page { size: A4 portrait;');
+    expect(result.html).toContain('font-family: Georgia, "Times New Roman", serif;');
+  });
+
+  it('renders a real A5 book layout without scaling an A4 page', () => {
+    const leaf = block({ id: 'leaf', title: 'A5 hoofdstuk' });
+    const result = buildBlockPrintDocument({
+      project,
+      rootBlockId: leaf.id,
+      blocks: [leaf],
+      settings: BLOCK_PRINT_PRESETS.a5Book
+    });
+
+    expect(result.html).toContain('@page { size: A5 portrait; margin: 10mm; }');
+    expect(result.html).toContain('font-size: 11pt;');
+  });
+
+  it('supports sans-serif, larger text and a continuous parent document', () => {
+    const root = block({ id: 'root', title: 'Root', childCount: 1 });
+    const child = block({ id: 'child', title: 'Kind', parentId: 'root' });
+    const result = buildBlockPrintDocument({
+      project,
+      rootBlockId: root.id,
+      blocks: [root, child],
+      settings: {
+        pageSize: 'A4', font: 'sans', fontSize: 14, margin: 'wide', pageBreakPerBlock: false,
+        headerStyle: 'full', headerAlignment: 'left', headerDivider: false
+      }
+    });
+
+    expect(result.html).toContain('@page { size: A4 portrait; margin: 22mm; }');
+    expect(result.html).toContain('font-size: 14pt;');
+    expect(result.html).toContain('.block-content { font-family: "Segoe UI", Arial, sans-serif;');
+    expect(result.html).not.toContain('.print-block:not(:first-child)');
+  });
+
+  it('normalizes persisted print settings defensively', () => {
+    expect(normalizeBlockPrintSettings({
+      pageSize: 'A5', font: 'sans', fontSize: 13, margin: 'wide', pageBreakPerBlock: false,
+      headerStyle: 'compact', headerAlignment: 'center', headerDivider: true
+    })).toEqual({
+      pageSize: 'A5', font: 'sans', fontSize: 13, margin: 'wide', pageBreakPerBlock: false,
+      headerStyle: 'compact', headerAlignment: 'center', headerDivider: true
+    });
+
+    expect(normalizeBlockPrintSettings({ pageSize: 'Letter', fontSize: 99 }))
+      .toEqual({
+        pageSize: 'A4', font: 'serif', fontSize: 11, margin: 'normal', pageBreakPerBlock: true,
+        headerStyle: 'full', headerAlignment: 'left', headerDivider: false
+      });
+  });
+
+  it('supports compact, title-only and hidden block headers', () => {
+    const leaf = block({ id: 'leaf', title: 'Hoofdstuk 1' });
+    const compact = buildBlockPrintDocument({
+      project,
+      rootBlockId: leaf.id,
+      blocks: [leaf],
+      settings: { ...BLOCK_PRINT_PRESETS.a4Document, headerStyle: 'compact', headerAlignment: 'center', headerDivider: true }
+    });
+    expect(compact.html).toContain('class="block-header compact align-center with-divider"');
+    expect(compact.html).toContain('Project &lt;Alpha&gt;');
+
+    const titleOnly = buildBlockPrintDocument({
+      project,
+      rootBlockId: leaf.id,
+      blocks: [leaf],
+      settings: { ...BLOCK_PRINT_PRESETS.a4Document, headerStyle: 'title' }
+    });
+    expect(titleOnly.html).toContain('class="block-header title align-left"');
+    expect(titleOnly.html).not.toContain('<div class="project-name">');
+    expect(titleOnly.html).toContain('<h1>Hoofdstuk 1</h1>');
+
+    const hidden = buildBlockPrintDocument({
+      project,
+      rootBlockId: leaf.id,
+      blocks: [leaf],
+      settings: { ...BLOCK_PRINT_PRESETS.a4Document, headerStyle: 'none' }
+    });
+    expect(hidden.html).not.toContain('<header class="block-header');
+    expect(hidden.html).not.toContain('<h1>Hoofdstuk 1</h1>');
   });
 
   it('rejects a missing or unavailable root block', () => {
