@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { DirectWorkspaceStore } from './direct-store.mjs';
+import { DirectWorkspaceStore, markdownToHtml } from './direct-store.mjs';
 
 const roots: string[] = [];
 
@@ -16,6 +16,15 @@ afterEach(() => {
   for (const root of roots.splice(0)) {
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+describe('DirectWorkspaceStore Markdown formatting', () => {
+  it('preserves an intentional empty editor paragraph after two blank lines', () => {
+    expect(markdownToHtml('Beschrijving.\n\nDialoog.'))
+      .toBe('<p>Beschrijving.</p><p>Dialoog.</p>');
+    expect(markdownToHtml('Beschrijving.\n\n\nDialoog.'))
+      .toBe('<p>Beschrijving.</p><p></p><p>Dialoog.</p>');
+  });
 });
 
 describe('DirectWorkspaceStore offline MCP engine', () => {

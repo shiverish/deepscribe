@@ -52,6 +52,15 @@ describe('DeepScribe MCP work items', () => {
     expect(html).toContain('<ol><li><p>Eerste stap</p></li><li><p>Tweede stap</p></li></ol>');
   });
 
+  it('preserves intentional empty editor paragraphs without changing normal paragraph spacing', () => {
+    expect(markdownToHtml('Eerste alinea.\n\nTweede alinea.'))
+      .toBe('<p>Eerste alinea.</p><p>Tweede alinea.</p>');
+    expect(markdownToHtml('Beschrijving.\n\n\n‘Gesproken tekst.’'))
+      .toBe('<p>Beschrijving.</p><p></p><p>‘Gesproken tekst.’</p>');
+    expect(markdownToHtml('\n\nBeschrijving.\n\n\n\nDialoog.\n\n'))
+      .toBe('<p>Beschrijving.</p><p></p><p></p><p>Dialoog.</p>');
+  });
+
   it('escapes raw HTML while supporting safe inline Markdown', () => {
     const html = markdownToHtml('**Status:** <script>alert(1)</script> en [bron](https://example.com).');
     expect(html).toContain('<strong>Status:</strong>');

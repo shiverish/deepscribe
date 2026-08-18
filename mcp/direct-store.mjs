@@ -79,6 +79,7 @@ export function markdownToHtml(text) {
   const output = [];
   let paragraph = [];
   let list = null;
+  let pendingBlankLines = 0;
 
   const flushParagraph = () => {
     if (paragraph.length === 0) return;
@@ -104,9 +105,22 @@ export function markdownToHtml(text) {
     }
     list.items.push(item);
   };
+  const flushIntentionalBlankLines = () => {
+    if (output.length > 0 && pendingBlankLines > 1) {
+      output.push(...Array.from({ length: pendingBlankLines - 1 }, () => '<p></p>'));
+    }
+    pendingBlankLines = 0;
+  };
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
+    if (!line.trim()) {
+      flushParagraph();
+      flushList();
+      pendingBlankLines += 1;
+      continue;
+    }
+    flushIntentionalBlankLines();
     if (/^```/.test(line.trim())) {
       flushParagraph();
       flushList();
@@ -116,11 +130,6 @@ export function markdownToHtml(text) {
       if (index + 1 < lines.length) index += 1;
       const className = language && /^[a-z0-9_-]+$/i.test(language) ? ` class="language-${language}"` : '';
       output.push(`<pre><code${className}>${escapeHtml(code.join('\n'))}</code></pre>`);
-      continue;
-    }
-    if (!line.trim()) {
-      flushParagraph();
-      flushList();
       continue;
     }
     const heading = /^(#{1,6})\s+(.+)$/.exec(line.trim());

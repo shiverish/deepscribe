@@ -242,7 +242,7 @@ registerTool('update_project_scratchpad', {
 
 registerTool('create_block', {
   title: 'Blok aanmaken',
-  description: 'Maak een algemeen hoofd- of kindblok aan. content ondersteunt veilige Markdown voor koppen, alinea’s, links, code en lijsten; zet ieder lijstitem op een eigen regel. Gebruik create_work_item voor todo’s en ander uitvoerbaar werk, zodat context en acceptatiecriteria niet ontbreken.',
+  description: 'Maak een algemeen hoofd- of kindblok aan. content ondersteunt veilige Markdown voor koppen, alinea’s, links, code en lijsten; zet ieder lijstitem op een eigen regel. Gebruik twee lege regels om bewust één zichtbare lege alinea in de editor te behouden. Gebruik create_work_item voor todo’s en ander uitvoerbaar werk, zodat context en acceptatiecriteria niet ontbreken.',
   inputSchema: {
     projectId: z.string().min(1),
     parentId: z.string().nullable().optional(),
@@ -297,7 +297,7 @@ registerTool('update_project', {
 
 registerTool('update_block', {
   title: 'Blok bijwerken',
-  description: 'Werk titel, volledige inhoud, tags en/of afhankelijkheden van een blok bij. content ondersteunt veilige Markdown voor koppen, alinea’s, links, code en lijsten. Gebruik append_to_block wanneer bestaande inhoud behouden moet blijven.',
+  description: 'Werk titel, volledige inhoud, tags en/of afhankelijkheden van een blok bij. content ondersteunt veilige Markdown voor koppen, alinea’s, links, code en lijsten. Gebruik twee lege regels om bewust één zichtbare lege alinea in de editor te behouden. Gebruik append_to_block wanneer bestaande inhoud behouden moet blijven.',
   inputSchema: {
     blockId: z.string().min(1),
     title: z.string().min(1).optional(),
@@ -319,7 +319,7 @@ registerTool('get_block_dependencies', {
 
 registerTool('append_to_block', {
   title: 'Tekst aan blok toevoegen',
-  description: 'Voeg veilige Markdown toe zonder bestaande blokinhoud te vervangen. Gebruik blanke regels tussen secties en zet ieder lijstitem op een eigen regel.',
+  description: 'Voeg veilige Markdown toe zonder bestaande blokinhoud te vervangen. Gebruik één lege regel voor een normale alineascheiding en twee lege regels voor één zichtbare lege alinea. Zet ieder lijstitem op een eigen regel.',
   inputSchema: { blockId: z.string().min(1), text: z.string().min(1) },
   annotations: write
 });
