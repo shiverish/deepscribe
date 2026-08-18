@@ -26,6 +26,7 @@ import { recordBlockRevision } from './db/revisions';
 import { getBlockDependencyStatus } from './utils/dependencyUtils';
 import { resolveBlockReferences } from './utils/references';
 import { calculateAgentEditCounts } from './utils/agentEdits';
+import { buildBlockPrintDocument, type BlockPrintDraft } from './utils/printDocument';
 import { repository } from './db/repository';
 import './styles/theme.css';
 import './components/Navigation/Navigation.css';
@@ -170,6 +171,18 @@ export function App() {
   const blockReferences = useMemo(() => activeBlock
     ? resolveBlockReferences(activeBlock, allBlocks.filter(block => block.projectId === activeBlock.projectId))
     : { outgoing: [], backlinks: [] }, [activeBlock, allBlocks]);
+
+  const handlePrintBlock = useCallback(async (blockId: string, draft: BlockPrintDraft) => {
+    if (!window.electronAPI?.printBlockDocument) {
+      throw new Error('Printen is alleen beschikbaar in de DeepScribe desktop-app.');
+    }
+    const block = allBlocks.find(item => item.id === blockId);
+    const project = block ? projects.find(item => item.id === block.projectId) : null;
+    if (!block || !project) throw new Error('Het te printen blok is niet beschikbaar.');
+
+    const document = buildBlockPrintDocument({ project, rootBlockId: blockId, blocks: allBlocks, draft });
+    return window.electronAPI.printBlockDocument({ html: document.html, jobName: document.jobName });
+  }, [allBlocks, projects]);
 
   const blockTagSuggestions = useMemo(() => {
     if (!activeProjectId) return [];
@@ -861,6 +874,7 @@ export function App() {
           onShowAttachmentsFolder={projectId => window.electronAPI?.showAttachmentsFolder(projectId) ?? Promise.reject(new Error('De projectmap is alleen beschikbaar in de desktop-app.'))}
           references={blockReferences}
           onOpenReferencedBlock={openBlockById}
+          onPrintBlock={window.electronAPI?.printBlockDocument ? handlePrintBlock : undefined}
           onClose={() => setIsWritingPanelOpen(false)}
         />
       </div>

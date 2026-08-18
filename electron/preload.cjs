@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   readAttachment: filePath => ipcRenderer.invoke('deepscribe:attachments:read', filePath),
   importAttachment: payload => ipcRenderer.invoke('deepscribe:attachments:import', payload),
   migrateLegacyAttachment: payload => ipcRenderer.invoke('deepscribe:attachments:migrate-legacy', payload),
+  printBlockDocument: payload => ipcRenderer.invoke('deepscribe:print:block-document', payload),
   workspace: {
     status: () => ipcRenderer.invoke('deepscribe:workspace:status'),
     load: () => ipcRenderer.invoke('deepscribe:workspace:load'),

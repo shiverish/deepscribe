@@ -51,6 +51,22 @@
   background: rgba(22, 20, 18, 0.7);
 }
 
+.print-error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 18px;
+  border-bottom: 1px solid rgba(239, 68, 68, 0.28);
+  background: rgba(239, 68, 68, 0.08);
+  color: #fca5a5;
+  font-size: 0.75rem;
+}
+
+.icon-btn-subtle:disabled {
+  cursor: not-allowed !important;
+  opacity: 0.55;
+}
+
 .save-status-badge {
   display: inline-flex;
   align-items: center;

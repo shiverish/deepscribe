@@ -7,12 +7,14 @@ const path = require('path');
 const { WorkspaceStore } = require('./workspace.cjs');
 
 let mainWindow;
+let activePrintWindow;
 let bridgeServer;
 let bridgeInfoPath;
 let workspaceStore;
 let workspaceQuitReady = false;
 const pendingBridgeRequests = new Map();
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+const MAX_PRINT_DOCUMENT_BYTES = 50 * 1024 * 1024;
 
 let updateState = {
   status: 'idle',
@@ -211,6 +213,81 @@ function registerWorkspaceIpc() {
     if (result.canceled || result.filePaths.length === 0) return null;
     const moved = getWorkspaceStore().move(result.filePaths[0]);
     return moved;
+  });
+}
+
+function registerPrintIpc() {
+  ipcMain.handle('deepscribe:print:block-document', async (event, payload) => {
+    if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) {
+      throw new Error('De printopdracht kwam niet uit het actieve DeepScribe-venster.');
+    }
+    if (activePrintWindow && !activePrintWindow.isDestroyed()) {
+      throw new Error('Er is al een printopdracht actief.');
+    }
+    if (!payload || typeof payload.html !== 'string' || !payload.html.trim()) {
+      throw new Error('Het printdocument is leeg.');
+    }
+    if (Buffer.byteLength(payload.html, 'utf8') > MAX_PRINT_DOCUMENT_BYTES) {
+      throw new Error('Het printdocument is te groot om veilig te verwerken.');
+    }
+
+    const rawJobName = typeof payload.jobName === 'string' ? payload.jobName : 'DeepScribe';
+    const jobName = Array.from(rawJobName, character => {
+      const code = character.charCodeAt(0);
+      return code < 32 || code === 127 ? ' ' : character;
+    }).join('').trim().slice(0, 200) || 'DeepScribe';
+    const tempDirectory = await fs.promises.mkdtemp(path.join(app.getPath('temp'), 'deepscribe-print-'));
+    const tempFile = path.join(tempDirectory, 'document.html');
+    let printWindow;
+
+    try {
+      await fs.promises.writeFile(tempFile, payload.html, 'utf8');
+      printWindow = new BrowserWindow({
+        show: false,
+        parent: mainWindow,
+        title: jobName,
+        backgroundColor: '#ffffff',
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true,
+          sandbox: true,
+          javascript: false
+        }
+      });
+      activePrintWindow = printWindow;
+      printWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+      printWindow.webContents.on('will-navigate', navigationEvent => navigationEvent.preventDefault());
+      await printWindow.loadFile(tempFile);
+
+      return await new Promise((resolve, reject) => {
+        try {
+          printWindow.webContents.print({
+            silent: false,
+            printBackground: true,
+            landscape: false,
+            pageSize: 'A4',
+            margins: { marginType: 'default' }
+          }, (success, failureReason) => {
+            if (success) {
+              resolve({ status: 'printed' });
+              return;
+            }
+            if ((failureReason || '').toLowerCase().includes('cancel')) {
+              resolve({ status: 'cancelled' });
+              return;
+            }
+            reject(new Error(failureReason || 'De printopdracht is mislukt.'));
+          });
+        } catch (error) {
+          reject(error);
+        }
+      });
+    } finally {
+      if (activePrintWindow === printWindow) activePrintWindow = undefined;
+      if (printWindow && !printWindow.isDestroyed()) printWindow.destroy();
+      try { await fs.promises.unlink(tempFile); } catch { /* Tempbestand bestond niet of is al verwijderd. */ }
+      try { await fs.promises.rmdir(tempDirectory); } catch { /* Tijdelijke map wordt later door het OS opgeruimd. */ }
+    }
   });
 }
 
@@ -463,6 +540,7 @@ if (!gotTheLock) {
 } else {
   registerAttachmentIpc();
   registerWorkspaceIpc();
+  registerPrintIpc();
   registerUpdaterIpc();
   setupAutoUpdater();
 

@@ -7,7 +7,7 @@ import { VersionHistoryModal } from '../Modals/VersionHistoryModal';
 import { extractHashtags, mergeTags, parseTag, sanitizeTags } from '../../utils/tagUtils';
 import { initialTagComposerState, tagComposerReducer } from '../../utils/tagComposer';
 import { getBlockDependencyStatus, detectCircularDependency, sanitizeDependsOn, isBlockCompleted } from '../../utils/dependencyUtils';
-import { Check, Loader2, AlertCircle, FileText, Folder, FolderOpen, Paperclip, PanelRightClose, Edit3, Plus, Tag as TagIcon, Settings2, Trash2, Link2, ArrowUpRight, X, History, Lock, CheckCircle2, Clock, Bot, ClipboardCopy } from 'lucide-react';
+import { Check, Loader2, AlertCircle, FileText, Folder, FolderOpen, Paperclip, PanelRightClose, Edit3, Plus, Tag as TagIcon, Settings2, Trash2, Link2, ArrowUpRight, X, History, Lock, CheckCircle2, Clock, Bot, ClipboardCopy, Printer } from 'lucide-react';
 import './Editor.css';
 
 interface WritingPanelProps {
@@ -42,6 +42,7 @@ interface WritingPanelProps {
   references?: { outgoing: Block[]; backlinks: Block[] };
   onOpenReferencedBlock?: (blockId: string) => void;
   onUploadImage?: (file: File) => Promise<string>;
+  onPrintBlock?: (blockId: string, draft: { title: string; content: string }) => Promise<{ status: 'printed' | 'cancelled' }>;
   onClose: () => void;
 }
 
@@ -65,6 +66,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
   references = { outgoing: [], backlinks: [] },
   onOpenReferencedBlock,
   onUploadImage,
+  onPrintBlock,
   onClose
 }) => {
   const [title, setTitle] = useState('');
@@ -81,6 +83,8 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [isAddingAttachment, setIsAddingAttachment] = useState(false);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [isPrinting, setIsPrinting] = useState(false);
+  const [printError, setPrintError] = useState<string | null>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const tipTapEditorRef = useRef<TipTapEditorHandle>(null);
   const observedHashtagsRef = useRef<Set<string>>(new Set());
@@ -275,6 +279,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
         setIsDirty(false);
         loadedUpdatedAtRef.current = activeItem.updatedAt;
         setAttachmentError(null);
+        setPrintError(null);
         if (isNewItem) dispatchTagComposer({ type: 'close' });
       }
     } else {
@@ -497,6 +502,44 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
             )}
           </div>
 
+          {isBlock && activeItem && onPrintBlock && (
+            <button
+              className="icon-btn-subtle"
+              type="button"
+              disabled={isPrinting}
+              onClick={async () => {
+                if (isPrinting) return;
+                setIsPrinting(true);
+                setPrintError(null);
+                try {
+                  await onPrintBlock(activeItem.id, {
+                    title: draftRef.current.title,
+                    content: draftRef.current.htmlContent
+                  });
+                } catch (error) {
+                  setPrintError(error instanceof Error ? error.message : 'Printen is mislukt.');
+                } finally {
+                  setIsPrinting(false);
+                }
+              }}
+              title="Dit blok en onderliggende blokken printen"
+              aria-label="Dit blok en onderliggende blokken printen"
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--text-muted)',
+                cursor: isPrinting ? 'wait' : 'pointer',
+                padding: 4,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: 4
+              }}
+            >
+              {isPrinting ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />}
+            </button>
+          )}
+
           {isBlock && (
             <button
               className="icon-btn-subtle"
@@ -533,6 +576,13 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
           </button>
         </div>
       </div>
+
+      {printError && (
+        <div className="print-error" role="alert">
+          <AlertCircle size={13} />
+          <span>{printError}</span>
+        </div>
+      )}
 
       {!activeItem ? (
         <div style={{ flex: 1, padding: 30, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
