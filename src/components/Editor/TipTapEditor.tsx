@@ -10,6 +10,7 @@ import TableHeader from '@tiptap/extension-table-header';
 import TableCell from '@tiptap/extension-table-cell';
 import Image from '@tiptap/extension-image';
 import Link from '@tiptap/extension-link';
+import { extractTipTapTaskStats } from './tipTapTaskExtraction';
 
 import {
   Bold,
@@ -127,19 +128,7 @@ export const TipTapEditor = forwardRef<TipTapEditorHandle, TipTapEditorProps>(({
       const html = editor.getHTML();
       const plainText = editor.getText();
 
-      let taskCount = 0;
-      let completedTaskCount = 0;
-
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(html, 'text/html');
-      const taskItems = doc.querySelectorAll('li[data-type="taskItem"]');
-      taskCount = taskItems.length;
-
-      taskItems.forEach(item => {
-        if (item.getAttribute('data-checked') === 'true') {
-          completedTaskCount++;
-        }
-      });
+      const { taskCount, completedTaskCount } = extractTipTapTaskStats(editor.getJSON());
 
       onChange(html, plainText, taskCount, completedTaskCount);
     },
