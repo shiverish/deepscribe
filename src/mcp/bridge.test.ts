@@ -60,6 +60,45 @@ describe('DeepScribe MCP work items', () => {
   });
 });
 
+describe('DeepScribe MCP block relocation', () => {
+  it('moves a complete subtree and refuses unsafe or cross-project destinations', async () => {
+    const project = await handleMcpBridgeRequest('create_project', { title: 'Herorganisatie' }) as Project;
+    const sourceParent = await handleMcpBridgeRequest('create_block', { projectId: project.id, title: 'Bronmap' }) as Block;
+    const moved = await handleMcpBridgeRequest('create_block', { projectId: project.id, parentId: sourceParent.id, title: 'Verplaats mij' }) as Block;
+    const descendant = await handleMcpBridgeRequest('create_block', { projectId: project.id, parentId: moved.id, title: 'Blijft gekoppeld' }) as Block;
+    const targetParent = await handleMcpBridgeRequest('create_block', { projectId: project.id, title: 'Doelmap' }) as Block;
+    const target = await handleMcpBridgeRequest('create_block', { projectId: project.id, parentId: targetParent.id, title: 'Bestaand kind' }) as Block;
+
+    const result = await handleMcpBridgeRequest('move_block', {
+      blockId: moved.id,
+      targetBlockId: target.id,
+      position: 'above'
+    }) as Block & { path: Array<{ title: string }> };
+
+    expect(result.parentId).toBe(targetParent.id);
+    expect(result.order).toBe(0);
+    expect(result.path.map(part => part.title)).toEqual(['Doelmap', 'Verplaats mij']);
+    expect((await db.blocks.get(descendant.id))?.parentId).toBe(moved.id);
+    expect((await db.blocks.get(sourceParent.id))?.childCount).toBe(0);
+    expect((await db.blocks.get(targetParent.id))?.childCount).toBe(2);
+    expect((await db.blocks.get(target.id))?.order).toBe(1);
+
+    await expect(handleMcpBridgeRequest('move_block', {
+      blockId: moved.id,
+      targetBlockId: descendant.id,
+      position: 'inside'
+    })).rejects.toThrow(/eigen onderliggende boom/);
+
+    const otherProject = await handleMcpBridgeRequest('create_project', { title: 'Ander project' }) as Project;
+    const foreignTarget = await handleMcpBridgeRequest('create_block', { projectId: otherProject.id, title: 'Vreemd doel' }) as Block;
+    await expect(handleMcpBridgeRequest('move_block', {
+      blockId: moved.id,
+      targetBlockId: foreignTarget.id,
+      position: 'below'
+    })).rejects.toThrow(/zelfde project/);
+  });
+});
+
 describe('DeepScribe MCP daily planner', () => {
   it('formats daily plan content with focus and open tasks', () => {
     const content = formatDailyPlanContent(
@@ -399,4 +438,3 @@ describe('DeepScribe MCP Activity Stream & Live Feed (Feature E)', () => {
     expect(recent.every(a => a.createdAt >= timestampBefore)).toBe(true);
   });
 });
-

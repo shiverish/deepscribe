@@ -254,6 +254,17 @@ registerTool('create_block', {
   annotations: write
 });
 
+registerTool('move_block', {
+  title: 'Blok veilig verplaatsen',
+  description: 'Herorganiseer een blok binnen hetzelfde project ten opzichte van een ander blok. above en below plaatsen het blok naast het doel; inside maakt het onderaan kind van het doel. De volledige onderliggende boom verhuist mee. Verplaatsingen naar het blok zelf, een eigen afstammeling, een verwijderd blok of een ander project worden geweigerd.',
+  inputSchema: {
+    blockId: z.string().min(1),
+    targetBlockId: z.string().min(1),
+    position: z.enum(['above', 'below', 'inside'])
+  },
+  annotations: write
+});
+
 registerTool('create_work_item', {
   title: 'Werkitem met context aanmaken',
   description: 'Maak een todo- of agentwerkblok aan met een concreet doel, overdraagbare context, acceptatiecriteria en eventuele taakafhankelijkheden (dependsOn). Gebruik dit voor voorgenomen implementaties in plaats van een blok met alleen een titel.',

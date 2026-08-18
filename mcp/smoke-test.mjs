@@ -21,7 +21,7 @@ function parsed(result) {
 try {
   await client.connect(transport);
   const tools = await client.listTools();
-  const expectedTools = ['status', 'list_projects', 'get_block', 'list_attachments', 'read_attachment', 'search', 'create_block', 'create_work_item', 'list_todos', 'add_todo', 'set_todo_status', 'get_or_create_daily_plan'];
+  const expectedTools = ['status', 'list_projects', 'get_block', 'list_attachments', 'read_attachment', 'search', 'create_block', 'move_block', 'create_work_item', 'list_todos', 'add_todo', 'set_todo_status', 'get_or_create_daily_plan'];
   for (const name of expectedTools) {
     if (!tools.tools.some(tool => tool.name === name)) throw new Error(`MCP-tool ontbreekt: ${name}`);
   }

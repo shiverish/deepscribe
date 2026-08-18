@@ -119,7 +119,7 @@ export async function moveBlockInTree(
   const sourceBlock = await db.blocks.get(sourceBlockId);
   const targetBlock = await db.blocks.get(targetBlockId);
 
-  if (!sourceBlock || !targetBlock) return false;
+  if (!sourceBlock || !targetBlock || sourceBlock.isTrash || targetBlock.isTrash) return false;
 
   if (sourceBlock.projectId !== targetBlock.projectId) return false;
 

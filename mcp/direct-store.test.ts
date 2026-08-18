@@ -76,6 +76,39 @@ describe('DirectWorkspaceStore offline MCP engine', () => {
     }
   });
 
+  it('moves complete block trees safely and normalizes both parent branches offline', async () => {
+    const store = new DirectWorkspaceStore({ workspacePath: temporaryWorkspace() });
+    try {
+      const project = await store.handleRequest('create_project', { title: 'Boomproject' });
+      const sourceParent = await store.handleRequest('create_block', { projectId: project.id, title: 'Bronmap' });
+      const moved = await store.handleRequest('create_block', { projectId: project.id, parentId: sourceParent.id, title: 'Te verplaatsen' });
+      const descendant = await store.handleRequest('create_block', { projectId: project.id, parentId: moved.id, title: 'Onderliggend blok' });
+      const targetParent = await store.handleRequest('create_block', { projectId: project.id, title: 'Doelmap' });
+      const target = await store.handleRequest('create_block', { projectId: project.id, parentId: targetParent.id, title: 'Bestaand kind' });
+
+      const result = await store.handleRequest('move_block', {
+        blockId: moved.id,
+        targetBlockId: target.id,
+        position: 'below'
+      });
+
+      expect(result.parentId).toBe(targetParent.id);
+      expect(result.order).toBe(1);
+      expect(result.path.map((part: { title: string }) => part.title)).toEqual(['Doelmap', 'Te verplaatsen']);
+      expect((await store.handleRequest('get_block', { blockId: descendant.id })).path).toHaveLength(3);
+      expect((await store.handleRequest('get_block', { blockId: sourceParent.id })).childCount).toBe(0);
+      expect((await store.handleRequest('get_block', { blockId: targetParent.id })).childCount).toBe(2);
+
+      await expect(store.handleRequest('move_block', {
+        blockId: moved.id,
+        targetBlockId: descendant.id,
+        position: 'inside'
+      })).rejects.toThrow(/eigen onderliggende boom/);
+    } finally {
+      store.close();
+    }
+  });
+
   it('creates structured work items and manages todos offline', async () => {
     const wsPath = temporaryWorkspace();
     const store = new DirectWorkspaceStore({ workspacePath: wsPath });
@@ -385,4 +418,3 @@ describe('DirectWorkspaceStore offline MCP engine', () => {
     }
   });
 });
-

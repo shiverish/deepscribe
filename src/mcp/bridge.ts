@@ -5,6 +5,7 @@ import { sanitizeDependsOn, detectCircularDependency, getBlockDependencyStatus, 
 import type { Attachment, Block, Project, ActivityEntry, ActivitySource } from '../types';
 import { sanitizeTags } from '../utils/tagUtils';
 import { rankBlocksLocally } from '../utils/semanticSearch';
+import { isDescendantOrSelf, moveBlockInTree } from '../utils/dragAndDrop';
 
 type JsonObject = Record<string, unknown>;
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
@@ -419,6 +420,36 @@ async function createBlock(params: JsonObject) {
   await recordBlockRevision(block, 'agent', 'Initiële aanmaak door agent');
   await recordActivity({ projectId, blockId: block.id, source: 'agent', action: 'block-created', summary: `Agent maakte blok “${block.title}”` });
   return block;
+}
+
+async function moveBlock(params: JsonObject) {
+  const blockId = requiredString(params, 'blockId');
+  const targetBlockId = requiredString(params, 'targetBlockId');
+  const position = requiredString(params, 'position');
+  if (!['above', 'below', 'inside'].includes(position)) throw new Error('position moet above, below of inside zijn.');
+  if (blockId === targetBlockId) throw new Error('Een blok kan niet ten opzichte van zichzelf worden verplaatst.');
+
+  const [block, target] = await Promise.all([db.blocks.get(blockId), db.blocks.get(targetBlockId)]);
+  if (!block || block.isTrash) throw new Error('Te verplaatsen blok niet gevonden.');
+  if (!target || target.isTrash) throw new Error('Doelblok niet gevonden.');
+  if (block.projectId !== target.projectId) throw new Error('Blokken kunnen alleen binnen hetzelfde project worden verplaatst.');
+  const project = await db.projects.get(block.projectId);
+  if (!project || project.isTrash) throw new Error('Project niet gevonden.');
+  if (await isDescendantOrSelf(blockId, targetBlockId)) {
+    throw new Error('Een blok kan niet naar zijn eigen onderliggende boom worden verplaatst.');
+  }
+
+  const moved = await moveBlockInTree(blockId, targetBlockId, position as 'above' | 'below' | 'inside');
+  if (!moved) throw new Error('Het blok kon niet veilig worden verplaatst.');
+  await db.blocks.update(blockId, { lastAgentEditAt: Date.now() });
+  await recordActivity({
+    projectId: block.projectId,
+    blockId,
+    source: 'agent',
+    action: 'block-reordered',
+    summary: `Agent verplaatste blok “${block.title}” ${position} “${target.title}”`
+  });
+  return await handleMcpBridgeRequest('get_block', { blockId });
 }
 
 export function formatWorkItemContent(
@@ -871,6 +902,8 @@ export async function handleMcpBridgeRequest(method: string, rawParams: unknown)
       return await createProject(params);
     case 'create_block':
       return await createBlock(params);
+    case 'move_block':
+      return await moveBlock(params);
     case 'create_work_item':
       return await createWorkItem(params);
     case 'update_project': {

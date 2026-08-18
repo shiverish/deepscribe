@@ -962,6 +962,84 @@ export class DirectWorkspaceStore {
         return block;
       }
 
+      case 'move_block': {
+        const blockId = requireString('blockId');
+        const targetBlockId = requireString('targetBlockId');
+        const position = requireString('position');
+        if (!['above', 'below', 'inside'].includes(position)) throw new Error('position moet above, below of inside zijn.');
+        if (blockId === targetBlockId) throw new Error('Een blok kan niet ten opzichte van zichzelf worden verplaatst.');
+
+        const block = this.getBlock(blockId);
+        const target = this.getBlock(targetBlockId);
+        if (!block || block.isTrash) throw new Error('Te verplaatsen blok niet gevonden.');
+        if (!target || target.isTrash) throw new Error('Doelblok niet gevonden.');
+        if (block.projectId !== target.projectId) throw new Error('Blokken kunnen alleen binnen hetzelfde project worden verplaatst.');
+        const project = this.getProject(block.projectId);
+        if (!project || project.isTrash) throw new Error('Project niet gevonden.');
+
+        const allProjectBlocks = this.getAllBlocks().filter(candidate => candidate.projectId === block.projectId);
+        const byId = new Map(allProjectBlocks.map(candidate => [candidate.id, candidate]));
+        const visited = new Set();
+        let ancestor = target;
+        while (ancestor) {
+          if (ancestor.id === blockId) throw new Error('Een blok kan niet naar zijn eigen onderliggende boom worden verplaatst.');
+          if (visited.has(ancestor.id)) throw new Error('De bestaande doelstructuur bevat een cyclus en kan niet veilig worden gewijzigd.');
+          visited.add(ancestor.id);
+          ancestor = ancestor.parentId ? byId.get(ancestor.parentId) : undefined;
+        }
+
+        const oldParentId = block.parentId ?? null;
+        const newParentId = position === 'inside' ? target.id : (target.parentId ?? null);
+        const now = Date.now();
+        const destinationSiblings = allProjectBlocks
+          .filter(candidate => !candidate.isTrash && candidate.parentId === newParentId && candidate.id !== blockId)
+          .sort((left, right) => (left.order ?? 0) - (right.order ?? 0));
+        const targetIndex = position === 'inside' ? destinationSiblings.length : destinationSiblings.findIndex(candidate => candidate.id === targetBlockId);
+        if (targetIndex < 0) throw new Error('Doelpositie kon niet veilig worden bepaald.');
+        const insertIndex = position === 'below' ? targetIndex + 1 : targetIndex;
+        destinationSiblings.splice(insertIndex, 0, block);
+
+        this.open();
+        this.database.exec('BEGIN IMMEDIATE');
+        try {
+          for (const [order, sibling] of destinationSiblings.entries()) {
+            this.saveBlock({
+              ...sibling,
+              parentId: newParentId,
+              order,
+              updatedAt: now,
+              ...(sibling.id === blockId ? { lastAgentEditAt: now } : {})
+            });
+          }
+          if (oldParentId !== newParentId) {
+            const oldSiblings = allProjectBlocks
+              .filter(candidate => !candidate.isTrash && candidate.parentId === oldParentId && candidate.id !== blockId)
+              .sort((left, right) => (left.order ?? 0) - (right.order ?? 0));
+            for (const [order, sibling] of oldSiblings.entries()) this.saveBlock({ ...sibling, order, updatedAt: now });
+          }
+          for (const parentId of new Set([oldParentId, newParentId])) {
+            if (!parentId) continue;
+            const parent = this.getBlock(parentId);
+            if (!parent) throw new Error('Bovenliggend blok niet gevonden tijdens verplaatsing.');
+            const childCount = this.getAllBlocks().filter(candidate => !candidate.isTrash && candidate.parentId === parentId).length;
+            this.saveBlock({ ...parent, childCount, updatedAt: now });
+          }
+          this.database.exec('COMMIT');
+        } catch (error) {
+          this.database.exec('ROLLBACK');
+          throw error;
+        }
+
+        this.recordActivity({
+          projectId: block.projectId,
+          blockId,
+          source: 'agent',
+          action: 'block-reordered',
+          summary: `Agent verplaatste blok “${block.title}” ${position} “${target.title}”`
+        });
+        return await this.handleRequest('get_block', { blockId });
+      }
+
       case 'create_work_item': {
         const goal = requireString('goal');
         const context = requireString('context');
