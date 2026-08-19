@@ -363,7 +363,12 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
       setTaskErrors([`Overgang van ${TASK_STATUS_LABELS[current.status]} naar ${TASK_STATUS_LABELS[status]} is niet toegestaan.`]);
       return;
     }
-    const next = { ...current, status };
+    const next: TaskMetadata = {
+      ...current,
+      status,
+      claim: undefined,
+      ...(status === 'ready' ? { readyAt: Date.now() } : {})
+    };
     if (status === 'ready') {
       const errors = validateTaskReady(draftRef.current.title, draftRef.current.htmlContent, next);
       if (errors.length > 0) {
@@ -657,21 +662,34 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
               <div className="task-inspector-heading">
                 <span><CheckCircle2 size={14} /> Taak · {TASK_STATUS_LABELS[taskMetadata.status]}</span>
                 <div className="task-status-actions">
-                  {taskMetadata.status !== 'ready' && <button type="button" onClick={() => handleTaskStatus('ready')}>Klaarzetten</button>}
-                  {taskMetadata.status !== 'draft' && <button type="button" onClick={() => handleTaskStatus('draft')}>Terug naar concept</button>}
-                  {taskMetadata.status !== 'done' && <button type="button" onClick={() => handleTaskStatus('done')}>Afronden</button>}
+                  {taskMetadata.claim ? (
+                    <button type="button" onClick={() => handleTaskStatus('ready')}>Claim vrijgeven</button>
+                  ) : (
+                    <>
+                      {taskMetadata.status !== 'ready' && <button type="button" onClick={() => handleTaskStatus('ready')}>Klaarzetten</button>}
+                      {taskMetadata.status !== 'draft' && <button type="button" onClick={() => handleTaskStatus('draft')}>Terug naar concept</button>}
+                      {taskMetadata.status !== 'done' && <button type="button" onClick={() => handleTaskStatus('done')}>Afronden</button>}
+                    </>
+                  )}
                 </div>
               </div>
+              {taskMetadata.claim && (
+                <div className="task-claim-details">
+                  <strong>{taskMetadata.claim.ownerId}</strong>
+                  <span>{TASK_AGENT_LABELS[taskMetadata.claim.agentTarget]} · poging {taskMetadata.claim.attempt}</span>
+                  <span>Lease tot {new Date(taskMetadata.claim.expiresAt).toLocaleString('nl-NL')}</span>
+                </div>
+              )}
               <div className="task-metadata-grid">
                 <label>
                   <span>Agent</span>
-                  <select value={taskMetadata.agentTarget} onChange={event => updateTaskMetadata({ ...taskMetadata, agentTarget: event.target.value as TaskMetadata['agentTarget'], customAgentName: event.target.value === 'custom' ? taskMetadata.customAgentName : undefined })}>
+                  <select disabled={Boolean(taskMetadata.claim)} value={taskMetadata.agentTarget} onChange={event => updateTaskMetadata({ ...taskMetadata, agentTarget: event.target.value as TaskMetadata['agentTarget'], customAgentName: event.target.value === 'custom' ? taskMetadata.customAgentName : undefined })}>
                     {TASK_AGENT_TARGETS.map(target => <option key={target} value={target}>{TASK_AGENT_LABELS[target]}</option>)}
                   </select>
                 </label>
                 <label>
                   <span>Afronding</span>
-                  <select value={taskMetadata.completionPolicy} onChange={event => updateTaskMetadata({ ...taskMetadata, completionPolicy: event.target.value as TaskMetadata['completionPolicy'] })}>
+                  <select disabled={Boolean(taskMetadata.claim)} value={taskMetadata.completionPolicy} onChange={event => updateTaskMetadata({ ...taskMetadata, completionPolicy: event.target.value as TaskMetadata['completionPolicy'] })}>
                     <option value="review-required">Review verplicht</option>
                     <option value="auto-complete">Automatisch afronden</option>
                   </select>

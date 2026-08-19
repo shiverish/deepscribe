@@ -43,11 +43,14 @@ function parseTaskMetadata(value: unknown, field: string): TaskMetadata {
   }
   const customAgentName = typeof value.customAgentName === 'string' ? value.customAgentName.trim() : '';
   if (value.agentTarget === 'custom' && !customAgentName) throw new Error(`Ongeldige taakmetadata: ${field}.customAgentName.`);
+  const status = value.status === 'claimed' ? 'ready' : value.status as TaskMetadata['status'];
   return {
-    status: value.status as TaskMetadata['status'],
+    status,
     agentTarget: value.agentTarget as TaskMetadata['agentTarget'],
     completionPolicy: value.completionPolicy as TaskMetadata['completionPolicy'],
-    ...(value.agentTarget === 'custom' ? { customAgentName } : {})
+    ...(value.agentTarget === 'custom' ? { customAgentName } : {}),
+    ...(typeof value.readyAt === 'number' && Number.isFinite(value.readyAt) ? { readyAt: value.readyAt } : {}),
+    ...(typeof value.claimAttempt === 'number' && Number.isFinite(value.claimAttempt) ? { claimAttempt: Math.max(0, Math.floor(value.claimAttempt)) } : {})
   };
 }
 

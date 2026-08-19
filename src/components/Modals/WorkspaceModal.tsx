@@ -68,7 +68,16 @@ export const WorkspaceModal: React.FC<WorkspaceModalProps> = ({
   const updateStatus = async (block: Block, status: AgentStatus | null) => {
     if (block.kind === 'task' && block.task) {
       const taskStatus = status ? status.replace('agent-', '') as TaskStatus : 'draft';
-      const nextTask = { ...block.task, status: taskStatus };
+      if (taskStatus === 'claimed' && !block.task.claim) {
+        setError('Een taak kan alleen via Auto Task Pickup worden geclaimd.');
+        return;
+      }
+      const nextTask = {
+        ...block.task,
+        status: taskStatus,
+        claim: taskStatus === 'claimed' ? block.task.claim : undefined,
+        ...(taskStatus === 'ready' ? { readyAt: Date.now() } : {})
+      };
       if (taskStatus === 'ready') {
         const validationErrors = validateTaskReady(block.title, block.content, nextTask);
         if (validationErrors.length > 0) {
@@ -76,8 +85,8 @@ export const WorkspaceModal: React.FC<WorkspaceModalProps> = ({
           return;
         }
       }
-      await db.blocks.update(block.id, { task: { ...block.task, status: taskStatus }, updatedAt: Date.now() });
-      await recordActivity({ projectId: block.projectId, blockId: block.id, action: 'task-status-changed', summary: `“${block.title}” → ${status ? AGENT_STATUS_LABELS[status] : 'Concept'}` });
+      await db.blocks.update(block.id, { task: nextTask, updatedAt: Date.now() });
+      await recordActivity({ projectId: block.projectId, blockId: block.id, action: block.task.claim && !nextTask.claim ? 'task-claim-released-by-user' : 'task-status-changed', summary: `“${block.title}” → ${status ? AGENT_STATUS_LABELS[status] : 'Concept'}` });
       setError(null);
       return;
     }
@@ -137,12 +146,13 @@ export const WorkspaceModal: React.FC<WorkspaceModalProps> = ({
                 return (
                   <div className="workspace-row" key={block.id}>
                     <button className="workspace-row-main" onClick={() => { onOpenBlock(block.id); onClose(); }}>
-                      <strong>{block.title}</strong><span>{AGENT_STATUS_LABELS[status]}</span>
+                      <strong>{block.title}</strong>
+                      <span>{AGENT_STATUS_LABELS[status]}{block.task?.claim ? ` · ${block.task.claim.ownerId} · poging ${block.task.claim.attempt} · tot ${new Date(block.task.claim.expiresAt).toLocaleString('nl-NL')}` : ''}</span>
                     </button>
-                    <select value={status} onChange={event => void updateStatus(block, event.target.value as AgentStatus)}>
-                      {AGENT_STATUSES.map(value => <option key={value} value={value}>{AGENT_STATUS_LABELS[value]}</option>)}
+                    <select disabled={Boolean(block.task?.claim)} value={status} onChange={event => void updateStatus(block, event.target.value as AgentStatus)}>
+                      {AGENT_STATUSES.map(value => <option key={value} value={value} disabled={block.kind === 'task' && value === 'agent-claimed'}>{AGENT_STATUS_LABELS[value]}</option>)}
                     </select>
-                    <button className="workspace-row-delete" onClick={() => void updateStatus(block, null)} title="Uit Inbox verwijderen"><X size={13} /></button>
+                    <button className="workspace-row-delete" onClick={() => void updateStatus(block, block.task?.claim ? 'agent-ready' : null)} title={block.task?.claim ? 'Claim vrijgeven en opnieuw klaarzetten' : 'Uit Inbox verwijderen'}><X size={13} /></button>
                   </div>
                 );
               })}

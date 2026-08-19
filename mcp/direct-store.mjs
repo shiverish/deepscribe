@@ -205,6 +205,9 @@ export function sanitizeTags(tags = []) {
 const TASK_AGENT_TARGETS = ['none', 'openai', 'claude', 'gemini', 'custom', 'any'];
 const TASK_STATUSES = ['draft', 'ready', 'claimed', 'blocked', 'review', 'done'];
 const TASK_COMPLETION_POLICIES = ['review-required', 'auto-complete'];
+const CLAIMANT_AGENT_TARGETS = ['openai', 'claude', 'gemini', 'custom'];
+const CLAIM_RECEIPTS_KEY = 'task_claim_receipts';
+const DEFAULT_LEASE_SECONDS = 15 * 60;
 
 function createTaskMetadata(completionPolicy = 'review-required') {
   return { status: 'draft', agentTarget: 'none', completionPolicy };
@@ -221,15 +224,48 @@ function validateTaskMetadata(task) {
 
 function taskMetadataFromParams(params, current = createTaskMetadata()) {
   const agentTarget = typeof params.agentTarget === 'string' ? params.agentTarget : current.agentTarget;
+  const status = typeof params.status === 'string' ? params.status : current.status;
   const task = {
-    status: typeof params.status === 'string' ? params.status : current.status,
+    status,
     agentTarget,
     completionPolicy: typeof params.completionPolicy === 'string' ? params.completionPolicy : current.completionPolicy,
-    ...(agentTarget === 'custom' ? { customAgentName: typeof params.customAgentName === 'string' ? params.customAgentName.trim() : current.customAgentName } : {})
+    ...(agentTarget === 'custom' ? { customAgentName: typeof params.customAgentName === 'string' ? params.customAgentName.trim() : current.customAgentName } : {}),
+    readyAt: status === 'ready' ? (current.status === 'ready' ? current.readyAt : Date.now()) : current.readyAt,
+    claimAttempt: current.claimAttempt,
+    claim: current.claim
   };
   const errors = validateTaskMetadata(task);
   if (errors.length) throw new Error(errors.join(' '));
   return task;
+}
+
+function normalizeLeaseSeconds(value) {
+  const parsed = typeof value === 'number' && Number.isFinite(value) ? Math.floor(value) : DEFAULT_LEASE_SECONDS;
+  return Math.max(60, Math.min(3600, parsed));
+}
+
+function redactTaskClaim(block) {
+  if (!block?.task?.claim) return block;
+  return { ...block, task: { ...block.task, claim: { ...block.task.claim, token: '[redacted]' } } };
+}
+
+function taskWithoutActiveClaim(task, fallbackStatus = 'ready', now = Date.now()) {
+  if (!task?.claim && task?.status !== 'claimed') return task ? { ...task } : task;
+  return { ...task, status: fallbackStatus, claim: undefined, ...(fallbackStatus === 'ready' ? { readyAt: task.readyAt ?? now } : {}) };
+}
+
+function taskTargetMatches(task, agentTarget, customAgentName) {
+  if (task.agentTarget === 'any') return true;
+  if (task.agentTarget !== agentTarget) return false;
+  if (agentTarget !== 'custom') return true;
+  return String(task.customAgentName || '').trim().toLocaleLowerCase() === String(customAgentName || '').trim().toLocaleLowerCase();
+}
+
+function isTaskClaimCandidate(block, allBlocks, agentTarget, customAgentName, now) {
+  if (block.kind !== 'task' || !block.task || block.isTrash || !taskTargetMatches(block.task, agentTarget, customAgentName)) return false;
+  const available = block.task.status === 'ready' || (block.task.status === 'claimed' && block.task.claim && block.task.claim.expiresAt <= now);
+  if (!available) return false;
+  return !getBlockDependencyStatus(block, allBlocks).isBlocked;
 }
 
 function stripHtmlText(value) {
@@ -591,6 +627,12 @@ export class DirectWorkspaceStore {
     return row ? JSON.parse(row.json) : null;
   }
 
+  saveSetting(setting) {
+    this.open();
+    this.database.prepare('INSERT INTO settings (id, json) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET json = excluded.json')
+      .run(setting.key ?? setting.id, JSON.stringify(setting));
+  }
+
   saveProject(project) {
     this.open();
     this.database.prepare('INSERT INTO projects (id, json) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET json = excluded.json')
@@ -624,7 +666,8 @@ export class DirectWorkspaceStore {
   recordBlockRevision(block, source = 'agent', summary, force = false) {
     const existing = this.getBlockRevisions(block.id);
     const latest = existing[0];
-    if (!force && latest && latest.title === block.title && latest.content === block.content && (latest.tags || []).join(',') === (block.tags || []).join(',') && latest.kind === block.kind && JSON.stringify(latest.task || null) === JSON.stringify(block.task || null)) {
+    const safeTask = block.task ? taskWithoutActiveClaim(block.task) : undefined;
+    if (!force && latest && latest.title === block.title && latest.content === block.content && (latest.tags || []).join(',') === (block.tags || []).join(',') && latest.kind === block.kind && JSON.stringify(latest.task || null) === JSON.stringify(safeTask || null)) {
       return null;
     }
     const revision = {
@@ -636,7 +679,7 @@ export class DirectWorkspaceStore {
       plainText: block.plainText,
       tags: sanitizeTags(block.tags || []),
       kind: block.kind,
-      task: block.task ? { ...block.task } : undefined,
+      task: safeTask,
       source,
       summary,
       createdAt: Date.now()
@@ -666,7 +709,7 @@ export class DirectWorkspaceStore {
       completedTaskCount: completedMatches.length,
       tags: sanitizeTags(revision.tags || []),
       kind: revision.kind,
-      task: revision.task ? { ...revision.task } : undefined,
+      task: revision.task ? taskWithoutActiveClaim(revision.task) : undefined,
       updatedAt: Date.now()
     };
     this.saveBlock(updated);
@@ -716,6 +759,7 @@ export class DirectWorkspaceStore {
   }
 
   blockSummary(block) {
+    const safeBlock = redactTaskClaim(block);
     return {
       id: block.id,
       projectId: block.projectId,
@@ -729,7 +773,9 @@ export class DirectWorkspaceStore {
       taskCount: block.taskCount ?? 0,
       completedTaskCount: block.completedTaskCount ?? 0,
       attachmentCount: block.attachmentCount ?? 0,
-      updatedAt: block.updatedAt
+      updatedAt: block.updatedAt,
+      kind: safeBlock.kind,
+      task: safeBlock.task
     };
   }
 
@@ -910,7 +956,7 @@ export class DirectWorkspaceStore {
           .sort((a, b) => a.createdAt - b.createdAt);
         const dependencyStatus = getBlockDependencyStatus(block, allBlocks);
         return {
-          ...block,
+          ...redactTaskClaim(block),
           path: breadcrumbPath,
           attachments: attachments.map(a => this.attachmentMetadata(a)),
           todos: todosFromBlock(block),
@@ -1182,6 +1228,10 @@ export class DirectWorkspaceStore {
         const block = this.getBlock(blockId);
         if (!block || block.isTrash || block.kind !== 'task' || !block.task) throw new Error('Taakblok niet gevonden.');
         const task = taskMetadataFromParams(params, block.task);
+        if (task.status === 'claimed' && block.task.status !== 'claimed') throw new Error('Gebruik claim_next_work_item om een taak te claimen.');
+        if (block.task.claim && (task.status !== block.task.status || task.agentTarget !== block.task.agentTarget || task.completionPolicy !== block.task.completionPolicy)) {
+          throw new Error('Een actief geclaimde taak kan alleen via transition_work_item worden gewijzigd.');
+        }
         if (!canTransitionTask(block.task.status, task.status)) throw new Error('Ongeldige taakstatusovergang.');
         if (task.status === 'ready') {
           const errors = validateTaskReady(block.title, block.content, task);
@@ -1198,6 +1248,135 @@ export class DirectWorkspaceStore {
         const action = block.task.status !== task.status ? task.status === 'ready' ? 'task-readiness-changed' : task.status === 'done' ? 'task-completed' : 'task-status-changed' : 'task-metadata-updated';
         this.recordActivity({ projectId: block.projectId, blockId, source: 'agent', action, summary: `Agent wijzigde taak “${block.title}” → ${task.status}` });
         return updated;
+      }
+
+      case 'list_claimable_work_items': {
+        const agentId = requireString('agentId');
+        void agentId;
+        const agentTarget = requireString('agentTarget');
+        if (!CLAIMANT_AGENT_TARGETS.includes(agentTarget)) throw new Error('agentTarget is ongeldig voor een claimant.');
+        const customAgentName = optionalStr('customAgentName')?.trim();
+        if (agentTarget === 'custom' && !customAgentName) throw new Error('customAgentName is verplicht voor een custom claimant.');
+        const projectId = optionalStr('projectId');
+        const now = Date.now();
+        const projects = new Set(this.getAllProjects().filter(project => !project.isTrash).map(project => project.id));
+        const allBlocks = this.getAllBlocks().filter(block => !block.isTrash);
+        return allBlocks
+          .filter(block => projects.has(block.projectId) && (!projectId || block.projectId === projectId) && isTaskClaimCandidate(block, allBlocks, agentTarget, customAgentName, now))
+          .sort((left, right) => (left.task?.readyAt ?? left.updatedAt) - (right.task?.readyAt ?? right.updatedAt) || left.id.localeCompare(right.id))
+          .slice(0, clampLimit(params.limit, 50))
+          .map(redactTaskClaim);
+      }
+
+      case 'claim_next_work_item': {
+        this.open();
+        const agentId = requireString('agentId');
+        const requestId = requireString('requestId');
+        const agentTarget = requireString('agentTarget');
+        if (!CLAIMANT_AGENT_TARGETS.includes(agentTarget)) throw new Error('agentTarget is ongeldig voor een claimant.');
+        const customAgentName = optionalStr('customAgentName')?.trim();
+        if (agentTarget === 'custom' && !customAgentName) throw new Error('customAgentName is verplicht voor een custom claimant.');
+        const leaseSeconds = normalizeLeaseSeconds(params.leaseSeconds);
+        const projectId = optionalStr('projectId');
+        const now = Date.now();
+        this.database.exec('BEGIN IMMEDIATE');
+        try {
+          const receiptRecord = this.getSetting(CLAIM_RECEIPTS_KEY);
+          const receipts = Array.isArray(receiptRecord?.value) ? receiptRecord.value : [];
+          const replay = receipts.find(receipt => receipt.agentId === agentId && receipt.requestId === requestId);
+          if (replay) {
+            const replayBlock = this.getBlock(replay.blockId);
+            this.database.exec('COMMIT');
+            return replayBlock ? { block: redactTaskClaim(replayBlock), claimToken: replay.token, replayed: true } : null;
+          }
+          const projects = new Set(this.getAllProjects().filter(project => !project.isTrash).map(project => project.id));
+          const allBlocks = this.getAllBlocks().filter(block => !block.isTrash);
+          const candidate = allBlocks
+            .filter(block => projects.has(block.projectId) && (!projectId || block.projectId === projectId) && isTaskClaimCandidate(block, allBlocks, agentTarget, customAgentName, now))
+            .sort((left, right) => (left.task?.readyAt ?? left.updatedAt) - (right.task?.readyAt ?? right.updatedAt) || left.id.localeCompare(right.id))[0];
+          if (!candidate?.task) {
+            this.database.exec('COMMIT');
+            return null;
+          }
+          const attempt = (candidate.task.claimAttempt ?? candidate.task.claim?.attempt ?? 0) + 1;
+          const token = crypto.randomUUID();
+          const claim = { ownerId: agentId, agentTarget, ...(customAgentName ? { customAgentName } : {}), token, requestId, claimedAt: now, heartbeatAt: now, expiresAt: now + leaseSeconds * 1000, attempt };
+          const updated = { ...candidate, task: { ...candidate.task, status: 'claimed', claimAttempt: attempt, claim }, updatedAt: now, lastAgentEditAt: now };
+          this.saveBlock(updated);
+          const nextReceipts = [...receipts.filter(receipt => receipt.createdAt >= now - 7 * 86400000), { agentId, requestId, blockId: updated.id, token, createdAt: now }].slice(-500);
+          this.saveSetting({ key: CLAIM_RECEIPTS_KEY, value: nextReceipts });
+          this.recordActivity({ projectId: updated.projectId, blockId: updated.id, action: candidate.task.status === 'claimed' ? 'task-claim-taken-over' : 'task-claimed', summary: `${agentId} claimde taak “${updated.title}”` });
+          this.database.exec('COMMIT');
+          return { block: redactTaskClaim(updated), claimToken: token, expiresAt: claim.expiresAt, replayed: false };
+        } catch (error) {
+          this.database.exec('ROLLBACK');
+          throw error;
+        }
+      }
+
+      case 'renew_work_item_claim': {
+        this.open();
+        const blockId = requireString('blockId');
+        const agentId = requireString('agentId');
+        const token = requireString('claimToken');
+        const leaseSeconds = normalizeLeaseSeconds(params.leaseSeconds);
+        const now = Date.now();
+        this.database.exec('BEGIN IMMEDIATE');
+        try {
+          const block = this.getBlock(blockId);
+          const claim = block?.task?.claim;
+          if (!block || block.kind !== 'task' || block.task?.status !== 'claimed' || !claim) throw new Error('Actieve taakclaim niet gevonden.');
+          if (claim.ownerId !== agentId || claim.token !== token) throw new Error('Claimtoken of eigenaar is ongeldig.');
+          if (claim.expiresAt <= now) throw new Error('De taakclaim is verlopen.');
+          const renewed = { ...claim, heartbeatAt: now, expiresAt: now + leaseSeconds * 1000 };
+          const updated = { ...block, task: { ...block.task, claim: renewed }, updatedAt: now, lastAgentEditAt: now };
+          this.saveBlock(updated);
+          this.recordActivity({ projectId: block.projectId, blockId, action: 'task-claim-renewed', summary: `${agentId} verlengde de claim op “${block.title}”` });
+          this.database.exec('COMMIT');
+          return { block: redactTaskClaim(updated), expiresAt: renewed.expiresAt };
+        } catch (error) {
+          this.database.exec('ROLLBACK');
+          throw error;
+        }
+      }
+
+      case 'transition_work_item': {
+        this.open();
+        const blockId = requireString('blockId');
+        const agentId = requireString('agentId');
+        const token = requireString('claimToken');
+        const status = requireString('status');
+        if (!['ready', 'blocked', 'review', 'done'].includes(status)) throw new Error('Ongeldige claimtransitie.');
+        const now = Date.now();
+        this.database.exec('BEGIN IMMEDIATE');
+        try {
+          const block = this.getBlock(blockId);
+          const claim = block?.task?.claim;
+          if (!block || block.kind !== 'task' || block.task?.status !== 'claimed' || !claim) throw new Error('Actieve taakclaim niet gevonden.');
+          if (claim.ownerId !== agentId || claim.token !== token) throw new Error('Claimtoken of eigenaar is ongeldig.');
+          if (claim.expiresAt <= now) throw new Error('De taakclaim is verlopen.');
+          if (status === 'done' && (block.task.completionPolicy !== 'auto-complete' || params.acceptanceChecksPassed !== true)) throw new Error('Afronden vereist auto-complete en geslaagde acceptatiecontroles.');
+          const task = { ...block.task, status, claim: undefined, ...(status === 'ready' ? { readyAt: now } : {}) };
+          const updated = { ...block, task, updatedAt: now, lastAgentEditAt: now };
+          this.saveBlock(updated);
+          this.recordActivity({ projectId: block.projectId, blockId, action: `task-${status}`, summary: optionalStr('summary')?.trim() || `${agentId} zette “${block.title}” op ${status}` });
+          this.database.exec('COMMIT');
+          return redactTaskClaim(updated);
+        } catch (error) {
+          this.database.exec('ROLLBACK');
+          throw error;
+        }
+      }
+
+      case 'get_agent_inbox_snapshot': {
+        const projectId = requireString('projectId');
+        const project = this.getProject(projectId);
+        if (!project || project.isTrash) throw new Error('Project niet gevonden.');
+        const tasks = this.getAllBlocks()
+          .filter(block => !block.isTrash && block.projectId === projectId && block.kind === 'task' && block.task && ['ready', 'claimed'].includes(block.task.status))
+          .sort((left, right) => (left.task?.readyAt ?? left.updatedAt) - (right.task?.readyAt ?? right.updatedAt) || left.id.localeCompare(right.id))
+          .map(redactTaskClaim);
+        return { projectId, tasks };
       }
 
       case 'convert_block_to_task': {

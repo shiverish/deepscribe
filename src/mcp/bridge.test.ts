@@ -91,6 +91,72 @@ describe('DeepScribe MCP task blocks', () => {
     expect(converted.tags).toEqual(['eigen-tag']);
     expect(converted.content).toContain('<h2>Context</h2><p>Bestaande context</p>');
   });
+
+  it('claims typed tasks atomically, idempotently and without leaking tokens', async () => {
+    const project = await handleMcpBridgeRequest('create_project', { title: 'Pickup' }) as Project;
+    const parent = await handleMcpBridgeRequest('create_block', { projectId: project.id, title: 'Planning' }) as Block;
+    const task = await handleMcpBridgeRequest('create_task_block', {
+      projectId: project.id, parentId: parent.id, title: 'Eerste taak', goal: 'Voer het doel uit',
+      context: 'Deze context is voldoende voor uitvoering', acceptanceCriteria: ['Controle slaagt'], agentTarget: 'openai', ready: true
+    }) as Block;
+
+    const claim = await handleMcpBridgeRequest('claim_next_work_item', {
+      projectId: project.id, agentId: 'codex-1', agentTarget: 'openai', requestId: 'request-1', leaseSeconds: 60
+    }) as { block: Block; claimToken: string; replayed: boolean };
+    expect(claim.block.id).toBe(task.id);
+    expect(claim.block.task?.claim?.token).toBe('[redacted]');
+    expect(claim.replayed).toBe(false);
+
+    const replay = await handleMcpBridgeRequest('claim_next_work_item', {
+      projectId: project.id, agentId: 'codex-1', agentTarget: 'openai', requestId: 'request-1'
+    }) as { claimToken: string; replayed: boolean };
+    expect(replay).toMatchObject({ claimToken: claim.claimToken, replayed: true });
+    expect(JSON.stringify(await handleMcpBridgeRequest('get_block', { blockId: task.id }))).not.toContain(claim.claimToken);
+
+    await expect(handleMcpBridgeRequest('transition_work_item', {
+      blockId: task.id, agentId: 'codex-1', claimToken: claim.claimToken, status: 'done', acceptanceChecksPassed: true
+    })).rejects.toThrow(/auto-complete/);
+    const review = await handleMcpBridgeRequest('transition_work_item', {
+      blockId: task.id, agentId: 'codex-1', claimToken: claim.claimToken, status: 'review'
+    }) as Block;
+    expect(review.task?.status).toBe('review');
+    expect(review.task?.claim).toBeUndefined();
+  });
+
+  it('rechecks dependencies, has one concurrent winner and takes over expired leases', async () => {
+    const project = await handleMcpBridgeRequest('create_project', { title: 'Concurrent pickup' }) as Project;
+    const parent = await handleMcpBridgeRequest('create_block', { projectId: project.id, title: 'Planning' }) as Block;
+    const dependency = await handleMcpBridgeRequest('create_task_block', {
+      projectId: project.id, parentId: parent.id, title: 'Voorwaarde', goal: 'Rond de voorwaarde af',
+      context: 'De volgende taak wacht op deze voorwaarde', acceptanceCriteria: ['Voorwaarde gereed'], completionPolicy: 'auto-complete'
+    }) as Block;
+    const dependent = await handleMcpBridgeRequest('create_task_block', {
+      projectId: project.id, parentId: parent.id, title: 'Afhankelijke taak', goal: 'Voer na de voorwaarde uit',
+      context: 'Deze taak mag niet eerder geclaimd worden', acceptanceCriteria: ['Uitvoering gereed'], agentTarget: 'any', ready: true,
+      dependsOn: [dependency.id]
+    }) as Block;
+    expect(await handleMcpBridgeRequest('list_claimable_work_items', { agentId: 'one', agentTarget: 'openai', projectId: project.id })).toEqual([]);
+    await handleMcpBridgeRequest('update_task_block', { blockId: dependency.id, status: 'done' });
+
+    const claims = await Promise.all([
+      handleMcpBridgeRequest('claim_next_work_item', { agentId: 'one', agentTarget: 'openai', projectId: project.id, requestId: 'race-one', leaseSeconds: 60 }),
+      handleMcpBridgeRequest('claim_next_work_item', { agentId: 'two', agentTarget: 'claude', projectId: project.id, requestId: 'race-two', leaseSeconds: 60 })
+    ]) as Array<{ block: Block; claimToken: string } | null>;
+    const winner = claims.find(Boolean)!;
+    expect(claims.filter(Boolean)).toHaveLength(1);
+    expect(winner.block.id).toBe(dependent.id);
+    await expect(handleMcpBridgeRequest('renew_work_item_claim', { blockId: dependent.id, agentId: winner.block.task?.claim?.ownerId, claimToken: 'wrong' })).rejects.toThrow(/ongeldig/);
+
+    const stored = await db.blocks.get(dependent.id);
+    await db.blocks.update(dependent.id, { task: { ...stored!.task!, claim: { ...stored!.task!.claim!, expiresAt: Date.now() - 1 } } });
+    const takeover = await handleMcpBridgeRequest('claim_next_work_item', {
+      agentId: 'three', agentTarget: 'gemini', projectId: project.id, requestId: 'takeover', leaseSeconds: 60
+    }) as { block: Block; claimToken: string };
+    expect(takeover.block.task?.claim).toMatchObject({ ownerId: 'three', attempt: 2, token: '[redacted]' });
+    await expect(handleMcpBridgeRequest('transition_work_item', {
+      blockId: dependent.id, agentId: 'one', claimToken: winner.claimToken, status: 'review'
+    })).rejects.toThrow(/ongeldig/);
+  });
 });
 
 describe('DeepScribe MCP block relocation', () => {

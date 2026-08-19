@@ -28,6 +28,47 @@ describe('DirectWorkspaceStore Markdown formatting', () => {
 });
 
 describe('DirectWorkspaceStore offline MCP engine', () => {
+  it('uses the same leased claim and idempotency rules offline', async () => {
+    const store = new DirectWorkspaceStore({ workspacePath: temporaryWorkspace() });
+    try {
+      const project = await store.handleRequest('create_project', { title: 'Offline pickup' });
+      const parent = await store.handleRequest('create_block', { projectId: project.id, title: 'Planning' });
+      const task = await store.handleRequest('create_task_block', {
+        projectId: project.id, parentId: parent.id, title: 'Offline taak', goal: 'Voer offline uit',
+        context: 'Genoeg context voor de offline runner', acceptanceCriteria: ['Resultaat gecontroleerd'], agentTarget: 'any', ready: true,
+        completionPolicy: 'auto-complete'
+      });
+      const claim = await store.handleRequest('claim_next_work_item', {
+        projectId: project.id, agentId: 'claude-1', agentTarget: 'claude', requestId: 'offline-request', leaseSeconds: 60
+      });
+      expect(claim.block.id).toBe(task.id);
+      expect(claim.block.task.claim.token).toBe('[redacted]');
+      const replay = await store.handleRequest('claim_next_work_item', {
+        projectId: project.id, agentId: 'claude-1', agentTarget: 'claude', requestId: 'offline-request'
+      });
+      expect(replay).toMatchObject({ claimToken: claim.claimToken, replayed: true });
+      await expect(store.handleRequest('renew_work_item_claim', {
+        blockId: task.id, agentId: 'claude-1', claimToken: 'wrong'
+      })).rejects.toThrow(/ongeldig/);
+      const stored = store.getBlock(task.id);
+      store.saveBlock({ ...stored, task: { ...stored.task, claim: { ...stored.task.claim, expiresAt: Date.now() - 1 } } });
+      const takeover = await store.handleRequest('claim_next_work_item', {
+        projectId: project.id, agentId: 'gemini-1', agentTarget: 'gemini', requestId: 'takeover-request', leaseSeconds: 60
+      });
+      expect(takeover.block.task.claim).toMatchObject({ ownerId: 'gemini-1', attempt: 2, token: '[redacted]' });
+      await expect(store.handleRequest('transition_work_item', {
+        blockId: task.id, agentId: 'claude-1', claimToken: claim.claimToken, status: 'review'
+      })).rejects.toThrow(/ongeldig/);
+      const done = await store.handleRequest('transition_work_item', {
+        blockId: task.id, agentId: 'gemini-1', claimToken: takeover.claimToken, status: 'done', acceptanceChecksPassed: true
+      });
+      expect(done.task.status).toBe('done');
+      expect(done.task.claim).toBeUndefined();
+    } finally {
+      store.close();
+    }
+  });
+
   it('handles status and returns direct-sqlite mode', async () => {
     const wsPath = temporaryWorkspace();
     const store = new DirectWorkspaceStore({ workspacePath: wsPath });

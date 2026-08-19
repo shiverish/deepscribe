@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Block } from '../types';
-import { canTransitionTask, createTaskMetadata, isTaskAutoPickupEligible, taskContentFromParts, validateTaskReady } from './taskBlocks';
+import { canTransitionTask, createTaskMetadata, isTaskAutoPickupEligible, taskContentFromParts, taskTargetMatches, taskWithoutActiveClaim, validateTaskReady } from './taskBlocks';
 
 describe('task blocks', () => {
   it('requires structured task content before ready', () => {
@@ -23,5 +23,18 @@ describe('task blocks', () => {
     expect(canTransitionTask('draft', 'ready')).toBe(true);
     expect(canTransitionTask('draft', 'review')).toBe(false);
     expect(canTransitionTask('claimed', 'review')).toBe(true);
+  });
+
+  it('matches provider targets strictly and clears runtime claims from copies', () => {
+    expect(taskTargetMatches({ ...createTaskMetadata(), agentTarget: 'any' }, 'gemini')).toBe(true);
+    expect(taskTargetMatches({ ...createTaskMetadata(), agentTarget: 'openai' }, 'claude')).toBe(false);
+    expect(taskTargetMatches({ ...createTaskMetadata(), agentTarget: 'custom', customAgentName: 'Local Agent' }, 'custom', 'local agent')).toBe(true);
+    const copied = taskWithoutActiveClaim({
+      ...createTaskMetadata(), status: 'claimed', agentTarget: 'openai', claim: {
+        ownerId: 'agent', agentTarget: 'openai', token: 'secret', requestId: 'request', claimedAt: 1, heartbeatAt: 1, expiresAt: 2, attempt: 3
+      }
+    }, 'draft');
+    expect(copied).toMatchObject({ status: 'draft' });
+    expect(copied.claim).toBeUndefined();
   });
 });

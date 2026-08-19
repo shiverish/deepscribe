@@ -28,7 +28,7 @@ import { resolveBlockReferences } from './utils/references';
 import { calculateAgentEditCounts } from './utils/agentEdits';
 import { buildBlockPrintDocument, type BlockPrintDraft, type BlockPrintSettings } from './utils/printDocument';
 import { repository } from './db/repository';
-import { canTransitionTask, convertContentToTask, createTaskMetadata, TASK_TEMPLATE_HTML, validateTaskReady } from './utils/taskBlocks';
+import { canTransitionTask, convertContentToTask, createTaskMetadata, taskWithoutActiveClaim, TASK_TEMPLATE_HTML, validateTaskReady } from './utils/taskBlocks';
 import './styles/theme.css';
 import './components/Navigation/Navigation.css';
 
@@ -513,12 +513,14 @@ export function App() {
         }
         const oldTask = currentBlock?.task;
         const newTask = block?.task;
-        const action = oldTask?.status !== newTask?.status
+        const action = oldTask?.claim && !newTask?.claim
+          ? 'task-claim-released-by-user'
+          : oldTask?.status !== newTask?.status
           ? newTask?.status === 'ready' ? 'task-readiness-changed' : newTask?.status === 'done' ? 'task-completed' : 'task-status-changed'
           : oldTask && newTask && (oldTask.agentTarget !== newTask.agentTarget || oldTask.completionPolicy !== newTask.completionPolicy || oldTask.customAgentName !== newTask.customAgentName)
             ? 'task-metadata-updated'
             : 'block-updated';
-        await recordActivity({ projectId: block?.projectId, blockId: itemId, action, summary: block?.kind === 'task' ? `Taak “${title}” bijgewerkt${newTask ? ` → ${newTask.status}` : ''}` : `Blok “${title}” bijgewerkt` });
+        await recordActivity({ projectId: block?.projectId, blockId: itemId, action, summary: block?.kind === 'task' ? `${action === 'task-claim-released-by-user' ? 'Claim door gebruiker vrijgegeven voor' : 'Taak'} “${title}”${newTask ? ` → ${newTask.status}` : ''}` : `Blok “${title}” bijgewerkt` });
       }
       setSaveStatus({ state: 'saved', lastSavedAt: Date.now() });
     } catch (err) {
@@ -569,6 +571,9 @@ export function App() {
         if (!srcBlock) return '';
 
         const newId = createId('block');
+        const duplicatedTask = srcBlock.task
+          ? { ...taskWithoutActiveClaim(srcBlock.task, 'draft', now), status: 'draft' as const, readyAt: undefined, claimAttempt: undefined }
+          : undefined;
         await db.blocks.add({
           ...srcBlock,
           id: newId,
@@ -576,6 +581,7 @@ export function App() {
           title: newParentId === block.parentId ? `${srcBlock.title} (Kopie)` : srcBlock.title,
           isTrash: false,
           trashedAt: undefined,
+          task: duplicatedTask,
           createdAt: now,
           updatedAt: now
         });

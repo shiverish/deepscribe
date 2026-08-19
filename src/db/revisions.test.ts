@@ -111,6 +111,25 @@ describe('block revisions', () => {
     expect(restored.task).toEqual({ status: 'ready', agentTarget: 'claude', completionPolicy: 'review-required' });
   });
 
+  it('does not snapshot or restore a live task claim', async () => {
+    const original = (await db.blocks.get('block-1'))!;
+    const claimed: Block = {
+      ...original,
+      kind: 'task',
+      task: {
+        status: 'claimed', agentTarget: 'openai', completionPolicy: 'review-required',
+        claim: { ownerId: 'agent', agentTarget: 'openai', token: 'secret', requestId: 'request', claimedAt: 1, heartbeatAt: 1, expiresAt: 999, attempt: 1 }
+      }
+    };
+    const revision = await recordBlockRevision(claimed, 'agent', 'Tijdens claim');
+    expect(revision?.task?.status).toBe('ready');
+    expect(revision?.task?.claim).toBeUndefined();
+    await db.blocks.put(claimed);
+    const restored = await restoreBlockRevision(revision!.id);
+    expect(restored.task?.status).toBe('ready');
+    expect(restored.task?.claim).toBeUndefined();
+  });
+
   it('prunes older revisions beyond maxKeep', async () => {
     const b = (await db.blocks.get('block-1'))!;
     for (let i = 0; i < 10; i++) {

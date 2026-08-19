@@ -2,6 +2,7 @@ import { db } from './db';
 import type { Block, BlockRevision, RevisionSource } from '../types';
 import { sanitizeTags } from '../utils/tagUtils';
 import { recordActivity } from './activity';
+import { taskWithoutActiveClaim } from '../utils/taskBlocks';
 
 function tagsEqual(a: string[] = [], b: string[] = []): boolean {
   if (a.length !== b.length) return false;
@@ -11,11 +12,12 @@ function tagsEqual(a: string[] = [], b: string[] = []): boolean {
 }
 
 export function isRevisionIdentical(rev: BlockRevision, block: Pick<Block, 'title' | 'content' | 'tags' | 'kind' | 'task'>): boolean {
+  const safeTask = block.task ? taskWithoutActiveClaim(block.task) : undefined;
   return rev.title === block.title &&
     rev.content === block.content &&
     tagsEqual(rev.tags, block.tags) &&
     rev.kind === block.kind &&
-    JSON.stringify(rev.task ?? null) === JSON.stringify(block.task ?? null);
+    JSON.stringify(rev.task ?? null) === JSON.stringify(safeTask ?? null);
 }
 
 export async function recordBlockRevision(
@@ -42,7 +44,7 @@ export async function recordBlockRevision(
     plainText: block.plainText,
     tags: sanitizeTags(block.tags),
     kind: block.kind,
-    task: block.task ? { ...block.task } : undefined,
+    task: block.task ? taskWithoutActiveClaim(block.task) : undefined,
     source,
     summary,
     createdAt: now
@@ -101,7 +103,7 @@ export async function restoreBlockRevision(revisionId: string): Promise<Block> {
     completedTaskCount: completedMatches.length,
     tags: sanitizeTags(revision.tags),
     kind: revision.kind,
-    task: revision.task ? { ...revision.task } : undefined,
+    task: revision.task ? taskWithoutActiveClaim(revision.task) : undefined,
     updatedAt: now
   };
 

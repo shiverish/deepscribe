@@ -4,12 +4,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { SubscribeRequestSchema, UnsubscribeRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import * as z from 'zod/v4';
 import { handleDirectStoreRequest } from './direct-store.mjs';
 
 const server = new McpServer({
   name: 'deepscribe',
-  version: '0.1.6'
+  version: '0.1.20'
 }, {
   instructions: 'DeepScribe stores projects, nested knowledge blocks, concepts, ideas and todos. Prefer read tools before writes. Use tags such as todo, concept, idee, core-concept or agent-ready to make knowledge discoverable. Never replace a block when appending is sufficient. Format block content as readable Markdown: use blank lines between sections, headings for structure and one list item per line. Do not compress a list into a prose paragraph. Actionable work must include enough context for another person or agent to continue independently: use create_work_item with a goal, context and acceptance criteria instead of creating a title-only todo block or placeholder.'
 });
@@ -35,9 +36,11 @@ async function readBridgeInfo() {
   return null;
 }
 
+class BridgeUnavailableError extends Error {}
+
 async function callBridge(method, params = {}) {
   const bridge = await readBridgeInfo();
-  if (!bridge) throw new Error('DeepScribe bridge is niet actief.');
+  if (!bridge) throw new BridgeUnavailableError('DeepScribe bridge is niet actief.');
   const { port, token } = bridge;
   let response;
   try {
@@ -51,6 +54,8 @@ async function callBridge(method, params = {}) {
       signal: AbortSignal.timeout(5000)
     });
   } catch (error) {
+    const code = error?.cause?.code;
+    if (code === 'ECONNREFUSED') throw new BridgeUnavailableError('DeepScribe bridge weigert de verbinding.');
     throw new Error(`Geen verbinding met DeepScribe bridge: ${error instanceof Error ? error.message : 'onbekende fout'}`);
   }
   const payload = await response.json();
@@ -62,7 +67,8 @@ async function executeMcpMethod(method, params = {}) {
   // 1. Probeer de live bridge als DeepScribe geopend is
   try {
     return await callBridge(method, params);
-  } catch {
+  } catch (error) {
+    if (!(error instanceof BridgeUnavailableError)) throw error;
     // 2. Schakel naadloos over naar directe SQLite als de app gesloten of offline is
     return await handleDirectStoreRequest(method, params);
   }
@@ -195,6 +201,59 @@ server.registerResource('deepscribe-attachment', new ResourceTemplate('deepscrib
   return { contents: [{ ...attachmentContents(attachment), uri: uri.href }] };
 });
 
+server.registerResource('deepscribe-agent-inbox', new ResourceTemplate('deepscribe://agent-inbox/{projectId}', {
+  list: async () => {
+    const projects = await executeMcpMethod('list_projects');
+    return {
+      resources: projects.map(project => ({
+        uri: `deepscribe://agent-inbox/${encodeURIComponent(project.id)}`,
+        name: `${project.title} agent inbox`,
+        title: `Agent Inbox — ${project.title}`,
+        description: 'Klaargezette en momenteel geclaimde getypeerde taken.',
+        mimeType: 'application/json'
+      }))
+    };
+  }
+}), {
+  title: 'DeepScribe Agent Inbox',
+  description: 'Een observeerbare projectqueue voor Auto Task Pickup.'
+}, async (uri, variables) => {
+  const snapshot = await executeMcpMethod('get_agent_inbox_snapshot', { projectId: String(variables.projectId) });
+  return { contents: [{ uri: uri.href, mimeType: 'application/json', text: JSON.stringify(snapshot, null, 2) }] };
+});
+
+const inboxSubscriptions = new Map();
+server.server.registerCapabilities({ resources: { subscribe: true, listChanged: true } });
+server.server.setRequestHandler(SubscribeRequestSchema, async request => {
+  const uri = request.params.uri;
+  const match = /^deepscribe:\/\/agent-inbox\/([^/?#]+)$/.exec(uri);
+  if (!match) return {};
+  const projectId = decodeURIComponent(match[1]);
+  const snapshot = await executeMcpMethod('get_agent_inbox_snapshot', { projectId });
+  inboxSubscriptions.set(uri, { projectId, fingerprint: JSON.stringify(snapshot) });
+  return {};
+});
+server.server.setRequestHandler(UnsubscribeRequestSchema, async request => {
+  inboxSubscriptions.delete(request.params.uri);
+  return {};
+});
+
+const inboxMonitor = setInterval(async () => {
+  for (const [uri, subscription] of inboxSubscriptions) {
+    try {
+      const snapshot = await executeMcpMethod('get_agent_inbox_snapshot', { projectId: subscription.projectId });
+      const fingerprint = JSON.stringify(snapshot);
+      if (fingerprint !== subscription.fingerprint) {
+        subscription.fingerprint = fingerprint;
+        await server.server.sendResourceUpdated({ uri });
+      }
+    } catch (error) {
+      console.error(`Agent Inbox-monitor voor ${uri}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+}, 2000);
+inboxMonitor.unref();
+
 registerTool('search', {
   title: 'DeepScribe doorzoeken',
   description: 'Zoek in titels en inhoud, optioneel beperkt tot een project en/of tags.',
@@ -306,10 +365,57 @@ registerTool('update_task_block', {
   description: 'Wijzig de agentdoelgroep, afrondingsregel of status van een getypeerd taakblok. Klaarzetten valideert titel, doel, context en acceptatiecriteria.',
   inputSchema: {
     blockId: z.string().min(1),
-    status: z.enum(['draft', 'ready', 'claimed', 'blocked', 'review', 'done']).optional(),
+    status: z.enum(['draft', 'ready', 'blocked', 'review', 'done']).optional(),
     agentTarget: z.enum(['none', 'openai', 'claude', 'gemini', 'custom', 'any']).optional(),
     customAgentName: z.string().min(1).optional(),
     completionPolicy: z.enum(['review-required', 'auto-complete']).optional()
+  },
+  annotations: write
+});
+
+const claimantSchema = {
+  agentId: z.string().min(1),
+  agentTarget: z.enum(['openai', 'claude', 'gemini', 'custom']),
+  customAgentName: z.string().min(1).optional(),
+  projectId: z.string().min(1).optional()
+};
+
+registerTool('list_claimable_work_items', {
+  title: 'Claimbare taken tonen',
+  description: 'Toon getypeerde, klaargezette taken die bij deze provider passen, waarvan afhankelijkheden gereed zijn. Verlopen claims worden opnieuw beschikbaar.',
+  inputSchema: { ...claimantSchema, limit: z.number().int().min(1).max(100).optional() },
+  annotations: readOnly
+});
+
+registerTool('claim_next_work_item', {
+  title: 'Volgende taak atomair claimen',
+  description: 'Claim de oudste passende taak met een lease. requestId maakt herhalen veilig en retourneert bij replay dezelfde claimtoken.',
+  inputSchema: { ...claimantSchema, requestId: z.string().min(1), leaseSeconds: z.number().int().min(60).max(3600).optional() },
+  annotations: write
+});
+
+registerTool('renew_work_item_claim', {
+  title: 'Taakclaim verlengen',
+  description: 'Verleng een nog geldige taakclaim met eigenaar en geheime claimtoken.',
+  inputSchema: {
+    blockId: z.string().min(1),
+    agentId: z.string().min(1),
+    claimToken: z.string().min(1),
+    leaseSeconds: z.number().int().min(60).max(3600).optional()
+  },
+  annotations: write
+});
+
+registerTool('transition_work_item', {
+  title: 'Geclaimde taak overdragen',
+  description: 'Zet een eigen, geldige claim op ready, blocked, review of done. done vereist auto-complete en expliciet geslaagde acceptatiecontroles.',
+  inputSchema: {
+    blockId: z.string().min(1),
+    agentId: z.string().min(1),
+    claimToken: z.string().min(1),
+    status: z.enum(['ready', 'blocked', 'review', 'done']),
+    acceptanceChecksPassed: z.boolean().optional(),
+    summary: z.string().min(1).optional()
   },
   annotations: write
 });

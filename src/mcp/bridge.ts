@@ -2,14 +2,16 @@ import { db } from '../db/db';
 import { recordActivity } from '../db/activity';
 import { recordBlockRevision, getBlockRevisions, getBlockRevision, restoreBlockRevision } from '../db/revisions';
 import { sanitizeDependsOn, detectCircularDependency, getBlockDependencyStatus, formatDependencyMarkdown } from '../utils/dependencyUtils';
-import type { Attachment, Block, Project, ActivityEntry, ActivitySource, TaskAgentTarget, TaskCompletionPolicy, TaskMetadata, TaskStatus, UserSettings } from '../types';
+import type { Attachment, Block, ClaimantAgentTarget, Project, ActivityEntry, ActivitySource, TaskAgentTarget, TaskCompletionPolicy, TaskMetadata, TaskStatus, UserSettings } from '../types';
 import { sanitizeTags } from '../utils/tagUtils';
 import { rankBlocksLocally } from '../utils/semanticSearch';
 import { isDescendantOrSelf, moveBlockInTree } from '../utils/dragAndDrop';
-import { canTransitionTask, convertContentToTask, createTaskMetadata, validateTaskMetadata, validateTaskReady } from '../utils/taskBlocks';
+import { canTransitionTask, convertContentToTask, createTaskClaim, createTaskMetadata, isTaskClaimCandidate, normalizeLeaseSeconds, redactTaskClaim, validateTaskMetadata, validateTaskReady } from '../utils/taskBlocks';
 
 type JsonObject = Record<string, unknown>;
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+const CLAIM_RECEIPTS_KEY = 'task_claim_receipts';
+type ClaimReceipt = { agentId: string; requestId: string; blockId: string; token: string; createdAt: number };
 
 function asObject(value: unknown): JsonObject {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
@@ -236,6 +238,8 @@ function blockSummary(block: Block) {
     taskCount: block.taskCount,
     completedTaskCount: block.completedTaskCount,
     attachmentCount: block.attachmentCount,
+    kind: block.kind,
+    task: redactTaskClaim(block).task,
     updatedAt: block.updatedAt
   };
 }
@@ -454,7 +458,10 @@ function taskMetadataFromParams(params: JsonObject, current?: TaskMetadata): Tas
     status,
     agentTarget,
     completionPolicy,
-    ...(agentTarget === 'custom' ? { customAgentName: optionalString(params, 'customAgentName') ?? base.customAgentName } : {})
+    ...(agentTarget === 'custom' ? { customAgentName: optionalString(params, 'customAgentName') ?? base.customAgentName } : {}),
+    readyAt: status === 'ready' ? (base.status === 'ready' ? base.readyAt : Date.now()) : base.readyAt,
+    claimAttempt: base.claimAttempt,
+    claim: base.claim
   };
   const errors = validateTaskMetadata(task);
   if (errors.length) throw new Error(errors.join(' '));
@@ -498,6 +505,10 @@ async function updateTaskBlock(params: JsonObject) {
   const block = await db.blocks.get(blockId);
   if (!block || block.isTrash || block.kind !== 'task' || !block.task) throw new Error('Taakblok niet gevonden.');
   const task = taskMetadataFromParams(params, block.task);
+  if (task.status === 'claimed' && block.task.status !== 'claimed') throw new Error('Gebruik claim_next_work_item om een taak te claimen.');
+  if (block.task.claim && (task.status !== block.task.status || task.agentTarget !== block.task.agentTarget || task.completionPolicy !== block.task.completionPolicy)) {
+    throw new Error('Een actief geclaimde taak kan alleen via transition_work_item worden gewijzigd.');
+  }
   if (!canTransitionTask(block.task.status, task.status)) throw new Error('Ongeldige taakstatusovergang.');
   if (task.status === 'ready') {
     const errors = validateTaskReady(block.title, block.content, task);
@@ -513,6 +524,106 @@ async function updateTaskBlock(params: JsonObject) {
   const action = block.task.status !== task.status ? task.status === 'ready' ? 'task-readiness-changed' : task.status === 'done' ? 'task-completed' : 'task-status-changed' : 'task-metadata-updated';
   await recordActivity({ projectId: block.projectId, blockId, source: 'agent', action, summary: `Agent wijzigde taak “${block.title}” → ${task.status}` });
   return updated;
+}
+
+function claimantFromParams(params: JsonObject) {
+  const agentId = requiredString(params, 'agentId');
+  const requestId = optionalString(params, 'requestId')?.trim();
+  const rawTarget = requiredString(params, 'agentTarget');
+  if (!['openai', 'claude', 'gemini', 'custom'].includes(rawTarget)) throw new Error('agentTarget is ongeldig voor een claimant.');
+  const agentTarget = rawTarget as ClaimantAgentTarget;
+  const customAgentName = optionalString(params, 'customAgentName')?.trim();
+  if (agentTarget === 'custom' && !customAgentName) throw new Error('customAgentName is verplicht voor een custom claimant.');
+  return { agentId, requestId, agentTarget, customAgentName };
+}
+
+async function claimableWorkItems(params: JsonObject) {
+  const { agentTarget, customAgentName } = claimantFromParams(params);
+  const projectId = optionalString(params, 'projectId');
+  const now = Date.now();
+  const projects = new Set((await db.projects.filter(project => !project.isTrash).toArray()).map(project => project.id));
+  const allBlocks = await db.blocks.filter(block => !block.isTrash).toArray();
+  return allBlocks
+    .filter(block => projects.has(block.projectId) && (!projectId || block.projectId === projectId) && isTaskClaimCandidate(block, allBlocks, agentTarget, customAgentName, now))
+    .sort((left, right) => (left.task?.readyAt ?? left.updatedAt) - (right.task?.readyAt ?? right.updatedAt) || left.id.localeCompare(right.id))
+    .slice(0, clampLimit(params.limit, 50))
+    .map(redactTaskClaim);
+}
+
+async function claimNextWorkItem(params: JsonObject) {
+  const { agentId, requestId, agentTarget, customAgentName } = claimantFromParams(params);
+  if (!requestId) throw new Error('requestId is verplicht.');
+  const leaseSeconds = normalizeLeaseSeconds(params.leaseSeconds);
+  const projectId = optionalString(params, 'projectId');
+  const now = Date.now();
+  return await db.transaction('rw', [db.projects, db.blocks, db.settings, db.activities], async () => {
+    const receiptRecord = await db.settings.get(CLAIM_RECEIPTS_KEY);
+    const receipts = Array.isArray(receiptRecord?.value) ? receiptRecord.value as ClaimReceipt[] : [];
+    const replay = receipts.find(receipt => receipt.agentId === agentId && receipt.requestId === requestId);
+    if (replay) {
+      const replayBlock = await db.blocks.get(replay.blockId);
+      return replayBlock ? { block: redactTaskClaim(replayBlock), claimToken: replay.token, replayed: true } : null;
+    }
+    const projects = new Set((await db.projects.filter(project => !project.isTrash).toArray()).map(project => project.id));
+    const allBlocks = await db.blocks.filter(block => !block.isTrash).toArray();
+    const candidate = allBlocks
+      .filter(block => projects.has(block.projectId) && (!projectId || block.projectId === projectId) && isTaskClaimCandidate(block, allBlocks, agentTarget, customAgentName, now))
+      .sort((left, right) => (left.task?.readyAt ?? left.updatedAt) - (right.task?.readyAt ?? right.updatedAt) || left.id.localeCompare(right.id))[0];
+    if (!candidate || !candidate.task) return null;
+    const attempt = (candidate.task.claimAttempt ?? candidate.task.claim?.attempt ?? 0) + 1;
+    const token = crypto.randomUUID();
+    const claim = createTaskClaim({ ownerId: agentId, agentTarget, customAgentName, requestId, token, now, leaseSeconds, attempt });
+    const updated: Block = { ...candidate, task: { ...candidate.task, status: 'claimed', claimAttempt: attempt, claim }, updatedAt: now, lastAgentEditAt: now };
+    await db.blocks.put(updated);
+    const nextReceipts = [...receipts.filter(receipt => receipt.createdAt >= now - 7 * 86400000), { agentId, requestId, blockId: updated.id, token, createdAt: now }].slice(-500);
+    await db.settings.put({ key: CLAIM_RECEIPTS_KEY, value: nextReceipts });
+    await db.activities.add({ id: `activity-${crypto.randomUUID()}`, projectId: updated.projectId, blockId: updated.id, source: 'agent', action: candidate.task.status === 'claimed' ? 'task-claim-taken-over' : 'task-claimed', summary: `${agentId} claimde taak “${updated.title}”`, createdAt: now });
+    return { block: redactTaskClaim(updated), claimToken: token, expiresAt: claim.expiresAt, replayed: false };
+  });
+}
+
+async function renewWorkItemClaim(params: JsonObject) {
+  const blockId = requiredString(params, 'blockId');
+  const agentId = requiredString(params, 'agentId');
+  const token = requiredString(params, 'claimToken');
+  const leaseSeconds = normalizeLeaseSeconds(params.leaseSeconds);
+  const now = Date.now();
+  return await db.transaction('rw', [db.blocks, db.activities], async () => {
+    const block = await db.blocks.get(blockId);
+    const claim = block?.task?.claim;
+    if (!block || block.kind !== 'task' || block.task?.status !== 'claimed' || !claim) throw new Error('Actieve taakclaim niet gevonden.');
+    if (claim.ownerId !== agentId || claim.token !== token) throw new Error('Claimtoken of eigenaar is ongeldig.');
+    if (claim.expiresAt <= now) throw new Error('De taakclaim is verlopen.');
+    const renewed = { ...claim, heartbeatAt: now, expiresAt: now + leaseSeconds * 1000 };
+    const updated = { ...block, task: { ...block.task, claim: renewed }, updatedAt: now, lastAgentEditAt: now };
+    await db.blocks.put(updated);
+    await db.activities.add({ id: `activity-${crypto.randomUUID()}`, projectId: block.projectId, blockId, source: 'agent', action: 'task-claim-renewed', summary: `${agentId} verlengde de claim op “${block.title}”`, createdAt: now });
+    return { block: redactTaskClaim(updated), expiresAt: renewed.expiresAt };
+  });
+}
+
+async function transitionWorkItem(params: JsonObject) {
+  const blockId = requiredString(params, 'blockId');
+  const agentId = requiredString(params, 'agentId');
+  const token = requiredString(params, 'claimToken');
+  const status = requiredString(params, 'status') as TaskStatus;
+  if (!['ready', 'blocked', 'review', 'done'].includes(status)) throw new Error('Ongeldige claimtransitie.');
+  const now = Date.now();
+  return await db.transaction('rw', [db.blocks, db.activities], async () => {
+    const block = await db.blocks.get(blockId);
+    const claim = block?.task?.claim;
+    if (!block || block.kind !== 'task' || block.task?.status !== 'claimed' || !claim) throw new Error('Actieve taakclaim niet gevonden.');
+    if (claim.ownerId !== agentId || claim.token !== token) throw new Error('Claimtoken of eigenaar is ongeldig.');
+    if (claim.expiresAt <= now) throw new Error('De taakclaim is verlopen.');
+    if (status === 'done' && (block.task.completionPolicy !== 'auto-complete' || params.acceptanceChecksPassed !== true)) {
+      throw new Error('Afronden vereist auto-complete en geslaagde acceptatiecontroles.');
+    }
+    const task: TaskMetadata = { ...block.task, status, claim: undefined, ...(status === 'ready' ? { readyAt: now } : {}) };
+    const updated = { ...block, task, updatedAt: now, lastAgentEditAt: now };
+    await db.blocks.put(updated);
+    await db.activities.add({ id: `activity-${crypto.randomUUID()}`, projectId: block.projectId, blockId, source: 'agent', action: `task-${status}`, summary: optionalString(params, 'summary')?.trim() || `${agentId} zette “${block.title}” op ${status}`, createdAt: now });
+    return redactTaskClaim(updated);
+  });
 }
 
 async function convertBlockToTask(params: JsonObject) {
@@ -901,7 +1012,7 @@ async function getOrCreateDailyPlan(params: JsonObject) {
   }
   const attachments = await db.attachments.where('blockId').equals(block.id).sortBy('createdAt');
   return {
-    ...block,
+    ...redactTaskClaim(block),
     path,
     attachments: attachments.map(attachmentMetadata),
     todos: todosFromBlock(block)
@@ -953,7 +1064,7 @@ export async function handleMcpBridgeRequest(method: string, rawParams: unknown)
       const attachments = await db.attachments.where('blockId').equals(block.id).sortBy('createdAt');
       const depStatus = getBlockDependencyStatus(block, allBlocks);
       return { 
-        ...block, 
+        ...redactTaskClaim(block),
         path, 
         attachments: attachments.map(attachmentMetadata),
         todos: todosFromBlock(block),
@@ -1021,6 +1132,27 @@ export async function handleMcpBridgeRequest(method: string, rawParams: unknown)
       return await updateTaskBlock(params);
     case 'convert_block_to_task':
       return await convertBlockToTask(params);
+    case 'list_claimable_work_items':
+      return await claimableWorkItems(params);
+    case 'claim_next_work_item':
+      return await claimNextWorkItem(params);
+    case 'renew_work_item_claim':
+      return await renewWorkItemClaim(params);
+    case 'transition_work_item':
+      return await transitionWorkItem(params);
+    case 'get_agent_inbox_snapshot': {
+      const projectId = requiredString(params, 'projectId');
+      const project = await db.projects.get(projectId);
+      if (!project || project.isTrash) throw new Error('Project niet gevonden.');
+      const blocks = await db.blocks.where('projectId').equals(projectId).filter(block => !block.isTrash && block.kind === 'task').toArray();
+      return {
+        projectId,
+        tasks: blocks
+          .filter(block => block.task && ['ready', 'claimed'].includes(block.task.status))
+          .sort((left, right) => (left.task?.readyAt ?? left.updatedAt) - (right.task?.readyAt ?? right.updatedAt) || left.id.localeCompare(right.id))
+          .map(redactTaskClaim)
+      };
+    }
     case 'update_project': {
       const projectId = requiredString(params, 'projectId');
       const project = await db.projects.get(projectId);

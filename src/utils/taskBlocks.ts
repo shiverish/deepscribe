@@ -1,4 +1,4 @@
-import type { Block, TaskAgentTarget, TaskCompletionPolicy, TaskMetadata, TaskStatus } from '../types';
+import type { Block, ClaimantAgentTarget, TaskAgentTarget, TaskClaim, TaskCompletionPolicy, TaskMetadata, TaskStatus } from '../types';
 
 export const TASK_AGENT_TARGETS: TaskAgentTarget[] = ['none', 'openai', 'claude', 'gemini', 'custom', 'any'];
 export const TASK_STATUSES: TaskStatus[] = ['draft', 'ready', 'claimed', 'blocked', 'review', 'done'];
@@ -34,6 +34,86 @@ export function isTaskBlock(block: Pick<Block, 'kind' | 'task'>): boolean {
 
 export function isTaskAutoPickupEligible(block: Pick<Block, 'kind' | 'task' | 'isTrash'>): boolean {
   return !block.isTrash && block.kind === 'task' && block.task?.status === 'ready' && block.task.agentTarget !== 'none';
+}
+
+export const DEFAULT_TASK_LEASE_SECONDS = 15 * 60;
+export const MIN_TASK_LEASE_SECONDS = 60;
+export const MAX_TASK_LEASE_SECONDS = 60 * 60;
+
+export function normalizeLeaseSeconds(value: unknown): number {
+  if (value === undefined) return DEFAULT_TASK_LEASE_SECONDS;
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < MIN_TASK_LEASE_SECONDS || value > MAX_TASK_LEASE_SECONDS) {
+    throw new Error('leaseSeconds moet tussen 60 en 3600 seconden liggen.');
+  }
+  return value;
+}
+
+export function taskTargetMatches(
+  task: TaskMetadata,
+  agentTarget: ClaimantAgentTarget,
+  customAgentName?: string
+): boolean {
+  if (task.agentTarget === 'none') return false;
+  if (task.agentTarget === 'any') return true;
+  if (task.agentTarget !== agentTarget) return false;
+  if (task.agentTarget !== 'custom') return true;
+  return task.customAgentName?.trim().toLocaleLowerCase() === customAgentName?.trim().toLocaleLowerCase();
+}
+
+export function isTaskClaimCandidate(
+  block: Block,
+  allBlocks: Block[],
+  agentTarget: ClaimantAgentTarget,
+  customAgentName: string | undefined,
+  now: number
+): boolean {
+  if (block.isTrash || block.kind !== 'task' || !block.task || !taskTargetMatches(block.task, agentTarget, customAgentName)) return false;
+  const available = block.task.status === 'ready' || (block.task.status === 'claimed' && Boolean(block.task.claim && block.task.claim.expiresAt <= now));
+  if (!available) return false;
+  const byId = new Map(allBlocks.map(candidate => [candidate.id, candidate]));
+  return (block.dependsOn ?? []).every(id => {
+    const dependency = byId.get(id);
+    if (!dependency || dependency.isTrash) return false;
+    return dependency.kind === 'task' ? dependency.task?.status === 'done' : dependency.taskCount > 0 && dependency.completedTaskCount >= dependency.taskCount;
+  });
+}
+
+export function createTaskClaim(input: {
+  ownerId: string;
+  agentTarget: ClaimantAgentTarget;
+  customAgentName?: string;
+  requestId: string;
+  token: string;
+  now: number;
+  leaseSeconds: number;
+  attempt: number;
+}): TaskClaim {
+  return {
+    ownerId: input.ownerId,
+    agentTarget: input.agentTarget,
+    ...(input.agentTarget === 'custom' ? { customAgentName: input.customAgentName?.trim() } : {}),
+    token: input.token,
+    requestId: input.requestId,
+    claimedAt: input.now,
+    heartbeatAt: input.now,
+    expiresAt: input.now + input.leaseSeconds * 1000,
+    attempt: input.attempt
+  };
+}
+
+export function redactTaskClaim<T extends Block>(block: T): T {
+  if (!block.task?.claim) return block;
+  return { ...block, task: { ...block.task, claim: { ...block.task.claim, token: '[redacted]' } } };
+}
+
+export function taskWithoutActiveClaim(task: TaskMetadata, fallbackStatus: TaskStatus = 'ready', now = Date.now()): TaskMetadata {
+  if (!task.claim && task.status !== 'claimed') return { ...task };
+  return {
+    ...task,
+    status: fallbackStatus,
+    claim: undefined,
+    ...(fallbackStatus === 'ready' ? { readyAt: task.readyAt ?? now } : {})
+  };
 }
 
 export function validateTaskMetadata(task: TaskMetadata): string[] {

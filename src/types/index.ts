@@ -35,12 +35,28 @@ export interface ProjectContext {
 export type TaskStatus = 'draft' | 'ready' | 'claimed' | 'blocked' | 'review' | 'done';
 export type TaskAgentTarget = 'none' | 'openai' | 'claude' | 'gemini' | 'custom' | 'any';
 export type TaskCompletionPolicy = 'review-required' | 'auto-complete';
+export type ClaimantAgentTarget = Exclude<TaskAgentTarget, 'none' | 'any'>;
+
+export interface TaskClaim {
+  ownerId: string;
+  agentTarget: ClaimantAgentTarget;
+  customAgentName?: string;
+  token: string;
+  requestId: string;
+  claimedAt: number;
+  heartbeatAt: number;
+  expiresAt: number;
+  attempt: number;
+}
 
 export interface TaskMetadata {
   status: TaskStatus;
   agentTarget: TaskAgentTarget;
   customAgentName?: string;
   completionPolicy: TaskCompletionPolicy;
+  readyAt?: number;
+  claimAttempt?: number;
+  claim?: TaskClaim;
 }
 
 export interface Block {

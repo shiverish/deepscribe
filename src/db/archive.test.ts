@@ -71,4 +71,18 @@ describe('archive validation', () => {
     Object.assign(source.blocks[1], { kind: 'task', task: { status: 'ready', agentTarget: 'custom', completionPolicy: 'review-required' } });
     expect(() => parseProjectArchive(source)).toThrow(/customAgentName/);
   });
+
+  it('never restores a live claim from an imported archive', () => {
+    const source = validArchive();
+    Object.assign(source.blocks[1], {
+      kind: 'task',
+      task: {
+        status: 'claimed', agentTarget: 'openai', completionPolicy: 'review-required', readyAt: 10, claimAttempt: 2,
+        claim: { ownerId: 'agent', token: 'secret', expiresAt: 999999 }
+      }
+    });
+    const imported = parseProjectArchive(source).blocks[1].task;
+    expect(imported).toMatchObject({ status: 'ready', readyAt: 10, claimAttempt: 2 });
+    expect(imported?.claim).toBeUndefined();
+  });
 });
