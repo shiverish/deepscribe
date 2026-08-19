@@ -5,24 +5,24 @@ export const TASK_STATUSES: TaskStatus[] = ['draft', 'ready', 'claimed', 'blocke
 export const TASK_COMPLETION_POLICIES: TaskCompletionPolicy[] = ['review-required', 'auto-complete'];
 
 export const TASK_AGENT_LABELS: Record<TaskAgentTarget, string> = {
-  none: 'Geen',
+  none: 'None',
   openai: 'Codex/ChatGPT',
   claude: 'Claude',
   gemini: 'Gemini',
-  custom: 'Anders',
+  custom: 'Other',
   any: 'Any'
 };
 
 export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
-  draft: 'Concept',
-  ready: 'Klaar',
-  claimed: 'Geclaimd',
-  blocked: 'Geblokkeerd',
+  draft: 'Draft',
+  ready: 'Ready',
+  claimed: 'Claimed',
+  blocked: 'Blocked',
   review: 'Review',
-  done: 'Afgerond'
+  done: 'Done'
 };
 
-export const TASK_TEMPLATE_HTML = '<h2>Doel</h2><p></p><h2>Context</h2><p></p><h2>Acceptatiecriteria</h2><ul><li><p></p></li></ul>';
+export const TASK_TEMPLATE_HTML = '<h2>Goal</h2><p></p><h2>Context</h2><p></p><h2>Acceptance Criteria</h2><ul><li><p></p></li></ul>';
 
 export function createTaskMetadata(completionPolicy: TaskCompletionPolicy = 'review-required'): TaskMetadata {
   return { status: 'draft', agentTarget: 'none', completionPolicy };
@@ -43,7 +43,7 @@ export const MAX_TASK_LEASE_SECONDS = 60 * 60;
 export function normalizeLeaseSeconds(value: unknown): number {
   if (value === undefined) return DEFAULT_TASK_LEASE_SECONDS;
   if (typeof value !== 'number' || !Number.isInteger(value) || value < MIN_TASK_LEASE_SECONDS || value > MAX_TASK_LEASE_SECONDS) {
-    throw new Error('leaseSeconds moet tussen 60 en 3600 seconden liggen.');
+    throw new Error('leaseSeconds must be between 60 and 3600 seconds.');
   }
   return value;
 }
@@ -118,16 +118,17 @@ export function taskWithoutActiveClaim(task: TaskMetadata, fallbackStatus: TaskS
 
 export function validateTaskMetadata(task: TaskMetadata): string[] {
   const errors: string[] = [];
-  if (!TASK_STATUSES.includes(task.status)) errors.push('De taakstatus is ongeldig.');
-  if (!TASK_AGENT_TARGETS.includes(task.agentTarget)) errors.push('De agentdoelgroep is ongeldig.');
-  if (!TASK_COMPLETION_POLICIES.includes(task.completionPolicy)) errors.push('Het afrondingsbeleid is ongeldig.');
-  if (task.agentTarget === 'custom' && !task.customAgentName?.trim()) errors.push('Vul een naam in voor de andere agent.');
+  if (!TASK_STATUSES.includes(task.status)) errors.push('The task status is invalid.');
+  if (!TASK_AGENT_TARGETS.includes(task.agentTarget)) errors.push('The agent target is invalid.');
+  if (!TASK_COMPLETION_POLICIES.includes(task.completionPolicy)) errors.push('The completion policy is invalid.');
+  if (task.agentTarget === 'custom' && !task.customAgentName?.trim()) errors.push('Enter a name for the other agent.');
   return errors;
 }
 
-function sectionText(document: Document, heading: string): { text: string; itemCount: number } {
-  const headings = [...document.body.querySelectorAll('h1,h2,h3,h4,h5,h6')];
-  const start = headings.find(node => node.textContent?.trim().toLocaleLowerCase('nl-NL') === heading);
+function sectionText(document: Document, acceptedHeadings: string[]): { text: string; itemCount: number } {
+  const headingNodes = [...document.body.querySelectorAll('h1,h2,h3,h4,h5,h6')];
+  const normalizedHeadings = acceptedHeadings.map(heading => heading.toLocaleLowerCase('en-US'));
+  const start = headingNodes.find(node => normalizedHeadings.includes(node.textContent?.trim().toLocaleLowerCase('en-US') ?? ''));
   if (!start) return { text: '', itemCount: 0 };
   const text: string[] = [];
   let itemCount = 0;
@@ -144,15 +145,15 @@ function sectionText(document: Document, heading: string): { text: string; itemC
 
 export function validateTaskReady(title: string, content: string, task: TaskMetadata): string[] {
   const errors = validateTaskMetadata(task);
-  if (!title.trim()) errors.push('Vul een titel in.');
+  if (!title.trim()) errors.push('Enter a title.');
   let goal: { text: string; itemCount: number };
   let context: { text: string; itemCount: number };
   let criteria: { text: string; itemCount: number };
   if (typeof DOMParser !== 'undefined') {
     const document = new DOMParser().parseFromString(content || '', 'text/html');
-    goal = sectionText(document, 'doel');
-    context = sectionText(document, 'context');
-    criteria = sectionText(document, 'acceptatiecriteria');
+    goal = sectionText(document, ['goal', 'doel']);
+    context = sectionText(document, ['context']);
+    criteria = sectionText(document, ['acceptance criteria', 'acceptatiecriteria']);
   } else {
     const read = (name: string) => {
       const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -162,13 +163,15 @@ export function validateTaskReady(title: string, content: string, task: TaskMeta
         itemCount: (html.match(/<li\b/gi) ?? []).length
       };
     };
-    goal = read('Doel');
+    goal = read('Goal');
+    if (!goal.text) goal = read('Doel');
     context = read('Context');
-    criteria = read('Acceptatiecriteria');
+    criteria = read('Acceptance Criteria');
+    if (!criteria.text) criteria = read('Acceptatiecriteria');
   }
-  if (!goal.text) errors.push('Vul Doel in.');
-  if (!context.text) errors.push('Vul Context in.');
-  if (!criteria.text || criteria.itemCount < 1) errors.push('Voeg minimaal één acceptatiecriterium toe.');
+  if (!goal.text) errors.push('Enter a Goal.');
+  if (!context.text) errors.push('Enter Context.');
+  if (!criteria.text || criteria.itemCount < 1) errors.push('Add at least one acceptance criterion.');
   return errors;
 }
 
@@ -176,12 +179,12 @@ export function taskContentFromParts(goal: string, context: string, acceptanceCr
   const escape = (value: string) => value
     .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;').replaceAll("'", '&#039;');
-  return `<h2>Doel</h2><p>${escape(goal.trim())}</p><h2>Context</h2><p>${escape(context.trim())}</p><h2>Acceptatiecriteria</h2><ul>${acceptanceCriteria.map(item => `<li><p>${escape(item.trim())}</p></li>`).join('')}</ul>`;
+  return `<h2>Goal</h2><p>${escape(goal.trim())}</p><h2>Context</h2><p>${escape(context.trim())}</p><h2>Acceptance Criteria</h2><ul>${acceptanceCriteria.map(item => `<li><p>${escape(item.trim())}</p></li>`).join('')}</ul>`;
 }
 
 export function convertContentToTask(content: string): string {
   const context = content.trim() && content.trim() !== '<p></p>' ? content : '<p></p>';
-  return `<h2>Doel</h2><p></p><h2>Context</h2>${context}<h2>Acceptatiecriteria</h2><ul><li><p></p></li></ul>`;
+  return `<h2>Goal</h2><p></p><h2>Context</h2>${context}<h2>Acceptance Criteria</h2><ul><li><p></p></li></ul>`;
 }
 
 export function canTransitionTask(from: TaskStatus, to: TaskStatus): boolean {

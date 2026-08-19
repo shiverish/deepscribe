@@ -22,19 +22,19 @@ export const HotkeyHelpModal: React.FC<HotkeyHelpModalProps> = ({ isOpen, onClos
   if (!isOpen) return null;
 
   const shortcuts = [
-    { key: '↑ / ↓', desc: 'Verticaal navigeren door kaarten in de actieve kolom' },
-    { key: 'Enter', desc: 'Titel bewerken (nogmaals Enter = door naar tekstinhoud)' },
-    { key: 'Escape', desc: 'Bewerken stoppen & terugkeren naar kaartnavigatie' },
-    { key: 'Shift + →', desc: 'Nieuw kind-blok (subblok) toevoegen aan gekozen blok' },
-    { key: 'Shift + ↓ / Shift + N', desc: 'Nieuw tekstblok toevoegen aan actieve niveau' },
-    { key: 'Delete / Backspace', desc: 'Geselecteerd blok verplaatsen naar prullenbak' },
-    { key: '→', desc: 'Volgende niveau / kind-blokken openen' },
-    { key: '←', desc: 'Terugnavigeren naar de bovenliggende kolom' },
-    { key: 'Ctrl + K', desc: 'Globale zoekfunctie openen (titel, inhoud & tags)' },
-    { key: 'Ctrl + D', desc: 'Geselecteerd blok + onderliggende tak dupliceren' },
-    { key: 'Ctrl + 1 / 2 / 3', desc: 'Wissel weergave (Columns / Graph / Stats)' },
-    { key: 'Ctrl + Shift + E', desc: 'Vast schrijfpaneel in- of inklappen' },
-    { key: 'Shift + ?', desc: 'Dit sneltoetsenoverzicht openen' },
+    { key: '↑ / ↓', desc: 'Navigate vertically through cards in the active column' },
+    { key: 'Enter', desc: 'Edit title (press Enter again to move to text content)' },
+    { key: 'Escape', desc: 'Stop editing and return to card navigation' },
+    { key: 'Shift + →', desc: 'Add a new child block to the selected block' },
+    { key: 'Shift + ↓ / Shift + N', desc: 'Add a new text block at the active level' },
+    { key: 'Delete / Backspace', desc: 'Move the selected block to trash' },
+    { key: '→', desc: 'Open the next level / child blocks' },
+    { key: '←', desc: 'Navigate back to the parent column' },
+    { key: 'Ctrl + K', desc: 'Open global search (title, content, and tags)' },
+    { key: 'Ctrl + D', desc: 'Duplicate selected block and descendant branch' },
+    { key: 'Ctrl + 1 / 2 / 3', desc: 'Switch view (Columns / Graph / Stats)' },
+    { key: 'Ctrl + Shift + E', desc: 'Expand or collapse the fixed writing panel' },
+    { key: 'Shift + ?', desc: 'Open this keyboard shortcut overview' },
   ];
 
   return (
@@ -78,7 +78,7 @@ export const HotkeyHelpModal: React.FC<HotkeyHelpModalProps> = ({ isOpen, onClos
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '1rem', fontWeight: 600 }}>
             <Command size={18} color="#00F0FF" />
-            <span>Sneltoetsen Overzicht</span>
+            <span>Keyboard Shortcuts</span>
           </div>
 
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
@@ -120,7 +120,7 @@ export const HotkeyHelpModal: React.FC<HotkeyHelpModalProps> = ({ isOpen, onClos
             background: 'rgba(10, 15, 26, 0.8)'
           }}
         >
-          <span>Tip: Alle acties zijn ook via de muis en het contextmenu bereikbaar.</span>
+          <span>Tip: All actions are also available with the mouse and context menu.</span>
           <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>DeepScribe v0.1.7</span>
         </div>
       </div>

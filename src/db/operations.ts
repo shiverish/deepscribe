@@ -133,7 +133,7 @@ export async function trashBlock(blockId: string): Promise<void> {
   await db.transaction('rw', db.blocks, async () => {
     const allBlocks = await db.blocks.toArray();
     const root = allBlocks.find(block => block.id === blockId);
-    if (!root) throw new Error('Blok niet gevonden.');
+    if (!root) throw new Error('Block not found.');
     const ids = collectDescendantIds(allBlocks, blockId);
     const trashedAt = Date.now();
     await db.blocks.where('id').anyOf([...ids]).modify({ isTrash: true, trashedAt, updatedAt: trashedAt });
@@ -145,7 +145,7 @@ export async function restoreBlock(blockId: string): Promise<void> {
   await db.transaction('rw', db.blocks, async () => {
     const allBlocks = await db.blocks.toArray();
     const root = allBlocks.find(block => block.id === blockId);
-    if (!root) throw new Error('Blok niet gevonden.');
+    if (!root) throw new Error('Block not found.');
     const ids = collectDescendantIds(allBlocks, blockId);
     collectAncestorIds(allBlocks, blockId).forEach(id => ids.add(id));
     const restoredAt = Date.now();
@@ -161,7 +161,7 @@ export async function restoreBlock(blockId: string): Promise<void> {
 export async function trashProject(projectId: string): Promise<void> {
   await db.transaction('rw', db.projects, db.blocks, async () => {
     const project = await db.projects.get(projectId);
-    if (!project) throw new Error('Project niet gevonden.');
+    if (!project) throw new Error('Project not found.');
     const trashedAt = Date.now();
     await db.projects.update(projectId, { isTrash: true, trashedAt, updatedAt: trashedAt });
     await db.blocks.where('projectId').equals(projectId).modify(block => {

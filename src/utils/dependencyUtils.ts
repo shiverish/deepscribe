@@ -132,9 +132,9 @@ export function formatDependencyMarkdown(
   const lines = dependencies.map(dep => {
     const completed = isBlockCompleted(dep);
     const check = completed ? '[x]' : '[ ]';
-    const statusText = completed ? 'Afgerond' : 'Openstaand';
+    const statusText = completed ? 'Done' : 'Pending';
     return `- ${check} [[${dep.title}]] (\`${dep.id}\`) — *${statusText}*`;
   });
 
-  return `## Afhankelijkheden\n\n${lines.join('\n')}`;
+  return `## Dependencies\n\n${lines.join('\n')}`;
 }

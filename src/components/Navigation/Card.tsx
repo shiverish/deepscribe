@@ -66,12 +66,12 @@ export const Card: React.FC<CardProps> = ({
     ? String(agentEditCount)
     : formatAgentEditBadgeLabel(hasOwnAgentUpdate, agentEditCount);
   const agentBadgeTitle = project
-    ? `${agentEditCount} blok${agentEditCount === 1 ? '' : 'ken'} met ongelezen agentbewerkingen.`
+    ? `${agentEditCount} block${agentEditCount === 1 ? '' : 's'} with unread agent edits.`
     : hasOwnAgentUpdate && descendantAgentEditCount > 0
-      ? `Dit blok en ${descendantAgentEditCount} onderliggend${descendantAgentEditCount === 1 ? ' blok bevatten' : 'e blokken bevatten'} ongelezen agentbewerkingen.`
+      ? `This block and ${descendantAgentEditCount} descendant block${descendantAgentEditCount === 1 ? '' : 's'} contain unread agent edits.`
       : hasOwnAgentUpdate
-        ? 'Dit blok bevat agentbewerkingen die je nog niet hebt bekeken.'
-        : `${descendantAgentEditCount} onderliggend${descendantAgentEditCount === 1 ? ' blok bevat' : 'e blokken bevatten'} ongelezen agentbewerkingen.`;
+        ? 'This block contains agent edits you have not reviewed yet.'
+        : `${descendantAgentEditCount} descendant block${descendantAgentEditCount === 1 ? '' : 's'} contain unread agent edits.`;
 
   useEffect(() => () => {
     if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current);
@@ -85,7 +85,7 @@ export const Card: React.FC<CardProps> = ({
       if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current);
       copiedTimerRef.current = window.setTimeout(() => setReferenceCopied(false), 1600);
     } catch (error) {
-      console.error('Agentreferentie kopieren is mislukt.', error);
+      console.error('Failed to copy agent reference.', error);
     }
   };
 
@@ -164,7 +164,7 @@ export const Card: React.FC<CardProps> = ({
           ) : (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               {block?.kind === 'task' ? <CheckSquare size={15} color="#A78BFA" /> : <FileText size={15} color="var(--atmosphere-secondary)" />}
-              {block?.title || 'Naamloos blok'}
+              {block?.title || 'Untitled block'}
             </span>
           )}
         </div>
@@ -173,8 +173,8 @@ export const Card: React.FC<CardProps> = ({
           <button
             className={`card-reference-button ${referenceCopied ? 'copied' : ''}`}
             onClick={handleCopyReference}
-            title={referenceCopied ? 'Agentreferentie gekopieerd' : 'Kopieer agentreferentie met ID'}
-            aria-label={referenceCopied ? 'Agentreferentie gekopieerd' : 'Kopieer agentreferentie met ID'}
+            title={referenceCopied ? 'Agent reference copied' : 'Copy agent reference with ID'}
+            aria-label={referenceCopied ? 'Agent reference copied' : 'Copy agent reference with ID'}
           >
             {referenceCopied ? <Check size={13} /> : <ClipboardCopy size={13} />}
           </button>
@@ -235,14 +235,14 @@ export const Card: React.FC<CardProps> = ({
         {isBlocked && (
           <span
             className="card-badge blocked"
-            title="Deze taak is geblokkeerd door openstaande afhankelijkheden."
+            title="This task is blocked by pending dependencies."
             style={{
               background: 'rgba(245, 158, 11, 0.15)',
               color: '#F59E0B',
               border: '1px solid rgba(245, 158, 11, 0.3)'
             }}
           >
-            <Lock size={10} /> Geblokkeerd
+            <Lock size={10} /> Blocked
           </span>
         )}
 
@@ -253,7 +253,7 @@ export const Card: React.FC<CardProps> = ({
         )}
 
         {type === 'project' && Boolean((item as Project).scratchpad) && (
-          <span className="card-badge agent-update" title="Project bevat een actief agent-scratchpad">
+          <span className="card-badge agent-update" title="Project contains an active agent scratchpad">
             <Bot size={11} /> Context
           </span>
         )}
@@ -271,7 +271,7 @@ export const Card: React.FC<CardProps> = ({
         )}
 
         {block && block.attachmentCount > 0 && (
-          <span className="card-badge cyan" title={`${block.attachmentCount} bijlage${block.attachmentCount === 1 ? '' : 'n'}`}>
+          <span className="card-badge cyan" title={`${block.attachmentCount} attachment${block.attachmentCount === 1 ? '' : 's'}`}>
             <Paperclip size={11} /> {block.attachmentCount}
           </span>
         )}
@@ -308,9 +308,9 @@ export const Card: React.FC<CardProps> = ({
               e.stopPropagation();
               onAddChild(item.id);
             }}
-            title="Nieuw onderliggend blok toevoegen"
+            title="Add new child block"
           >
-            <Plus size={12} /> Kind
+            <Plus size={12} /> Child
           </button>
         )}
       </div>

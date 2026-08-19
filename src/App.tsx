@@ -73,7 +73,7 @@ export function App() {
     if (!window.electronAPI?.onWorkspaceFlushRequested) return;
     return window.electronAPI.onWorkspaceFlushRequested(() => {
       repository.flush()
-        .catch(error => console.error('Laatste workspace-opslag is mislukt.', error))
+        .catch(error => console.error('Final workspace save failed.', error))
         .finally(() => window.electronAPI?.workspaceFlushed());
     });
   }, []);
@@ -108,7 +108,7 @@ export function App() {
         .catch((error: unknown) => window.deepScribeMcp?.respond({
           id: request.id,
           ok: false,
-          error: error instanceof Error ? error.message : 'Onbekende DeepScribe-fout.'
+      error: error instanceof Error ? error.message : 'Unknown DeepScribe error.'
         }));
     });
     repository.initialize()
@@ -179,7 +179,7 @@ export function App() {
     }
     const block = allBlocks.find(item => item.id === blockId);
     const project = block ? projects.find(item => item.id === block.projectId) : null;
-    if (!block || !project) throw new Error('Het te printen blok is niet beschikbaar.');
+    if (!block || !project) throw new Error('The block to print is unavailable.');
 
     const document = buildBlockPrintDocument({ project, rootBlockId: blockId, blocks: allBlocks, draft, settings });
     return window.electronAPI.printBlockDocument({ html: document.html, jobName: document.jobName, pageSize: settings.pageSize });
@@ -210,7 +210,7 @@ export function App() {
 
     cols.push({
       level: 0,
-      title: 'Projecten',
+      title: 'Projects',
       items: projects,
       type: 'project',
       selectedId: activeProjectId,
@@ -227,7 +227,7 @@ export function App() {
 
     cols.push({
       level: 1,
-      title: activeProject?.title || 'Hoofdblokken',
+      title: activeProject?.title || 'Root Blocks',
       items: rootBlocks,
       type: 'block',
       selectedId: selectedLevel1Id,
@@ -247,7 +247,7 @@ export function App() {
 
       cols.push({
         level: i + 2,
-        title: parentBlock.title || `Niveau ${i + 2}`,
+        title: parentBlock.title || `Level ${i + 2}`,
         items: children,
         type: 'block',
         selectedId: nextLevelSelectedId,
@@ -310,8 +310,8 @@ export function App() {
       const newProjId = createId('proj');
       const newProj: Project = {
         id: newProjId,
-        title: 'Nieuw Project',
-        description: 'Beschrijf je nieuwe project...',
+        title: 'New Project',
+        description: 'Describe your new project...',
         color: '#F59E0B',
         order: projects.reduce((highest, project) => Math.max(highest, project.order ?? -1), -1) + 1,
         tags: [],
@@ -320,7 +320,7 @@ export function App() {
         updatedAt: now
       };
       await db.projects.add(newProj);
-      await recordActivity({ projectId: newProjId, action: 'project-created', summary: `Project “${newProj.title}” aangemaakt` });
+      await recordActivity({ projectId: newProjId, action: 'project-created', summary: `Project “${newProj.title}” created` });
       setActiveProjectId(newProjId);
       setSelectedBlockPath([]);
       setIsWritingPanelOpen(true);
@@ -331,12 +331,12 @@ export function App() {
       const siblings = allBlocks.filter(b => b.projectId === activeProjectId && b.parentId === parentId);
       const newBlockId = createId('block');
 
-      if (kind === 'task' && !parentId) throw new Error('Een taakblok moet onder een bestaand blok staan.');
+    if (kind === 'task' && !parentId) throw new Error('A task block must be placed under an existing block.');
       const newBlock: Block = {
         id: newBlockId,
         projectId: activeProjectId,
         parentId: parentId,
-        title: kind === 'task' ? 'Nieuwe taak' : 'Nieuw tekstblok',
+      title: kind === 'task' ? 'New task' : 'New text block',
         content: kind === 'task' ? TASK_TEMPLATE_HTML : '<p></p>',
         plainText: '',
         order: siblings.length,
@@ -352,7 +352,7 @@ export function App() {
       };
 
       await db.blocks.add(newBlock);
-      await recordActivity({ projectId: activeProjectId, blockId: newBlockId, action: 'block-created', summary: `Blok “${newBlock.title}” aangemaakt` });
+      await recordActivity({ projectId: activeProjectId, blockId: newBlockId, action: 'block-created', summary: `Block “${newBlock.title}” created` });
 
       const newPath = selectedBlockPath.slice(0, level - 1);
       newPath.push(newBlockId);
@@ -374,7 +374,7 @@ export function App() {
       id: newBlockId,
       projectId: activeProjectId,
       parentId: parentId,
-      title: kind === 'task' ? 'Nieuwe taak' : 'Nieuw kind-blok',
+      title: kind === 'task' ? 'New task' : 'New child block',
       content: kind === 'task' ? TASK_TEMPLATE_HTML : '<p></p>',
       plainText: '',
       order: children.length,
@@ -391,7 +391,7 @@ export function App() {
 
     await db.blocks.add(newBlock);
     await db.blocks.update(parentId, { childCount: children.length + 1 });
-    await recordActivity({ projectId: activeProjectId, blockId: newBlockId, action: kind === 'task' ? 'task-created' : 'block-created', summary: `${kind === 'task' ? 'Taakblok' : 'Kindblok'} “${newBlock.title}” aangemaakt` });
+    await recordActivity({ projectId: activeProjectId, blockId: newBlockId, action: kind === 'task' ? 'task-created' : 'block-created', summary: `${kind === 'task' ? 'Task block' : 'Child block'} “${newBlock.title}” created` });
 
     const parentIndex = selectedBlockPath.indexOf(parentId);
     if (parentIndex !== -1) {
@@ -407,7 +407,7 @@ export function App() {
 
   const handleAddAttachments = async (blockId: string) => {
     const block = allBlocks.find(item => item.id === blockId);
-    if (!block || !window.electronAPI?.addAttachments) throw new Error('Bestanden toevoegen is alleen beschikbaar in de desktop-app.');
+    if (!block || !window.electronAPI?.addAttachments) throw new Error('Adding files is only available in the desktop app.');
     const files = await window.electronAPI.addAttachments({ projectId: block.projectId, blockId });
     if (files.length === 0) return;
 
@@ -424,7 +424,7 @@ export function App() {
         const attachmentCount = await db.attachments.where('blockId').equals(blockId).count();
         await db.blocks.update(blockId, { attachmentCount, updatedAt: Date.now() });
       });
-      await recordActivity({ projectId: block.projectId, blockId, action: 'attachments-added', summary: `${attachments.length} bijlage${attachments.length === 1 ? '' : 'n'} toegevoegd aan “${block.title}”` });
+      await recordActivity({ projectId: block.projectId, blockId, action: 'attachments-added', summary: `${attachments.length} attachment${attachments.length === 1 ? '' : 's'} added to “${block.title}”` });
     } catch (error) {
       await Promise.allSettled(attachments
         .filter(attachment => attachment.localPath)
@@ -445,7 +445,7 @@ export function App() {
       link.click();
       return;
     }
-    throw new Error('Het bijlagebestand is niet meer beschikbaar.');
+    throw new Error('The attachment file is no longer available.');
   };
 
   const handleRemoveAttachment = async (attachment: Attachment) => {
@@ -458,7 +458,7 @@ export function App() {
       await db.blocks.update(attachment.blockId, { attachmentCount, updatedAt: Date.now() });
     });
     const block = allBlocks.find(item => item.id === attachment.blockId);
-    await recordActivity({ projectId: block?.projectId, blockId: attachment.blockId, action: 'attachment-removed', summary: `Bijlage “${attachment.fileName}” verwijderd` });
+    await recordActivity({ projectId: block?.projectId, blockId: attachment.blockId, action: 'attachment-removed', summary: `Attachment “${attachment.fileName}” removed` });
   };
 
   // Explicit Save Handler called by WritingPanel on blur, navigation, 10s timer, beforeunload
@@ -484,14 +484,14 @@ export function App() {
           tags,
           scratchpad
         });
-        await recordActivity({ projectId: itemId, action: 'project-updated', summary: `Project “${title}” bijgewerkt` });
+        await recordActivity({ projectId: itemId, action: 'project-updated', summary: `Project “${title}” updated` });
       } else {
         const currentBlock = await db.blocks.get(itemId);
         if (currentBlock) {
-          await recordBlockRevision(currentBlock, 'user', 'Status vóór ontwikkelaar-wijziging');
+        await recordBlockRevision(currentBlock, 'user', 'State before developer edit');
         }
         if (task && currentBlock?.kind === 'task' && currentBlock.task) {
-          if (!canTransitionTask(currentBlock.task.status, task.status)) throw new Error('Ongeldige taakstatusovergang.');
+          if (!canTransitionTask(currentBlock.task.status, task.status)) throw new Error('Invalid task status transition.');
           if (task.status === 'ready') {
             const errors = validateTaskReady(title, content, task);
             if (errors.length) throw new Error(errors.join(' '));
@@ -520,7 +520,7 @@ export function App() {
           : oldTask && newTask && (oldTask.agentTarget !== newTask.agentTarget || oldTask.completionPolicy !== newTask.completionPolicy || oldTask.customAgentName !== newTask.customAgentName)
             ? 'task-metadata-updated'
             : 'block-updated';
-        await recordActivity({ projectId: block?.projectId, blockId: itemId, action, summary: block?.kind === 'task' ? `${action === 'task-claim-released-by-user' ? 'Claim door gebruiker vrijgegeven voor' : 'Taak'} “${title}”${newTask ? ` → ${newTask.status}` : ''}` : `Blok “${title}” bijgewerkt` });
+      await recordActivity({ projectId: block?.projectId, blockId: itemId, action, summary: block?.kind === 'task' ? `${action === 'task-claim-released-by-user' ? 'Claim released by user for' : 'Task'} “${title}”${newTask ? ` → ${newTask.status}` : ''}` : `Block “${title}” updated` });
       }
       setSaveStatus({ state: 'saved', lastSavedAt: Date.now() });
     } catch (err) {
@@ -532,7 +532,7 @@ export function App() {
   const handleConvertBlockToTask = useCallback(async (blockId: string) => {
     const block = await db.blocks.get(blockId);
     if (!block || block.isTrash || block.kind === 'task') return;
-    await recordBlockRevision(block, 'user', 'Status vóór omzetting naar taak');
+    await recordBlockRevision(block, 'user', 'State before conversion to task');
     const agentStatuses = new Set(['agent-ready', 'agent-claimed', 'agent-blocked', 'agent-review', 'agent-done']);
     const convertedContent = convertContentToTask(block.content);
     const updated: Block = {
@@ -545,8 +545,8 @@ export function App() {
       updatedAt: Date.now()
     };
     await db.blocks.put(updated);
-    await recordBlockRevision(updated, 'user', 'Blok omgezet naar taak');
-    await recordActivity({ projectId: block.projectId, blockId, action: 'task-converted', summary: `Blok “${block.title}” omgezet naar taakconcept` });
+    await recordBlockRevision(updated, 'user', 'Block converted to task');
+    await recordActivity({ projectId: block.projectId, blockId, action: 'task-converted', summary: `Block “${block.title}” converted to draft task` });
   }, [settings.defaultTaskCompletionPolicy]);
 
   const handleDuplicate = async (item: Block | Project, type: 'project' | 'block') => {
@@ -600,9 +600,9 @@ export function App() {
 
   const handleDeleteToTrash = async (item: Block | Project, type: 'project' | 'block') => {
     if (type === 'project') {
-      if (window.confirm(`Project "${item.title}" naar de prullenbak verplaatsen?`)) {
+      if (window.confirm(`Move project "${item.title}" to the trash?`)) {
         await trashProject(item.id);
-        await recordActivity({ projectId: item.id, action: 'project-trashed', summary: `Project “${item.title}” naar de prullenbak verplaatst` });
+        await recordActivity({ projectId: item.id, action: 'project-trashed', summary: `Project “${item.title}” moved to trash` });
         setActiveProjectId(null);
         setSelectedBlockPath([]);
       }
@@ -610,7 +610,7 @@ export function App() {
       const block = item as Block;
       const fallback = getDeleteFallbackTarget(block, allBlocks, selectedBlockPath);
       await trashBlock(block.id);
-      await recordActivity({ projectId: block.projectId, blockId: block.id, action: 'block-trashed', summary: `Blok “${block.title}” naar de prullenbak verplaatst` });
+      await recordActivity({ projectId: block.projectId, blockId: block.id, action: 'block-trashed', summary: `Block “${block.title}” moved to trash` });
       setSelectedBlockPath(fallback.newPath);
       if (fallback.focusedId) setFocusedCardId(fallback.focusedId);
       setFocusedLevel(fallback.focusedLevel);
@@ -665,7 +665,7 @@ export function App() {
     if (type === 'project') {
       if (dragTarget.position !== 'inside') {
         await reorderProject(draggedItem.item.id, targetItem.id, dragTarget.position);
-        await recordActivity({ projectId: draggedItem.item.id, action: 'project-reordered', summary: `Project “${draggedItem.item.title}” verplaatst` });
+        await recordActivity({ projectId: draggedItem.item.id, action: 'project-reordered', summary: `Project “${draggedItem.item.title}” moved` });
       }
     } else {
       const block = draggedItem.item as Block;
@@ -687,7 +687,7 @@ export function App() {
           setSelectedBlockPath(path);
           setFocusedLevel(path.length);
           setFocusedCardId(block.id);
-          await recordActivity({ projectId: block.projectId, blockId: block.id, action: 'block-reordered', summary: `Blok “${block.title}” verplaatst` });
+          await recordActivity({ projectId: block.projectId, blockId: block.id, action: 'block-reordered', summary: `Block “${block.title}” moved` });
         }
       }
     }

@@ -47,9 +47,9 @@ describe('unseen agent edits', () => {
   });
 
   it('formats own, descendant and combined badge labels', () => {
-    expect(formatAgentEditBadgeLabel(true, 1)).toBe('Nieuw van agent');
-    expect(formatAgentEditBadgeLabel(false, 2)).toBe('2 lager');
-    expect(formatAgentEditBadgeLabel(true, 3)).toBe('Nieuw · 2 lager');
+    expect(formatAgentEditBadgeLabel(true, 1)).toBe('New from agent');
+    expect(formatAgentEditBadgeLabel(false, 2)).toBe('2 below');
+    expect(formatAgentEditBadgeLabel(true, 3)).toBe('New · 2 below');
   });
 
   it('keeps descendant alerts after only the parent itself was seen', () => {
@@ -58,7 +58,7 @@ describe('unseen agent edits', () => {
       block({ id: 'child', parentId: 'parent', lastAgentEditAt: 30 })
     ]);
     expect(counts.byBlock).toEqual({ child: 1, parent: 1 });
-    expect(formatAgentEditBadgeLabel(false, counts.byBlock.parent)).toBe('1 lager');
+    expect(formatAgentEditBadgeLabel(false, counts.byBlock.parent)).toBe('1 below');
   });
 
   it('updates ancestor counts when a child is seen, moved, trashed or restored', () => {

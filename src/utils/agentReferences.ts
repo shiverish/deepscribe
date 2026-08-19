@@ -8,7 +8,7 @@ export function formatAgentReference(
 ): string {
   const label = type === 'project' ? 'project' : 'block';
   const idLabel = type === 'project' ? 'projectId' : 'blockId';
-  const title = item.title.trim() || (type === 'project' ? 'Naamloos project' : 'Naamloos blok');
+  const title = item.title.trim() || (type === 'project' ? 'Untitled project' : 'Untitled block');
 
   return `DeepScribe ${label} "${title}" (${idLabel}: ${item.id})`;
 }

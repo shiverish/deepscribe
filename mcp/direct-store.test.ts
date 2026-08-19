@@ -174,7 +174,7 @@ describe('DirectWorkspaceStore offline MCP engine', () => {
 
       expect(workItem.tags).toContain('todo');
       expect(workItem.tags).toContain('agent-ready');
-      expect(workItem.content).toContain('<h2>Doel</h2>');
+      expect(workItem.content).toContain('<h2>Goal</h2>');
       expect(workItem.content).toContain('<h2>Context</h2>');
 
       const todos = await store.handleRequest('add_todo', {

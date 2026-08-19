@@ -55,10 +55,10 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
             className={`breadcrumb-segment ${pathSegments.length === 0 ? 'current' : ''}`}
             onClick={() => onSelectSegment(0)}
             aria-current={pathSegments.length === 0 ? 'page' : undefined}
-            title="Projectenlijst"
+            title="Project List"
           >
             <Folder size={15} />
-            <span>Projecten</span>
+            <span>Projects</span>
           </button>
 
           {pathSegments.map((segment, index) => {
@@ -131,10 +131,10 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
             fontSize: '0.78rem',
             fontWeight: 500
           }}
-          title="Zoeken (Ctrl + K)"
+          title="Search (Ctrl + K)"
         >
           <Search size={14} />
-          <span>Zoeken</span>
+          <span>Search</span>
           <kbd>Ctrl+K</kbd>
         </button>
 
@@ -152,10 +152,10 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
             gap: 4,
             fontSize: '0.78rem'
           }}
-          title="Project Exporteren / Importeren"
+          title="Export / Import Project"
         >
           <Download size={14} />
-          <span>Archief</span>
+          <span>Archive</span>
         </button>
 
         <button
@@ -164,7 +164,7 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
           title="Agent Inbox, activiteit en templates"
         >
           <Bot size={14} />
-          <span>Werkruimte</span>
+          <span>Workspace</span>
         </button>
 
         <button
@@ -181,7 +181,7 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
             gap: 4,
             fontSize: '0.78rem'
           }}
-          title="Prullenbak"
+          title="Trash"
         >
           <Trash2 size={14} />
         </button>
@@ -200,7 +200,7 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
             gap: 4,
             fontSize: '0.78rem'
           }}
-          title="Sneltoetsen (Shift + ?)"
+          title="Keyboard Shortcuts (Shift + ?)"
         >
           <HelpCircle size={14} />
         </button>
@@ -219,7 +219,7 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
             gap: 4,
             fontSize: '0.78rem'
           }}
-          title="Instellingen (Ctrl + ,)"
+          title="Settings (Ctrl + ,)"
         >
           <Settings size={14} />
         </button>
@@ -241,10 +241,10 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
             fontSize: '0.78rem',
             fontWeight: 500
           }}
-          title="Schrijfpaneel in/uitklappen (Ctrl + Shift + E)"
+          title="Toggle Writing Panel (Ctrl + Shift + E)"
         >
           {isWritingPanelOpen ? <PanelRightClose size={15} /> : <PanelRightOpen size={15} />}
-          <span>Schrijfpaneel</span>
+          <span>Writing Panel</span>
         </button>
       </div>
     </div>

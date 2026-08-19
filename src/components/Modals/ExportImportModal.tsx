@@ -51,7 +51,7 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
   const handleExportProject = async () => {
     if (!selectedProjectId) return;
     setIsExporting(true);
-    setStatusMessage('Archief wordt samengesteld...');
+    setStatusMessage('Preparing archive...');
 
     try {
       const project = await db.projects.get(selectedProjectId);
@@ -90,7 +90,7 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
             : att.localPath && window.electronAPI?.readAttachment
               ? await window.electronAPI.readAttachment(att.localPath)
               : null;
-          if (!base64Data) throw new Error(`Bijlage “${att.fileName}” is niet meer beschikbaar.`);
+          if (!base64Data) throw new Error(`Attachment “${att.fileName}” is no longer available.`);
           attachmentsFolder.file(att.id + '_' + att.fileName, base64Data, { base64: true });
         }
       }
@@ -99,10 +99,10 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
       const safeTitle = project.title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
       saveAs(content, `${safeTitle}_archive.deepscribe`);
 
-      setStatusMessage('Export voltooid! Bestand is gedownload.');
+      setStatusMessage('Export complete. The file has been downloaded.');
     } catch (err) {
       console.error(err);
-      setStatusMessage('Fout bij exporteren.');
+      setStatusMessage('Export failed.');
     } finally {
       setIsExporting(false);
     }
@@ -113,18 +113,18 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
     if (!file) return;
     e.target.value = '';
     if (file.size > MAX_ARCHIVE_FILE_BYTES) {
-      setStatusMessage('Fout: dit archief is groter dan 250 MB.');
+      setStatusMessage('Error: this archive is larger than 250 MB.');
       return;
     }
 
     setIsImporting(true);
-    setStatusMessage('Archief wordt ingelezen...');
+    setStatusMessage('Reading archive...');
 
     try {
       const zip = await JSZip.loadAsync(file);
       const jsonFile = zip.file('project.json');
       if (!jsonFile) {
-        setStatusMessage('Fout: ongeldig DeepScribe archief (project.json ontbreekt).');
+        setStatusMessage('Error: invalid DeepScribe archive (project.json is missing).');
         setIsImporting(false);
         return;
       }
@@ -161,11 +161,11 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
       let totalAttachmentBytes = 0;
       const attachmentsFolder = zip.folder('attachments');
       for (const meta of data.attachmentsMeta) {
-        if (meta.fileSize > MAX_ATTACHMENT_BYTES) throw new Error(`Bijlage “${meta.fileName}” is groter dan 25 MB.`);
+        if (meta.fileSize > MAX_ATTACHMENT_BYTES) throw new Error(`Attachment “${meta.fileName}” is larger than 25 MB.`);
         totalAttachmentBytes += meta.fileSize;
-        if (totalAttachmentBytes > MAX_TOTAL_ATTACHMENT_BYTES) throw new Error('De bijlagen zijn samen groter dan 150 MB.');
+        if (totalAttachmentBytes > MAX_TOTAL_ATTACHMENT_BYTES) throw new Error('The attachments exceed 150 MB in total.');
         const fileInZip = attachmentsFolder?.file(meta.id + '_' + meta.fileName);
-        if (!fileInZip) throw new Error(`Bijlage ontbreekt in archief: ${meta.fileName}.`);
+        if (!fileInZip) throw new Error(`Attachment is missing from the archive: ${meta.fileName}.`);
         const base64 = await fileInZip.async('base64');
         const blockId = blockIdMap.get(meta.blockId)!;
         const attachmentId = createId('attachment');
@@ -190,12 +190,12 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
       });
 
       setStatusMessage(data.normalizedTagBlocks > 0
-        ? `Import afgerond. Tags in ${data.normalizedTagBlocks} blok${data.normalizedTagBlocks === 1 ? '' : 'ken'} zijn opgeschoond.`
-        : 'Import succesvol afgerond! Project is hersteld.');
+        ? `Import complete. Tags were normalized in ${data.normalizedTagBlocks} block${data.normalizedTagBlocks === 1 ? '' : 's'}.`
+        : 'Import complete. The project has been restored.');
       onRefreshData();
     } catch (err) {
       console.error(err);
-      setStatusMessage(err instanceof Error ? `Import afgebroken: ${err.message}` : 'Fout bij importeren van archief.');
+      setStatusMessage(err instanceof Error ? `Import aborted: ${err.message}` : 'Failed to import archive.');
     } finally {
       setIsImporting(false);
     }
@@ -244,7 +244,7 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '1rem', fontWeight: 600 }}>
             <FileArchive size={18} color="#00F0FF" />
-            <span>Project Exporteren & Importeren</span>
+            <span>Export & Import Project</span>
           </div>
 
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
@@ -255,10 +255,10 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
         <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 20 }}>
           <div style={{ background: 'var(--bg-card)', padding: 16, borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
             <h4 style={{ color: 'var(--neon-cyan)', marginBottom: 8, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Download size={16} /> Exporteer Project (.deepscribe)
+              <Download size={16} /> Export Project (.deepscribe)
             </h4>
             <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: 12 }}>
-              Exporteer een compleet project inclusief alle tekstblokken, hiërarchische niveaus en bijlagen als een draagbaar archief.
+              Export a complete project, including all text blocks, hierarchy levels, and attachments, as a portable archive.
             </p>
 
             <div style={{ display: 'flex', gap: 10 }}>
@@ -299,17 +299,17 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
                 }}
               >
                 <Download size={14} />
-                <span>{isExporting ? 'Exporteren...' : 'Download'}</span>
+                <span>{isExporting ? 'Exporting...' : 'Download'}</span>
               </button>
             </div>
           </div>
 
           <div style={{ background: 'var(--bg-card)', padding: 16, borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
             <h4 style={{ color: 'var(--neon-magenta)', marginBottom: 8, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Upload size={16} /> Importeer Project Archief
+              <Upload size={16} /> Import Project Archive
             </h4>
             <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: 12 }}>
-              Laad een eerder geëxporteerd `.deepscribe` of `.zip` archief in.
+              Load a previously exported `.deepscribe` or `.zip` archive.
             </p>
 
             <label
@@ -330,7 +330,7 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
               }}
             >
               <Upload size={16} />
-              <span>Selecteer .deepscribe bestand</span>
+              <span>Select .deepscribe file</span>
               <input type="file" accept=".deepscribe,.zip" style={{ display: 'none' }} onChange={handleImportFile} disabled={isImporting} />
             </label>
           </div>

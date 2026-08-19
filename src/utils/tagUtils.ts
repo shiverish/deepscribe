@@ -13,12 +13,12 @@ export function normalizeTag(tag: string): string {
 /** Validates user or imported input and returns its canonical representation. */
 export function parseTag(input: string): TagValidationResult {
   const tag = normalizeTag(input);
-  if (!tag) return { tag: null, error: 'Vul een tag in.' };
+  if (!tag) return { tag: null, error: 'Enter a tag.' };
   if (tag.length > TAG_MAX_LENGTH) {
-    return { tag: null, error: `Een tag mag maximaal ${TAG_MAX_LENGTH} tekens bevatten.` };
+    return { tag: null, error: `A tag can contain no more than ${TAG_MAX_LENGTH} characters.` };
   }
   if (!/^[\p{L}\p{N}][\p{L}\p{N}_-]*$/u.test(tag)) {
-    return { tag: null, error: 'Gebruik alleen letters, cijfers, koppeltekens en underscores.' };
+    return { tag: null, error: 'Use only letters, numbers, hyphens, and underscores.' };
   }
   return { tag, error: null };
 }

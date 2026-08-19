@@ -72,7 +72,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
 
       for (const block of rankedBlocks) {
           const project = projectMap.get(block.projectId);
-          const projectTitle = project?.title || 'Onbekend Project';
+          const projectTitle = project?.title || 'Unknown Project';
 
           const pathSegments: PathSegment[] = [];
           if (project) {
@@ -195,7 +195,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Zoek lokaal op woorden, betekenis of tags... (Ctrl + K)"
+            placeholder="Search locally by words, meaning, or tags... (Ctrl + K)"
             style={{
               flex: 1,
               background: 'transparent',
@@ -236,11 +236,11 @@ export const SearchModal: React.FC<SearchModalProps> = ({
         <div style={{ maxHeight: '420px', overflowY: 'auto', padding: '8px' }}>
           {!query.trim() ? (
             <div style={{ padding: '30px 20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-              Zoek lokaal op woorden of verwante begrippen, of klik hierboven op een tag.
+              Search locally for words or related concepts, or click a tag above.
             </div>
           ) : results.length === 0 ? (
             <div style={{ padding: '30px 20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-              Geen resultaten gevonden voor &quot;{query}&quot;.
+              No results found for &quot;{query}&quot;.
             </div>
           ) : (
             results.map((res, index) => {
@@ -311,8 +311,8 @@ export const SearchModal: React.FC<SearchModalProps> = ({
             background: 'rgba(10, 15, 26, 0.8)'
           }}
         >
-          <span>Gebruik <kbd>↑</kbd> <kbd>↓</kbd> om te navigeren, <kbd>Enter</kbd> om te openen</span>
-          <span><kbd>Esc</kbd> sluiten</span>
+          <span>Use <kbd>↑</kbd> <kbd>↓</kbd> to navigate, <kbd>Enter</kbd> to open</span>
+          <span><kbd>Esc</kbd> close</span>
         </div>
       </div>
     </div>

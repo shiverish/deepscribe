@@ -26,13 +26,13 @@ describe('archive validation', () => {
   it('rejects missing parents', () => {
     const source = validArchive();
     source.blocks[1].parentId = 'missing';
-    expect(() => parseProjectArchive(source)).toThrow(/Bovenliggend blok ontbreekt/);
+    expect(() => parseProjectArchive(source)).toThrow(/Parent block is missing/);
   });
 
   it('rejects cycles', () => {
     const source = validArchive();
     source.blocks[0].parentId = 'child';
-    expect(() => parseProjectArchive(source)).toThrow(/circulaire boomstructuur/);
+    expect(() => parseProjectArchive(source)).toThrow(/circular tree structure/);
   });
 
   it('normalizes, deduplicates and rejects invalid imported tags', () => {

@@ -90,7 +90,7 @@ export const Column: React.FC<ColumnProps> = ({
         <button
           className="icon-btn-subtle"
           onClick={onAddNewItem}
-          title={type === 'project' ? 'Nieuw Project' : 'Nieuw Blok'}
+          title={type === 'project' ? 'New Project' : 'New Block'}
           style={{
             background: 'rgba(0, 240, 255, 0.08)',
             border: '1px solid rgba(0, 240, 255, 0.2)',
@@ -106,7 +106,7 @@ export const Column: React.FC<ColumnProps> = ({
           }}
         >
           {type === 'project' ? <FolderPlus size={14} /> : <Plus size={14} />}
-          <span>Nieuw</span>
+          <span>New</span>
         </button>
       </div>
 
@@ -157,7 +157,7 @@ export const Column: React.FC<ColumnProps> = ({
         {filteredItems.length === 0 ? (
           <div className="empty-column-notice">
             <Inbox size={24} color="#64748B" />
-            <p>{selectedTag ? `Geen blokken met tag #${selectedTag}.` : 'Geen onderdelen op dit niveau.'}</p>
+            <p>{selectedTag ? `No blocks tagged #${selectedTag}.` : 'No items at this level.'}</p>
             {selectedTag ? (
               <button
                 onClick={() => setSelectedTag(null)}
@@ -188,10 +188,10 @@ export const Column: React.FC<ColumnProps> = ({
                   fontWeight: 500
                 }}
               >
-                + {type === 'project' ? 'Nieuw Project Maken' : 'Eerste Blok Toevoegen'}
+                + {type === 'project' ? 'Create New Project' : 'Add First Block'}
               </button>
               {onAddTask && (
-                <button className="column-add-btn" onClick={onAddTask}>Nieuwe taak toevoegen</button>
+                <button className="column-add-btn" onClick={onAddTask}>Add new task</button>
               )}
               </>
             )}
@@ -227,9 +227,9 @@ export const Column: React.FC<ColumnProps> = ({
           <div className="column-add-actions">
             <button className="column-add-btn" onClick={onAddNewItem}>
               <Plus size={14} />
-              <span>Nieuw {type === 'project' ? 'project' : 'blok'} toevoegen</span>
+              <span>Add new {type === 'project' ? 'project' : 'block'}</span>
             </button>
-            {onAddTask && <button className="column-add-btn task" onClick={onAddTask}>Nieuwe taak</button>}
+            {onAddTask && <button className="column-add-btn task" onClick={onAddTask}>New task</button>}
           </div>
         )}
       </div>

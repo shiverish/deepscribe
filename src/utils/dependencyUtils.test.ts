@@ -120,9 +120,9 @@ describe('dependencyUtils', () => {
       const dep2 = createMockBlock({ id: 'dep-2', title: 'Auth API' });
 
       const md = formatDependencyMarkdown([dep1, dep2], [dep1, dep2]);
-      expect(md).toContain('## Afhankelijkheden');
-      expect(md).toContain('- [x] [[Database Schema]] (`dep-1`) — *Afgerond*');
-      expect(md).toContain('- [ ] [[Auth API]] (`dep-2`) — *Openstaand*');
+      expect(md).toContain('## Dependencies');
+      expect(md).toContain('- [x] [[Database Schema]] (`dep-1`) — *Done*');
+      expect(md).toContain('- [ ] [[Auth API]] (`dep-2`) — *Pending*');
     });
   });
 });

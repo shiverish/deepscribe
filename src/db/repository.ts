@@ -97,9 +97,9 @@ export const repository: DataRepository = {
         } else {
           const legacySnapshot = await createSnapshot();
           if (legacySnapshot.projects.length > 0 && !window.confirm(
-            'DeepScribe zet je bestaande lokale gegevens eenmalig over naar de nieuwe workspacemap. De bestaande opslag blijft als veiligheidskopie behouden. Doorgaan?'
+            'DeepScribe will migrate your existing local data to the new workspace folder once. The existing storage will be retained as a safety copy. Continue?'
           )) {
-            throw new Error('Workspace-migratie is door de gebruiker uitgesteld.');
+            throw new Error('Workspace migration was postponed by the user.');
           }
           const blocksById = new Map(legacySnapshot.blocks.map(block => [block.id, block]));
           legacySnapshot.attachments = await Promise.all(legacySnapshot.attachments.map(attachment => {

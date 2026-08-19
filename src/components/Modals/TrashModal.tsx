@@ -62,7 +62,7 @@ export const TrashModal: React.FC<TrashModalProps> = ({
   };
 
   const handlePermanentDelete = async (blockId: string) => {
-    if (!window.confirm('Weet je zeker dat je dit blok en de onderliggende tak definitief wilt verwijderen? Dit kan niet ongedaan worden gemaakt.')) {
+    if (!window.confirm('Permanently delete this block and its descendant branch? This cannot be undone.')) {
       return;
     }
 
@@ -72,14 +72,14 @@ export const TrashModal: React.FC<TrashModalProps> = ({
   };
 
   const handlePermanentDeleteProject = async (projectId: string) => {
-    if (!window.confirm('Dit project met alle blokken en bijlagen definitief verwijderen? Dit kan niet ongedaan worden gemaakt.')) return;
+    if (!window.confirm('Permanently delete this project with all blocks and attachments? This cannot be undone.')) return;
     await permanentlyDeleteProject(projectId);
     await fetchTrashItems();
     onRefreshData();
   };
 
   const handleEmptyTrash = async () => {
-    if (!window.confirm('Weet je zeker dat je de gehele prullenbak wilt leegmaken? Alle verwijderde onderdelen worden permanent gewist.')) {
+    if (!window.confirm('Empty the entire trash? All deleted items will be permanently removed.')) {
       return;
     }
 
@@ -131,7 +131,7 @@ export const TrashModal: React.FC<TrashModalProps> = ({
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '1rem', fontWeight: 600 }}>
             <Trash2 size={18} color="#FF007F" />
-            <span>Prullenbak</span>
+            <span>Trash</span>
           </div>
 
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
@@ -142,7 +142,7 @@ export const TrashModal: React.FC<TrashModalProps> = ({
         <div style={{ maxHeight: '380px', overflowY: 'auto', padding: '12px 16px' }}>
           {trashedBlocks.length === 0 && trashedProjects.length === 0 ? (
             <div style={{ padding: '35px 20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-              De prullenbak is momenteel leeg.
+              The trash is currently empty.
             </div>
           ) : (
             <>
@@ -153,11 +153,11 @@ export const TrashModal: React.FC<TrashModalProps> = ({
               >
                 <div style={{ flex: 1, overflow: 'hidden' }}>
                   <div style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-primary)' }}>{project.title}</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>Volledig project · verwijderd {project.trashedAt ? new Date(project.trashedAt).toLocaleDateString() : 'onbekend'}</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>Entire project · deleted {project.trashedAt ? new Date(project.trashedAt).toLocaleDateString() : 'unknown'}</div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <button onClick={() => handleRestoreProject(project.id)} style={{ background: 'rgba(0, 240, 255, 0.1)', border: '1px solid var(--neon-cyan)', color: 'var(--neon-cyan)', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.75rem' }}><RotateCcw size={13} /><span>Herstellen</span></button>
-                  <button onClick={() => handlePermanentDeleteProject(project.id)} style={{ background: 'rgba(255, 0, 127, 0.1)', border: '1px solid var(--neon-magenta)', color: 'var(--neon-magenta)', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.75rem' }} title="Definitief verwijderen"><Trash2 size={13} /></button>
+                  <button onClick={() => handleRestoreProject(project.id)} style={{ background: 'rgba(0, 240, 255, 0.1)', border: '1px solid var(--neon-cyan)', color: 'var(--neon-cyan)', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.75rem' }}><RotateCcw size={13} /><span>Restore</span></button>
+                  <button onClick={() => handlePermanentDeleteProject(project.id)} style={{ background: 'rgba(255, 0, 127, 0.1)', border: '1px solid var(--neon-magenta)', color: 'var(--neon-magenta)', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.75rem' }} title="Delete permanently"><Trash2 size={13} /></button>
                 </div>
               </div>
             ))}
@@ -183,7 +183,7 @@ export const TrashModal: React.FC<TrashModalProps> = ({
                       {block.title}
                     </div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                      Project: {project?.title || 'Onbekend'} | Verwijderd op: {block.trashedAt ? new Date(block.trashedAt).toLocaleDateString() : 'Onbekend'}
+                      Project: {project?.title || 'Unknown'} | Deleted: {block.trashedAt ? new Date(block.trashedAt).toLocaleDateString() : 'Unknown'}
                     </div>
                   </div>
 
@@ -202,10 +202,10 @@ export const TrashModal: React.FC<TrashModalProps> = ({
                         gap: 4,
                         fontSize: '0.75rem'
                       }}
-                      title="Herstellen"
+                      title="Restore"
                     >
                       <RotateCcw size={13} />
-                      <span>Herstellen</span>
+                      <span>Restore</span>
                     </button>
 
                     <button
@@ -222,7 +222,7 @@ export const TrashModal: React.FC<TrashModalProps> = ({
                         gap: 4,
                         fontSize: '0.75rem'
                       }}
-                      title="Definitief verwijderen"
+                      title="Delete permanently"
                     >
                       <X size={13} />
                     </button>
@@ -246,7 +246,7 @@ export const TrashModal: React.FC<TrashModalProps> = ({
             }}
           >
             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              {trashedBlocks.length + trashedProjects.length} item(s) in prullenbak
+              {trashedBlocks.length + trashedProjects.length} item(s) in trash
             </span>
 
             <button
@@ -266,7 +266,7 @@ export const TrashModal: React.FC<TrashModalProps> = ({
               }}
             >
               <Trash2 size={13} />
-              <span>Prullenbak leegmaken</span>
+              <span>Empty Trash</span>
             </button>
           </div>
         )}

@@ -360,7 +360,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
     const current = draftRef.current.taskMetadata;
     if (!current) return;
     if (!canTransitionTask(current.status, status)) {
-      setTaskErrors([`Overgang van ${TASK_STATUS_LABELS[current.status]} naar ${TASK_STATUS_LABELS[status]} is niet toegestaan.`]);
+      setTaskErrors([`Transition from ${TASK_STATUS_LABELS[current.status]} to ${TASK_STATUS_LABELS[status]} is not allowed.`]);
       return;
     }
     const next: TaskMetadata = {
@@ -395,7 +395,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
       setScratchpadCopied(true);
       setTimeout(() => setScratchpadCopied(false), 2000);
     } catch (err) {
-      console.error('Kopiëren mislukt', err);
+      console.error('Copy failed', err);
     }
   };
 
@@ -413,12 +413,12 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
   const handleAddTag = (tagText: string) => {
     const parsed = parseTag(tagText);
     if (!parsed.tag) {
-      dispatchTagComposer({ type: 'invalid', error: parsed.error ?? 'Ongeldige tag.' });
+      dispatchTagComposer({ type: 'invalid', error: parsed.error ?? 'Invalid tag.' });
       return;
     }
     const norm = parsed.tag;
     if (draftRef.current.tags.includes(norm)) {
-      dispatchTagComposer({ type: 'invalid', error: `Tag "${norm}" is al toegevoegd.` });
+      dispatchTagComposer({ type: 'invalid', error: `Tag "${norm}" has already been added.` });
       return;
     }
     const nextTags = [...draftRef.current.tags, norm];
@@ -525,13 +525,13 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
         className={`panel-resize-handle ${isResizing ? 'active' : ''}`}
         onMouseDown={handleMouseDownResize}
         onDoubleClick={handleDoubleClickResize}
-        title="Sleep om de breedte aan te passen (dubbelklik voor 480px)"
+        title="Drag to resize (double-click for 480px)"
       />
       <div className="panel-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}>
           {itemType === 'project' ? <Folder size={18} color="var(--atmosphere-color)" /> : <FileText size={18} color="var(--atmosphere-secondary)" />}
           <span style={{ fontSize: '0.825rem', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {itemType === 'project' ? 'Project Details' : 'Blok Inspector'}
+            {itemType === 'project' ? 'Project Details' : 'Block Inspector'}
           </span>
         </div>
 
@@ -540,22 +540,22 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
             {isDirty ? (
               <>
                 <Edit3 size={12} color="var(--atmosphere-secondary)" />
-                <span>Concept</span>
+                <span>Draft</span>
               </>
             ) : saveStatus.state === 'saved' ? (
               <>
                 <Check size={12} color="var(--atmosphere-color)" />
-                <span>Opgeslagen</span>
+                <span>Saved</span>
               </>
             ) : saveStatus.state === 'saving' ? (
               <>
                 <Loader2 size={12} className="animate-spin" color="var(--atmosphere-secondary)" />
-                <span>Opslaan...</span>
+                <span>Saving...</span>
               </>
             ) : (
               <>
                 <AlertCircle size={12} color="#EF4444" />
-                <span>Fout bij opslaan</span>
+                <span>Save failed</span>
               </>
             )}
           </div>
@@ -569,8 +569,8 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                 setPrintError(null);
                 setIsPrintSettingsOpen(true);
               }}
-              title="Dit blok en onderliggende blokken printen"
-              aria-label="Dit blok en onderliggende blokken printen"
+              title="Print this block and its descendants"
+              aria-label="Print this block and its descendants"
               style={{
                 background: 'none',
                 border: 'none',
@@ -592,8 +592,8 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
               className="icon-btn-subtle"
               type="button"
               onClick={() => setIsHistoryModalOpen(true)}
-              title="Versiehistorie & Diffs bekijken"
-              aria-label="Versiehistorie & Diffs bekijken"
+              title="View version history & diffs"
+              aria-label="View version history & diffs"
               style={{
                 background: 'none',
                 border: 'none',
@@ -616,7 +616,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
               flushSave();
               onClose();
             }}
-            title="Schrijfpaneel inklappen"
+            title="Collapse writing panel"
             style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}
           >
             <PanelRightClose size={16} />
@@ -633,7 +633,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
 
       {!activeItem ? (
         <div style={{ flex: 1, padding: 30, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-          Selecteer een project of tekstblok uit de kolommen om te beginnen met schrijven.
+          Select a project or text block from the columns to start writing.
         </div>
       ) : (
         <>
@@ -654,21 +654,21 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                 if (onReturnFocusToCards) onReturnFocusToCards();
               }
             }}
-            placeholder={itemType === 'project' ? 'Projecttitel...' : 'Bloktitel...'}
+            placeholder={itemType === 'project' ? 'Project title...' : 'Block title...'}
           />
 
           {isBlock && taskMetadata && (
             <section className="task-inspector-panel">
               <div className="task-inspector-heading">
-                <span><CheckCircle2 size={14} /> Taak · {TASK_STATUS_LABELS[taskMetadata.status]}</span>
+                <span><CheckCircle2 size={14} /> Task · {TASK_STATUS_LABELS[taskMetadata.status]}</span>
                 <div className="task-status-actions">
                   {taskMetadata.claim ? (
-                    <button type="button" onClick={() => handleTaskStatus('ready')}>Claim vrijgeven</button>
+                    <button type="button" onClick={() => handleTaskStatus('ready')}>Release claim</button>
                   ) : (
                     <>
-                      {taskMetadata.status !== 'ready' && <button type="button" onClick={() => handleTaskStatus('ready')}>Klaarzetten</button>}
-                      {taskMetadata.status !== 'draft' && <button type="button" onClick={() => handleTaskStatus('draft')}>Terug naar concept</button>}
-                      {taskMetadata.status !== 'done' && <button type="button" onClick={() => handleTaskStatus('done')}>Afronden</button>}
+                      {taskMetadata.status !== 'ready' && <button type="button" onClick={() => handleTaskStatus('ready')}>Mark ready</button>}
+                      {taskMetadata.status !== 'draft' && <button type="button" onClick={() => handleTaskStatus('draft')}>Back to draft</button>}
+                      {taskMetadata.status !== 'done' && <button type="button" onClick={() => handleTaskStatus('done')}>Complete</button>}
                     </>
                   )}
                 </div>
@@ -676,8 +676,8 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
               {taskMetadata.claim && (
                 <div className="task-claim-details">
                   <strong>{taskMetadata.claim.ownerId}</strong>
-                  <span>{TASK_AGENT_LABELS[taskMetadata.claim.agentTarget]} · poging {taskMetadata.claim.attempt}</span>
-                  <span>Lease tot {new Date(taskMetadata.claim.expiresAt).toLocaleString('nl-NL')}</span>
+                  <span>{TASK_AGENT_LABELS[taskMetadata.claim.agentTarget]} · attempt {taskMetadata.claim.attempt}</span>
+                  <span>Lease until {new Date(taskMetadata.claim.expiresAt).toLocaleString('en-US')}</span>
                 </div>
               )}
               <div className="task-metadata-grid">
@@ -688,17 +688,17 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                   </select>
                 </label>
                 <label>
-                  <span>Afronding</span>
+                  <span>Completion</span>
                   <select disabled={Boolean(taskMetadata.claim)} value={taskMetadata.completionPolicy} onChange={event => updateTaskMetadata({ ...taskMetadata, completionPolicy: event.target.value as TaskMetadata['completionPolicy'] })}>
-                    <option value="review-required">Review verplicht</option>
-                    <option value="auto-complete">Automatisch afronden</option>
+                    <option value="review-required">Review required</option>
+                    <option value="auto-complete">Complete automatically</option>
                   </select>
                 </label>
               </div>
               {taskMetadata.agentTarget === 'custom' && (
                 <label className="task-custom-agent">
-                  <span>Andere agent</span>
-                  <input value={taskMetadata.customAgentName ?? ''} onChange={event => updateTaskMetadata({ ...taskMetadata, customAgentName: event.target.value })} placeholder="Naam van agent/provider" />
+                  <span>Other agent</span>
+                  <input value={taskMetadata.customAgentName ?? ''} onChange={event => updateTaskMetadata({ ...taskMetadata, customAgentName: event.target.value })} placeholder="Agent/provider name" />
                 </label>
               )}
               {taskErrors.length > 0 && <ul className="task-validation-errors" role="alert">{taskErrors.map(error => <li key={error}>{error}</li>)}</ul>}
@@ -726,7 +726,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                     value={tagComposer.value}
                     onChange={event => dispatchTagComposer({ type: 'change', value: event.target.value })}
                     list="project-tag-suggestions"
-                    aria-label="Nieuwe tag"
+                    aria-label="New tag"
                     aria-invalid={Boolean(tagComposer.error)}
                     aria-describedby={tagComposer.error ? 'tag-composer-error' : undefined}
                     onKeyDown={event => {
@@ -738,21 +738,21 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                         dispatchTagComposer({ type: 'close' });
                       }
                     }}
-                    placeholder="nieuwe tag..."
+                    placeholder="new tag..."
                   />
                   <button
                     type="button"
                     onClick={() => handleAddTag(tagComposer.value)}
-                    aria-label="Tag toevoegen"
-                    title="Tag toevoegen"
+                    aria-label="Add tag"
+                    title="Add tag"
                   >
                     <Check size={11} />
                   </button>
                   <button
                     type="button"
                     onClick={() => dispatchTagComposer({ type: 'close' })}
-                    aria-label="Tag invoer sluiten"
-                    title="Annuleren"
+                    aria-label="Close tag input"
+                    title="Cancel"
                   >
                     <X size={11} />
                   </button>
@@ -773,7 +773,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                     alignItems: 'center',
                     gap: 3,
                   }}
-                  title="Tag toevoegen"
+                  title="Add tag"
                 >
                   <Plus size={11} /> Tag
                 </button>
@@ -781,12 +781,12 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
               <datalist id="project-tag-suggestions">
                 {tagSuggestions.filter(suggestion => !tags.includes(suggestion.tag)).map(suggestion => (
                   <option key={suggestion.tag} value={suggestion.tag}>
-                    {suggestion.count} {itemType === 'project' ? 'projecten' : 'blokken'}
+                    {suggestion.count} {itemType === 'project' ? 'projects' : 'blocks'}
                   </option>
                 ))}
               </datalist>
               {isBlock && onRenameProjectTag && onDeleteProjectTag && tagSuggestions.length > 0 && (
-                <button type="button" onClick={() => setIsTagManagerOpen(true)} className="icon-btn-subtle" title="Projecttags beheren" aria-label="Projecttags beheren">
+                <button type="button" onClick={() => setIsTagManagerOpen(true)} className="icon-btn-subtle" title="Manage project tags" aria-label="Manage project tags">
                   <Settings2 size={12} />
                 </button>
               )}
@@ -863,7 +863,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                   }, printSettings);
                   setIsPrintSettingsOpen(false);
                 } catch (error) {
-                  setPrintError(error instanceof Error ? error.message : 'Printen is mislukt.');
+                  setPrintError(error instanceof Error ? error.message : 'Printing failed.');
                   setIsPrintSettingsOpen(false);
                 } finally {
                   setIsPrinting(false);
@@ -876,7 +876,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
               <div className="attachments-header">
                 <span className="attachments-title">
                   <Paperclip size={13} />
-                  Bijlagen
+                  Attachments
                   {attachments.length > 0 && <span className="attachments-count">{attachments.length}</span>}
                 </span>
                 <div className="attachments-actions">
@@ -884,8 +884,8 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                     <button
                       type="button"
                       className="attachment-icon-button"
-                      title="Projectmap openen"
-                      onClick={() => void onShowAttachmentsFolder(blockProjectId).catch(error => setAttachmentError(error instanceof Error ? error.message : 'De projectmap kon niet worden geopend.'))}
+                      title="Open project folder"
+                      onClick={() => void onShowAttachmentsFolder(blockProjectId).catch(error => setAttachmentError(error instanceof Error ? error.message : 'Could not open the project folder.'))}
                     >
                       <FolderOpen size={13} />
                     </button>
@@ -901,20 +901,20 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                         try {
                           await onAddAttachments(activeItem.id);
                         } catch (error) {
-                          setAttachmentError(error instanceof Error ? error.message : 'Bestanden toevoegen is mislukt.');
+                          setAttachmentError(error instanceof Error ? error.message : 'Failed to add files.');
                         } finally {
                           setIsAddingAttachment(false);
                         }
                       }}
                     >
                       {isAddingAttachment ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
-                      Bestand
+                      File
                     </button>
                   )}
                 </div>
               </div>
               {attachments.length === 0 && (
-                <div className="attachments-empty">Nog geen bestanden aan dit blok gekoppeld.</div>
+                <div className="attachments-empty">No files are attached to this block yet.</div>
               )}
               {attachments.map(attachment => (
                 <div key={attachment.id} className="attachment-row">
@@ -922,7 +922,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                   <button
                     type="button"
                     className="attachment-name"
-                    onClick={() => void onOpenAttachment?.(attachment).catch(error => setAttachmentError(error instanceof Error ? error.message : 'De bijlage kon niet worden geopend.'))}
+                    onClick={() => void onOpenAttachment?.(attachment).catch(error => setAttachmentError(error instanceof Error ? error.message : 'Could not open the attachment.'))}
                     title={attachment.localPath || attachment.fileName}
                   >
                     {attachment.fileName}
@@ -932,14 +932,14 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                     <button
                       type="button"
                       className="attachment-remove-button"
-                      title="Bijlage verwijderen"
+                      title="Remove attachment"
                       onClick={async () => {
-                        if (!window.confirm(`Bijlage “${attachment.fileName}” verwijderen?`)) return;
+                        if (!window.confirm(`Remove attachment “${attachment.fileName}”?`)) return;
                         setAttachmentError(null);
                         try {
                           await onRemoveAttachment(attachment);
                         } catch (error) {
-                          setAttachmentError(error instanceof Error ? error.message : 'De bijlage kon niet worden verwijderd.');
+                          setAttachmentError(error instanceof Error ? error.message : 'Could not remove the attachment.');
                         }
                       }}
                     >
@@ -957,7 +957,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
               <div className="references-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <Lock size={13} color={dependencyStatus?.isBlocked ? '#F59E0B' : 'var(--text-muted)'} />
-                  <span style={{ fontWeight: 600, fontSize: '0.8rem' }}>Afhankelijkheden</span>
+                  <span style={{ fontWeight: 600, fontSize: '0.8rem' }}>Dependencies</span>
                   {dependencyStatus?.isBlocked && (
                     <span style={{
                       fontSize: '0.68rem',
@@ -968,7 +968,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                       border: '1px solid rgba(245, 158, 11, 0.3)',
                       fontWeight: 500
                     }}>
-                      Geblokkeerd
+                      Blocked
                     </span>
                   )}
                 </div>
@@ -992,7 +992,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                       }
                     }}
                   >
-                    <option value="" disabled>+ Voorwaarde toevoegen...</option>
+                    <option value="" disabled>+ Add dependency...</option>
                     {candidateDependencyBlocks.map((c: Block) => (
                       <option key={c.id} value={c.id}>{c.title}</option>
                     ))}
@@ -1049,7 +1049,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                             </button>
                           ) : (
                             <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                              Verwijderd blok ({depId})
+                              Deleted block ({depId})
                             </span>
                           )}
                         </div>
@@ -1065,7 +1065,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                             padding: 2,
                             borderRadius: 4
                           }}
-                          title="Voorwaarde ontkoppelen"
+                          title="Remove dependency"
                         >
                           <X size={12} />
                         </button>
@@ -1075,14 +1075,14 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                 </div>
               ) : (
                 <p className="references-empty" style={{ margin: '4px 0 0 0' }}>
-                  Geen voorwaarden gekoppeld. Deze taak kan direct worden uitgevoerd.
+                  No dependencies linked. This task can be executed immediately.
                 </p>
               )}
 
               {/* Dependent blocks waiting on this block */}
               {dependencyStatus && dependencyStatus.blocking.length > 0 && (
                 <div className="references-group" style={{ marginTop: 8 }}>
-                  <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>Blokkeert {dependencyStatus.blocking.length} andere taak/taken</span>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>Blocks {dependencyStatus.blocking.length} other task(s)</span>
                   <div>
                     {dependencyStatus.blocking.map((block: Block) => (
                       <button key={block.id} onClick={() => onOpenReferencedBlock?.(block.id)} title={`Open ${block.title}`}>
@@ -1097,11 +1097,11 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
 
           {isBlock && (
             <section className="references-panel">
-              <div className="references-header"><Link2 size={13} /> Verwijzingen</div>
-              <p className="references-help">Typ <code>[[Bloknaam]]</code> in de tekst om een blok te verbinden.</p>
+              <div className="references-header"><Link2 size={13} /> References</div>
+              <p className="references-help">Type <code>[[Block name]]</code> in the text to link a block.</p>
               {references.outgoing.length > 0 && (
                 <div className="references-group">
-                  <span>Verwijst naar</span>
+                  <span>References</span>
                   <div>{references.outgoing.map(block => (
                     <button key={block.id} onClick={() => onOpenReferencedBlock?.(block.id)} title={`Open ${block.title}`}>
                       {block.title}<ArrowUpRight size={11} />
@@ -1111,7 +1111,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
               )}
               {references.backlinks.length > 0 && (
                 <div className="references-group">
-                  <span>Hiernaar verwezen vanuit</span>
+                  <span>Referenced by</span>
                   <div>{references.backlinks.map(block => (
                     <button key={block.id} onClick={() => onOpenReferencedBlock?.(block.id)} title={`Open ${block.title}`}>
                       {block.title}<ArrowUpRight size={11} />
@@ -1120,7 +1120,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                 </div>
               )}
               {references.outgoing.length === 0 && references.backlinks.length === 0 && (
-                <p className="references-empty">Nog geen koppelingen voor dit blok.</p>
+                <p className="references-empty">No links for this block yet.</p>
               )}
             </section>
           )}
@@ -1133,7 +1133,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                   <span style={{ fontWeight: 600, fontSize: '0.82rem' }}>Agent Context & Scratchpad</span>
                   {activeItem && 'scratchpadUpdatedAt' in activeItem && typeof activeItem.scratchpadUpdatedAt === 'number' && (
                     <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-                      (bijgewerkt: {new Date(activeItem.scratchpadUpdatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})
+                      (updated: {new Date(activeItem.scratchpadUpdatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})
                     </span>
                   )}
                 </div>
@@ -1153,22 +1153,22 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                     fontSize: '0.7rem',
                     cursor: 'pointer'
                   }}
-                  title="Kopieer context voor gebruik in prompt"
+                  title="Copy context for use in a prompt"
                 >
                   {scratchpadCopied ? <Check size={11} /> : <ClipboardCopy size={11} />}
-                  {scratchpadCopied ? 'Gekopieerd!' : 'Kopieer Context'}
+                  {scratchpadCopied ? 'Copied!' : 'Copy Context'}
                 </button>
               </div>
 
               <p style={{ margin: '0 0 6px 0', fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
-                Centraal werkgeheugen voor AI-agents. Agents lezen dit direct in via <code>get_project_context</code> en schrijven hier tussenconclusies en besluiten weg.
+                Central working memory for AI agents. Agents read this directly through <code>get_project_context</code> and record interim conclusions and decisions here.
               </p>
 
               <textarea
                 value={scratchpad}
                 onChange={handleScratchpadChange}
                 onBlur={flushSave}
-                placeholder="# Project Context & Architectuurkeuzes&#10;&#10;- Belangrijke besluiten...&#10;- Huidige roadmap..."
+                placeholder="# Project Context & Architecture Decisions&#10;&#10;- Important decisions...&#10;- Current roadmap..."
                 style={{
                   width: '100%',
                   minHeight: '110px',
@@ -1201,9 +1201,9 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
           </div>
 
           <div className="editor-footer">
-            <span>{wordCount} woorden | {charCount} tekens</span>
+            <span>{wordCount} words | {charCount} characters</span>
             {saveStatus.lastSavedAt && (
-              <span>Laatst gewijzigd: {new Date(saveStatus.lastSavedAt).toLocaleTimeString()}</span>
+              <span>Last modified: {new Date(saveStatus.lastSavedAt).toLocaleTimeString()}</span>
             )}
           </div>
         </>

@@ -175,6 +175,6 @@ describe('buildBlockPrintDocument', () => {
 
   it('rejects a missing or unavailable root block', () => {
     expect(() => buildBlockPrintDocument({ project, rootBlockId: 'missing', blocks: [] }))
-      .toThrow('Het te printen blok is niet beschikbaar.');
+      .toThrow('The block to print is unavailable.');
   });
 });

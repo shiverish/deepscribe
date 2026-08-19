@@ -38,9 +38,9 @@ describe('DeepScribe MCP work items', () => {
       'Gebruikers vinden verwante begrippen nu niet zonder een exacte woordmatch.',
       ['Zoeken vindt ook verwante Nederlandse begrippen', 'Alle verwerking blijft lokaal']
     );
-    expect(content).toContain('## Doel\n\nMaak zoeken slimmer');
+    expect(content).toContain('## Goal\n\nMaak zoeken slimmer');
     expect(content).toContain('## Context\n\nGebruikers vinden');
-    expect(content).toContain('## Acceptatiecriteria\n\n- Zoeken vindt');
+    expect(content).toContain('## Acceptance Criteria\n\n- Zoeken vindt');
     expect(content).toContain('- Alle verwerking blijft lokaal');
   });
 

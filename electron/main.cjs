@@ -81,10 +81,10 @@ function projectFilesDirectory(projectId) {
 }
 
 function assertManagedAttachmentPath(filePath) {
-  if (typeof filePath !== 'string' || !filePath) throw new Error('Ongeldig bestandspad.');
+  if (typeof filePath !== 'string' || !filePath) throw new Error('Invalid file path.');
   const root = path.resolve(attachmentsRoot()) + path.sep;
   const resolved = path.resolve(path.isAbsolute(filePath) ? filePath : path.join(getWorkspaceStore().status().path, filePath));
-  if (!resolved.startsWith(root)) throw new Error('Dit bestand staat niet in een beheerde DeepScribe-map.');
+  if (!resolved.startsWith(root)) throw new Error('This file is not in a managed DeepScribe folder.');
   return resolved;
 }
 
@@ -99,22 +99,22 @@ async function availableDestination(directory, fileName) {
       return candidate;
     }
   }
-  throw new Error('Er konden geen vrije bestandsnamen worden gevonden.');
+  throw new Error('No available file names could be found.');
 }
 
 function registerAttachmentIpc() {
   ipcMain.handle('deepscribe:attachments:add', async (_event, payload) => {
     const projectId = safeId(payload?.projectId, 'project-id');
-    safeId(payload?.blockId, 'blok-id');
+    safeId(payload?.blockId, 'block ID');
     const result = await dialog.showOpenDialog(mainWindow, {
-      title: 'Bestanden aan DeepScribe toevoegen',
+      title: 'Add Files to DeepScribe',
       properties: ['openFile', 'multiSelections']
     });
     if (result.canceled || result.filePaths.length === 0) return [];
 
     const sources = await Promise.all(result.filePaths.map(async sourcePath => {
       const stat = await fs.promises.stat(sourcePath);
-      if (!stat.isFile()) throw new Error(`“${path.basename(sourcePath)}” is geen bestand.`);
+      if (!stat.isFile()) throw new Error(`“${path.basename(sourcePath)}” is not a file.`);
       if (stat.size > MAX_ATTACHMENT_BYTES) throw new Error(`“${path.basename(sourcePath)}” is groter dan 25 MB.`);
       return { sourcePath, size: stat.size };
     }));
@@ -164,14 +164,14 @@ function registerAttachmentIpc() {
   ipcMain.handle('deepscribe:attachments:read', async (_event, filePath) => {
     const managedPath = assertManagedAttachmentPath(filePath);
     const stat = await fs.promises.stat(managedPath);
-    if (stat.size > MAX_ATTACHMENT_BYTES) throw new Error('Deze bijlage is groter dan 25 MB.');
+    if (stat.size > MAX_ATTACHMENT_BYTES) throw new Error('This attachment is larger than 25 MB.');
     return (await fs.promises.readFile(managedPath)).toString('base64');
   });
 
   ipcMain.handle('deepscribe:attachments:import', async (_event, payload) => {
     const projectId = safeId(payload?.projectId, 'project-id');
-    safeId(payload?.blockId, 'blok-id');
-    const fileName = path.basename(String(payload?.fileName || 'bijlage'));
+    safeId(payload?.blockId, 'block ID');
+    const fileName = path.basename(String(payload?.fileName || 'attachment'));
     const data = Buffer.from(String(payload?.base64 || ''), 'base64');
     if (data.length > MAX_ATTACHMENT_BYTES) throw new Error(`“${fileName}” is groter dan 25 MB.`);
     const directory = projectFilesDirectory(projectId);
@@ -183,12 +183,12 @@ function registerAttachmentIpc() {
 
   ipcMain.handle('deepscribe:attachments:migrate-legacy', async (_event, payload) => {
     const projectId = safeId(payload?.projectId, 'project-id');
-    safeId(payload?.blockId, 'blok-id');
+    safeId(payload?.blockId, 'block ID');
     const legacyRoot = path.resolve(path.join(app.getPath('documents'), 'DeepScribe', 'Projects')) + path.sep;
     const source = path.resolve(String(payload?.localPath || ''));
-    if (!source.startsWith(legacyRoot)) throw new Error('Ongeldig bestaand bijlagepad.');
+    if (!source.startsWith(legacyRoot)) throw new Error('Invalid existing attachment path.');
     const stat = await fs.promises.stat(source);
-    if (!stat.isFile() || stat.size > MAX_ATTACHMENT_BYTES) throw new Error('Bestaande bijlage is ongeldig of te groot.');
+    if (!stat.isFile() || stat.size > MAX_ATTACHMENT_BYTES) throw new Error('The existing attachment is invalid or too large.');
     const directory = projectFilesDirectory(projectId);
     await fs.promises.mkdir(directory, { recursive: true });
     const destination = await availableDestination(directory, path.basename(source));
@@ -207,7 +207,7 @@ function registerWorkspaceIpc() {
   });
   ipcMain.handle('deepscribe:workspace:choose-and-move', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
-      title: 'Kies een nieuwe bovenliggende map voor DeepScribe',
+      title: 'Choose a New Parent Folder for DeepScribe',
       properties: ['openDirectory', 'createDirectory']
     });
     if (result.canceled || result.filePaths.length === 0) return null;
@@ -222,7 +222,7 @@ function registerPrintIpc() {
       throw new Error('De printopdracht kwam niet uit het actieve DeepScribe-venster.');
     }
     if (activePrintWindow && !activePrintWindow.isDestroyed()) {
-      throw new Error('Er is al een printopdracht actief.');
+      throw new Error('A print job is already active.');
     }
     if (!payload || typeof payload.html !== 'string' || !payload.html.trim()) {
       throw new Error('Het printdocument is leeg.');
@@ -459,7 +459,7 @@ function startMcpBridge() {
         const result = await requestRenderer(payload.method, payload.params);
         sendJson(response, 200, { ok: true, result });
       } catch (error) {
-        sendJson(response, 400, { ok: false, error: error instanceof Error ? error.message : 'Onbekende fout.' });
+        sendJson(response, 400, { ok: false, error: error instanceof Error ? error.message : 'Unknown error.' });
       }
     });
   });

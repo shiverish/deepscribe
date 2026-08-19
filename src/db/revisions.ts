@@ -79,13 +79,13 @@ export async function restoreBlockRevision(revisionId: string): Promise<Block> {
   if (!revision) throw new Error('Revisie niet gevonden.');
 
   const currentBlock = await db.blocks.get(revision.blockId);
-  if (!currentBlock || currentBlock.isTrash) throw new Error('Het bijbehorende blok is niet beschikbaar.');
+  if (!currentBlock || currentBlock.isTrash) throw new Error('The associated block is unavailable.');
 
   // First create a backup revision of current state
   await recordBlockRevision(
     currentBlock,
     'restore',
-    `Backup vóór herstel naar versie van ${new Date(revision.createdAt).toLocaleString('nl-NL')}`,
+    `Backup before restoring version from ${new Date(revision.createdAt).toLocaleString('en-US')}`,
     true
   );
 
@@ -113,7 +113,7 @@ export async function restoreBlockRevision(revisionId: string): Promise<Block> {
     blockId: currentBlock.id,
     source: 'user',
     action: 'block-restored',
-    summary: `Blok “${revision.title}” hersteld naar revisie van ${new Date(revision.createdAt).toLocaleDateString('nl-NL')}`
+    summary: `Block “${revision.title}” restored to revision from ${new Date(revision.createdAt).toLocaleDateString('en-US')}`
   });
 
   return updatedBlock;

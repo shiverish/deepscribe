@@ -295,7 +295,7 @@ async function createProject(params: JsonObject) {
     updatedAt: now
   };
   await db.projects.add(project);
-  await recordActivity({ projectId: project.id, source: 'agent', action: 'project-created', summary: `Agent maakte project “${project.title}”` });
+  await recordActivity({ projectId: project.id, source: 'agent', action: 'project-created', summary: `Agent created project “${project.title}”` });
   return project;
 }
 
@@ -432,13 +432,13 @@ async function createBlock(params: JsonObject) {
     await db.blocks.add(block);
     if (parentId) await db.blocks.update(parentId, { childCount: await db.blocks.filter(item => item.parentId === parentId && !item.isTrash).count(), updatedAt: now });
   });
-  await recordBlockRevision(block, 'agent', 'Initiële aanmaak door agent');
+  await recordBlockRevision(block, 'agent', 'Initial creation by agent');
   await recordActivity({
     projectId,
     blockId: block.id,
     source: 'agent',
     action: block.kind === 'task' ? 'task-created' : 'block-created',
-    summary: `Agent maakte ${block.kind === 'task' ? 'taak' : 'blok'} “${block.title}”`
+    summary: `Agent created ${block.kind === 'task' ? 'task' : 'block'} “${block.title}”`
   });
   return block;
 }
@@ -517,12 +517,12 @@ async function updateTaskBlock(params: JsonObject) {
   if (task.status === 'done' && block.task.status !== 'done' && task.completionPolicy === 'review-required') {
     throw new Error('Deze taak vereist review en kan door een agent niet direct worden afgerond.');
   }
-  await recordBlockRevision(block, 'user', 'Status vóór taakwijziging door agent');
+  await recordBlockRevision(block, 'user', 'State before agent task edit');
   const updated = { ...block, task, updatedAt: Date.now(), lastAgentEditAt: Date.now() };
   await db.blocks.put(updated);
-  await recordBlockRevision(updated, 'agent', 'Agent wijzigde taakmetadata');
+  await recordBlockRevision(updated, 'agent', 'Agent changed task metadata');
   const action = block.task.status !== task.status ? task.status === 'ready' ? 'task-readiness-changed' : task.status === 'done' ? 'task-completed' : 'task-status-changed' : 'task-metadata-updated';
-  await recordActivity({ projectId: block.projectId, blockId, source: 'agent', action, summary: `Agent wijzigde taak “${block.title}” → ${task.status}` });
+  await recordActivity({ projectId: block.projectId, blockId, source: 'agent', action, summary: `Agent changed task “${block.title}” → ${task.status}` });
   return updated;
 }
 
@@ -577,7 +577,7 @@ async function claimNextWorkItem(params: JsonObject) {
     await db.blocks.put(updated);
     const nextReceipts = [...receipts.filter(receipt => receipt.createdAt >= now - 7 * 86400000), { agentId, requestId, blockId: updated.id, token, createdAt: now }].slice(-500);
     await db.settings.put({ key: CLAIM_RECEIPTS_KEY, value: nextReceipts });
-    await db.activities.add({ id: `activity-${crypto.randomUUID()}`, projectId: updated.projectId, blockId: updated.id, source: 'agent', action: candidate.task.status === 'claimed' ? 'task-claim-taken-over' : 'task-claimed', summary: `${agentId} claimde taak “${updated.title}”`, createdAt: now });
+    await db.activities.add({ id: `activity-${crypto.randomUUID()}`, projectId: updated.projectId, blockId: updated.id, source: 'agent', action: candidate.task.status === 'claimed' ? 'task-claim-taken-over' : 'task-claimed', summary: `${agentId} claimed task “${updated.title}”`, createdAt: now });
     return { block: redactTaskClaim(updated), claimToken: token, expiresAt: claim.expiresAt, replayed: false };
   });
 }
@@ -621,7 +621,7 @@ async function transitionWorkItem(params: JsonObject) {
     const task: TaskMetadata = { ...block.task, status, claim: undefined, ...(status === 'ready' ? { readyAt: now } : {}) };
     const updated = { ...block, task, updatedAt: now, lastAgentEditAt: now };
     await db.blocks.put(updated);
-    await db.activities.add({ id: `activity-${crypto.randomUUID()}`, projectId: block.projectId, blockId, source: 'agent', action: `task-${status}`, summary: optionalString(params, 'summary')?.trim() || `${agentId} zette “${block.title}” op ${status}`, createdAt: now });
+    await db.activities.add({ id: `activity-${crypto.randomUUID()}`, projectId: block.projectId, blockId, source: 'agent', action: `task-${status}`, summary: optionalString(params, 'summary')?.trim() || `${agentId} changed “${block.title}” to ${status}`, createdAt: now });
     return redactTaskClaim(updated);
   });
 }
@@ -631,14 +631,14 @@ async function convertBlockToTask(params: JsonObject) {
   const block = await db.blocks.get(blockId);
   if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
   if (block.kind === 'task') return block;
-  await recordBlockRevision(block, 'user', 'Status vóór omzetting naar taak');
+  await recordBlockRevision(block, 'user', 'State before conversion to task');
   const task = createTaskMetadata(await defaultTaskCompletionPolicy());
   const agentStatuses = new Set(['agent-ready', 'agent-claimed', 'agent-blocked', 'agent-review', 'agent-done']);
   const content = convertContentToTask(block.content);
   const updated = { ...block, kind: 'task' as const, task, ...contentStats(content), tags: block.tags.filter(tag => !agentStatuses.has(tag)), updatedAt: Date.now(), lastAgentEditAt: Date.now() };
   await db.blocks.put(updated);
-  await recordBlockRevision(updated, 'agent', 'Blok omgezet naar taak');
-  await recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'task-converted', summary: `Agent zette “${block.title}” om naar taakconcept` });
+  await recordBlockRevision(updated, 'agent', 'Block converted to task');
+  await recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'task-converted', summary: `Agent converted “${block.title}” to a draft task` });
   return updated;
 }
 
@@ -667,7 +667,7 @@ async function moveBlock(params: JsonObject) {
     blockId,
     source: 'agent',
     action: 'block-reordered',
-    summary: `Agent verplaatste blok “${block.title}” ${position} “${target.title}”`
+    summary: `Agent moved block “${block.title}” ${position} “${target.title}”`
   });
   return await handleMcpBridgeRequest('get_block', { blockId });
 }
@@ -679,9 +679,9 @@ export function formatWorkItemContent(
   dependencyBlocks: Block[] = []
 ): string {
   const sections: string[] = [
-    `## Doel\n\n${goal}`,
+    `## Goal\n\n${goal}`,
     `## Context\n\n${context}`,
-    `## Acceptatiecriteria\n\n${acceptanceCriteria.map(criterion => `- ${criterion}`).join('\n')}`
+    `## Acceptance Criteria\n\n${acceptanceCriteria.map(criterion => `- ${criterion}`).join('\n')}`
   ];
   if (dependencyBlocks.length > 0) {
     sections.push(formatDependencyMarkdown(dependencyBlocks, dependencyBlocks));
@@ -719,7 +719,7 @@ async function updateBlock(params: JsonObject) {
   const block = await db.blocks.get(blockId);
   if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
 
-  await recordBlockRevision(block, 'user', 'Status vóór agent-wijziging');
+  await recordBlockRevision(block, 'user', 'State before agent edit');
   const now = Date.now();
   const update: Partial<Block> = { updatedAt: now, lastAgentEditAt: now };
   if (typeof params.title === 'string' && params.title.trim()) update.title = params.title.trim();
@@ -737,8 +737,8 @@ async function updateBlock(params: JsonObject) {
   }
   await db.blocks.update(blockId, update);
   const updated = await db.blocks.get(blockId);
-  if (updated) await recordBlockRevision(updated, 'agent', `Agent wijzigde “${updated.title}”`);
-  await recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'block-updated', summary: `Agent wijzigde “${updated?.title ?? block.title}”` });
+  if (updated) await recordBlockRevision(updated, 'agent', `Agent changed “${updated.title}”`);
+  await recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'block-updated', summary: `Agent changed “${updated?.title ?? block.title}”` });
   return updated;
 }
 
@@ -748,7 +748,7 @@ async function appendToBlock(params: JsonObject) {
   const block = await db.blocks.get(blockId);
   if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
 
-  await recordBlockRevision(block, 'user', 'Status vóór toevoeging door agent');
+  await recordBlockRevision(block, 'user', 'State before agent addition');
   const document = htmlDocument(block.content);
   const addition = markdownToHtml(text);
   let newContent = '';
@@ -767,8 +767,8 @@ async function appendToBlock(params: JsonObject) {
   const now = Date.now();
   await db.blocks.update(blockId, { ...stats, updatedAt: now, lastAgentEditAt: now });
   const updated = await db.blocks.get(blockId);
-  if (updated) await recordBlockRevision(updated, 'agent', `Agent voegde tekst toe`);
-  await recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'block-appended', summary: `Agent voegde tekst toe aan “${block.title}”` });
+  if (updated) await recordBlockRevision(updated, 'agent', `Agent appended text`);
+  await recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'block-appended', summary: `Agent appended text to “${block.title}”` });
   return updated;
 }
 
@@ -838,13 +838,13 @@ async function addTodo(params: JsonObject) {
     }
   }
 
-  await recordBlockRevision(block, 'user', 'Status vóór toevoegen van todo');
+  await recordBlockRevision(block, 'user', 'State before adding todo');
   const stats = contentStats(newContent);
   const now = Date.now();
   await db.blocks.update(blockId, { ...stats, updatedAt: now, lastAgentEditAt: now });
   const updated = await db.blocks.get(blockId);
-  if (updated) await recordBlockRevision(updated, 'agent', `Agent voegde todo “${text}” toe`);
-  await recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'todo-added', summary: `Agent voegde todo “${text}” toe aan “${block.title}”` });
+  if (updated) await recordBlockRevision(updated, 'agent', `Agent added todo “${text}”`);
+  await recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'todo-added', summary: `Agent added todo “${text}” to “${block.title}”` });
   return todosFromBlock((await db.blocks.get(blockId))!);
 }
 
@@ -856,7 +856,7 @@ async function setTodoStatus(params: JsonObject) {
   const block = await db.blocks.get(blockId);
   if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
 
-  await recordBlockRevision(block, 'user', 'Status vóór todo statuswijziging');
+  await recordBlockRevision(block, 'user', 'State before todo status change');
   const document = htmlDocument(block.content);
   let newContent = '';
   if (document) {
@@ -885,8 +885,8 @@ async function setTodoStatus(params: JsonObject) {
   const now = Date.now();
   await db.blocks.update(blockId, { ...stats, updatedAt: now, lastAgentEditAt: now });
   const updated = await db.blocks.get(blockId);
-  if (updated) await recordBlockRevision(updated, 'agent', `Agent markeerde todo als ${params.completed ? 'afgerond' : 'open'}`);
-  await recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'todo-status', summary: `Agent markeerde een todo in “${block.title}” als ${params.completed ? 'afgerond' : 'open'}` });
+  if (updated) await recordBlockRevision(updated, 'agent', `Agent marked todo as ${params.completed ? 'done' : 'open'}`);
+  await recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'todo-status', summary: `Agent marked a todo in “${block.title}” as ${params.completed ? 'done' : 'open'}` });
   return todosFromBlock((await db.blocks.get(blockId))!)[taskIndex];
 }
 
@@ -1169,7 +1169,7 @@ export async function handleMcpBridgeRequest(method: string, rawParams: unknown)
       }
       await db.projects.update(projectId, update);
       const updated = await db.projects.get(projectId);
-      await recordActivity({ projectId, source: 'agent', action: 'project-updated', summary: `Agent wijzigde project “${updated?.title ?? project.title}”` });
+      await recordActivity({ projectId, source: 'agent', action: 'project-updated', summary: `Agent changed project “${updated?.title ?? project.title}”` });
       return updated;
     }
     case 'update_block':

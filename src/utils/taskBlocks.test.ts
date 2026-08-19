@@ -6,7 +6,7 @@ describe('task blocks', () => {
   it('requires structured task content before ready', () => {
     const task = { ...createTaskMetadata(), agentTarget: 'openai' as const, status: 'ready' as const };
     expect(validateTaskReady('Taak', '<h2>Doel</h2><p></p><h2>Context</h2><p></p><h2>Acceptatiecriteria</h2><ul><li><p></p></li></ul>', task))
-      .toEqual(['Vul Doel in.', 'Vul Context in.', 'Voeg minimaal één acceptatiecriterium toe.']);
+      .toEqual(['Enter a Goal.', 'Enter Context.', 'Add at least one acceptance criterion.']);
     expect(validateTaskReady('Taak', taskContentFromParts('Werkend doel', 'Voldoende context', ['Tests slagen']), task)).toEqual([]);
   });
 
@@ -16,7 +16,7 @@ describe('task blocks', () => {
     const automatic = { ...base, task: { ...createTaskMetadata(), status: 'ready' as const, agentTarget: 'any' as const } } satisfies Block;
     expect(isTaskAutoPickupEligible(manual)).toBe(false);
     expect(isTaskAutoPickupEligible(automatic)).toBe(true);
-    expect(validateTaskReady('Taak', taskContentFromParts('Doel', 'Context', ['Klaar']), { ...automatic.task, agentTarget: 'custom', customAgentName: '' })).toContain('Vul een naam in voor de andere agent.');
+    expect(validateTaskReady('Task', taskContentFromParts('Goal', 'Context', ['Done']), { ...automatic.task, agentTarget: 'custom', customAgentName: '' })).toContain('Enter a name for the other agent.');
   });
 
   it('allows only explicit status transitions', () => {

@@ -5,11 +5,11 @@ export const AGENT_STATUSES = ['agent-ready', 'agent-claimed', 'agent-blocked', 
 export type AgentStatus = typeof AGENT_STATUSES[number];
 
 export const AGENT_STATUS_LABELS: Record<AgentStatus, string> = {
-  'agent-ready': 'Klaar voor agent',
-  'agent-claimed': 'Geclaimd',
-  'agent-blocked': 'Geblokkeerd',
-  'agent-review': 'Review nodig',
-  'agent-done': 'Afgerond'
+  'agent-ready': 'Ready for agent',
+  'agent-claimed': 'Claimed',
+  'agent-blocked': 'Blocked',
+  'agent-review': 'Review required',
+  'agent-done': 'Done'
 };
 
 export function getAgentStatus(block: Block): AgentStatus | null {

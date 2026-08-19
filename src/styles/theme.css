@@ -1,6 +1,8 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 :root {
+  color-scheme: dark;
+
   /* Color Palette - Warm Dark Cream & Vanilla Charcoal (Calm & Elegant) */
   --bg-dark: #141312;
   --bg-surface: rgba(26, 24, 22, 0.88);
@@ -58,6 +60,15 @@
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+}
+
+select option {
+  background-color: var(--bg-dark);
+  color: var(--text-primary);
+}
+
+select option:disabled {
+  color: var(--text-muted);
 }
 
 body {
@@ -163,6 +174,8 @@ kbd {
 
 /* Light Theme Overrides */
 [data-theme="light"] {
+  color-scheme: light;
+
   --bg-dark: #f8fafc;
   --bg-surface: rgba(255, 255, 255, 0.95);
   --bg-surface-hover: rgba(241, 245, 249, 0.95);
@@ -783,4 +796,3 @@ input:checked + .toggle-slider:before {
 .spin {
   animation: spin 1s linear infinite;
 }
-

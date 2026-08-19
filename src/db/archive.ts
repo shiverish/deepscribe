@@ -39,10 +39,10 @@ function parseTaskMetadata(value: unknown, field: string): TaskMetadata {
   if (!isRecord(value) || typeof value.status !== 'string' || !TASK_STATUSES.has(value.status) ||
     typeof value.agentTarget !== 'string' || !TASK_AGENT_TARGETS.has(value.agentTarget) ||
     typeof value.completionPolicy !== 'string' || !TASK_COMPLETION_POLICIES.has(value.completionPolicy)) {
-    throw new Error(`Ongeldige taakmetadata: ${field}.`);
+    throw new Error(`Invalid task metadata: ${field}.`);
   }
   const customAgentName = typeof value.customAgentName === 'string' ? value.customAgentName.trim() : '';
-  if (value.agentTarget === 'custom' && !customAgentName) throw new Error(`Ongeldige taakmetadata: ${field}.customAgentName.`);
+  if (value.agentTarget === 'custom' && !customAgentName) throw new Error(`Invalid task metadata: ${field}.customAgentName.`);
   const status = value.status === 'claimed' ? 'ready' : value.status as TaskMetadata['status'];
   return {
     status,
@@ -56,9 +56,9 @@ function parseTaskMetadata(value: unknown, field: string): TaskMetadata {
 
 export function parseProjectArchive(raw: unknown): ProjectArchive {
   if (!isRecord(raw) || !isRecord(raw.project) || !Array.isArray(raw.blocks)) {
-    throw new Error('Dit bestand bevat geen geldig DeepScribe-project.');
+    throw new Error('This file does not contain a valid DeepScribe project.');
   }
-  if (raw.blocks.length > 100_000) throw new Error('Dit archief bevat te veel blokken.');
+  if (raw.blocks.length > 100_000) throw new Error('This archive contains too many blocks.');
 
   const sourceProject = raw.project;
   const projectCreatedAt = requiredNumber(sourceProject.createdAt, 'project.createdAt');
@@ -80,9 +80,9 @@ export function parseProjectArchive(raw: unknown): ProjectArchive {
   const ids = new Set<string>();
   let normalizedTagBlocks = 0;
   const blocks = raw.blocks.map((entry, index): Block => {
-    if (!isRecord(entry)) throw new Error(`Blok ${index + 1} is ongeldig.`);
+    if (!isRecord(entry)) throw new Error(`Block ${index + 1} is invalid.`);
     const id = requiredString(entry.id, `blocks[${index}].id`);
-    if (ids.has(id)) throw new Error(`Dubbel blok-id in archief: ${id}.`);
+    if (ids.has(id)) throw new Error(`Duplicate block ID in archive: ${id}.`);
     ids.add(id);
     const parentId = entry.parentId === null ? null : requiredString(entry.parentId, `blocks[${index}].parentId`);
     const importedTags = Array.isArray(entry.tags) ? entry.tags.filter((t): t is string => typeof t === 'string') : [];
@@ -118,11 +118,11 @@ export function parseProjectArchive(raw: unknown): ProjectArchive {
 
   const byId = new Map(blocks.map(block => [block.id, block]));
   for (const block of blocks) {
-    if (block.parentId && !byId.has(block.parentId)) throw new Error(`Bovenliggend blok ontbreekt voor “${block.title}”.`);
+    if (block.parentId && !byId.has(block.parentId)) throw new Error(`Parent block is missing for “${block.title}”.`);
     const visited = new Set<string>([block.id]);
     let current = block;
     while (current.parentId) {
-      if (visited.has(current.parentId)) throw new Error('Het archief bevat een circulaire boomstructuur.');
+      if (visited.has(current.parentId)) throw new Error('The archive contains a circular tree structure.');
       visited.add(current.parentId);
       current = byId.get(current.parentId)!;
     }
@@ -130,9 +130,9 @@ export function parseProjectArchive(raw: unknown): ProjectArchive {
 
   const rawMeta = Array.isArray(raw.attachmentsMeta) ? raw.attachmentsMeta : [];
   const attachmentsMeta = rawMeta.map((entry, index): AttachmentMeta => {
-    if (!isRecord(entry)) throw new Error(`Bijlage ${index + 1} is ongeldig.`);
+    if (!isRecord(entry)) throw new Error(`Attachment ${index + 1} is invalid.`);
     const blockId = requiredString(entry.blockId, `attachmentsMeta[${index}].blockId`);
-    if (!ids.has(blockId)) throw new Error('Een bijlage verwijst naar een onbekend blok.');
+    if (!ids.has(blockId)) throw new Error('An attachment refers to an unknown block.');
     return {
       id: requiredString(entry.id, `attachmentsMeta[${index}].id`),
       blockId,
@@ -147,7 +147,7 @@ export function parseProjectArchive(raw: unknown): ProjectArchive {
   const revisions = rawRevisions.map((entry, index): BlockRevision => {
     if (!isRecord(entry)) throw new Error(`Revisie ${index + 1} is ongeldig.`);
     const blockId = requiredString(entry.blockId, `revisions[${index}].blockId`);
-    if (!ids.has(blockId)) throw new Error('Een revisie verwijst naar een onbekend blok.');
+    if (!ids.has(blockId)) throw new Error('A revision refers to an unknown block.');
     if (typeof entry.source !== 'string' || !REVISION_SOURCES.has(entry.source as RevisionSource)) {
       throw new Error(`Ongeldig veld: revisions[${index}].source.`);
     }

@@ -65,7 +65,7 @@ class WorkspaceStore {
     try {
       this.manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
       if (this.manifest.formatVersion !== FORMAT_VERSION || typeof this.manifest.workspaceId !== 'string') {
-        throw new Error('Deze workspacemap heeft een niet-ondersteund formaat.');
+        throw new Error('This workspace folder has an unsupported format.');
       }
     } catch (error) {
       if (error?.code !== 'ENOENT') throw error;
@@ -172,16 +172,16 @@ class WorkspaceStore {
     const destination = path.resolve(destinationParent, 'DeepScribe Workspace');
     if (destination === source) return this.status();
     if (destination.startsWith(`${source}${path.sep}`)) {
-      throw new Error('De nieuwe workspace kan niet binnen de huidige workspacemap worden geplaatst.');
+      throw new Error('The new workspace cannot be placed inside the current workspace folder.');
     }
     if (fs.existsSync(destination) && fs.readdirSync(destination).length > 0) {
-      throw new Error('De gekozen doelmap bevat al bestanden. Kies een lege map.');
+      throw new Error('The selected destination folder already contains files. Choose an empty folder.');
     }
     if (fs.existsSync(destination)) fs.rmdirSync(destination);
     const sourceBytes = directorySize(source);
     const destinationStats = fs.statfsSync(path.dirname(destination));
     const available = destinationStats.bavail * destinationStats.bsize;
-    if (available < sourceBytes * 1.1) throw new Error('Onvoldoende vrije schijfruimte om de workspace veilig te kopiëren.');
+    if (available < sourceBytes * 1.1) throw new Error('Not enough free disk space to copy the workspace safely.');
 
     this.close();
     const staging = `${destination}.staging-${crypto.randomUUID()}`;

@@ -35,7 +35,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onUpdateSettings,
   onResetSettings
 }) => {
-  const [activeTab, setActiveTab] = useState<TabType>('appearance');
+  const [activeTab, setActiveTab] = useState<TabType>('general');
   const [copiedClient, setCopiedClient] = useState<string | null>(null);
   const [selectedMcpClient, setSelectedMcpClient] = useState<'claude' | 'antigravity' | 'cursor' | 'cli'>('claude');
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -49,37 +49,78 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [updateFeedback, setUpdateFeedback] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isOpen || !window.electronAPI?.updater) return;
-    window.electronAPI.updater.getState().then(setUpdaterState).catch(() => {});
-    const unsubscribe = window.electronAPI.updater.onStatusChange(state => {
+    if (!isOpen) return;
+
+    setActiveTab('general');
+
+    const updater = window.electronAPI?.updater;
+    if (!updater) return;
+
+    let isDisposed = false;
+    const handleUpdaterState = (state: UpdaterState) => {
+      if (isDisposed) return;
       setUpdaterState(state);
       if (state.status === 'checking') {
         setIsCheckingUpdate(true);
+        setUpdateFeedback('Checking for updates...');
       } else {
         setIsCheckingUpdate(false);
       }
       if (state.status === 'not-available') {
-        setUpdateFeedback('Je gebruikt al de nieuwste versie.');
+        setUpdateFeedback('You are already using the latest version.');
       } else if (state.status === 'downloaded') {
-        setUpdateFeedback(`Versie ${state.availableVersion || ''} is gereed voor installatie.`);
+        setUpdateFeedback(`Version ${state.availableVersion || ''} is ready to install.`);
       } else if (state.status === 'error' && state.error) {
-        setUpdateFeedback(`Updatecontrole: ${state.error}`);
+        setUpdateFeedback(`Update check: ${state.error}`);
       }
-    });
-    return () => unsubscribe();
+    };
+
+    // Subscribe before reading/checking so no updater state transition is missed.
+    const unsubscribe = updater.onStatusChange(handleUpdaterState);
+
+    const checkOnOpen = async () => {
+      try {
+        const state = await updater.getState();
+        if (isDisposed) return;
+        handleUpdaterState(state);
+
+        // An existing check/download already covers this opening. Keep a downloaded
+        // update available for installation instead of replacing that state.
+        if (['checking', 'available', 'downloading', 'downloaded'].includes(state.status)) return;
+
+        setIsCheckingUpdate(true);
+        setUpdateFeedback('Checking for updates...');
+        const result = await updater.check();
+        if (!isDisposed && !result.ok) {
+          setUpdateFeedback(`Update check: ${result.error || 'No updates found'}`);
+        }
+      } catch (err) {
+        if (!isDisposed) {
+          setIsCheckingUpdate(false);
+          setUpdateFeedback(`Error: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+    };
+
+    void checkOnOpen();
+
+    return () => {
+      isDisposed = true;
+      unsubscribe();
+    };
   }, [isOpen]);
 
   const handleCheckForUpdates = async () => {
     if (!window.electronAPI?.updater) return;
     setIsCheckingUpdate(true);
-    setUpdateFeedback('Zoeken naar updates...');
+    setUpdateFeedback('Checking for updates...');
     try {
       const res = await window.electronAPI.updater.check();
       if (!res.ok) {
-        setUpdateFeedback(`Updatecontrole: ${res.error || 'Geen updates gevonden'}`);
+        setUpdateFeedback(`Update check: ${res.error || 'No updates found'}`);
       }
     } catch (err) {
-      setUpdateFeedback(`Fout: ${err instanceof Error ? err.message : String(err)}`);
+      setUpdateFeedback(`Error: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setIsCheckingUpdate(false);
     }
@@ -87,11 +128,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const handleInstallUpdate = async () => {
     if (!window.electronAPI?.updater) return;
-    setUpdateFeedback('Update installeren en herstarten...');
+    setUpdateFeedback('Installing update and restarting...');
     try {
       await window.electronAPI.updater.install();
     } catch (err) {
-      setUpdateFeedback(`Fout bij installatie: ${err instanceof Error ? err.message : String(err)}`);
+      setUpdateFeedback(`Installation failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   };
 
@@ -110,27 +151,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   useEffect(() => {
     if (!isOpen || !window.electronAPI?.workspace) return;
     window.electronAPI.workspace.status().then(setWorkspaceStatus).catch(error => {
-      setWorkspaceMessage(error instanceof Error ? error.message : 'Workspacestatus kon niet worden gelezen.');
+      setWorkspaceMessage(error instanceof Error ? error.message : 'Could not read workspace status.');
     });
   }, [isOpen]);
 
   const handleMoveWorkspace = async () => {
     if (!window.electronAPI?.workspace) return;
     setIsMovingWorkspace(true);
-    setWorkspaceMessage('Workspace wordt gecontroleerd en gekopieerd...');
+    setWorkspaceMessage('Checking and copying workspace...');
     try {
       await repository.flush();
       const result = await window.electronAPI.workspace.chooseAndMove();
       if (!result) {
-        setWorkspaceMessage('Verplaatsen geannuleerd.');
+        setWorkspaceMessage('Move cancelled.');
         return;
       }
       setWorkspaceStatus(result);
       setWorkspaceMessage(result.previousPath
-        ? `Workspace verplaatst. De vorige map is als veiligheidskopie behouden: ${result.previousPath}`
-        : 'De workspace staat al op deze locatie.');
+        ? `Workspace moved. The previous folder was retained as a safety copy: ${result.previousPath}`
+        : 'The workspace is already in this location.');
     } catch (error) {
-      setWorkspaceMessage(error instanceof Error ? error.message : 'Workspace verplaatsen is mislukt.');
+      setWorkspaceMessage(error instanceof Error ? error.message : 'Failed to move workspace.');
     } finally {
       setIsMovingWorkspace(false);
     }
@@ -146,11 +187,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const handleSaveTheme = () => {
     const name = themeName.trim();
     if (!name) {
-      setThemeSaveError('Geef het thema eerst een naam.');
+      setThemeSaveError('Enter a name for the theme first.');
       return;
     }
     if (name.length > 40) {
-      setThemeSaveError('Een themanaam mag maximaal 40 tekens bevatten.');
+      setThemeSaveError('A theme name can contain no more than 40 characters.');
       return;
     }
 
@@ -184,7 +225,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const deleteSavedTheme = (themeId: string, name: string) => {
-    if (!window.confirm(`Opgeslagen thema “${name}” verwijderen?`)) return;
+    if (!window.confirm(`Delete saved theme “${name}”?`)) return;
     onUpdateSettings({ savedThemes: settings.savedThemes.filter(theme => theme.id !== themeId) });
   };
 
@@ -193,9 +234,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     { id: 'cyberpunk', name: 'Cyberpunk Neon', icon: '⚡', bg: '#0d0914', text: '#e2d9f3', accent: '#00f0ff', atmosphere: '#00f0ff' },
     { id: 'nord', name: 'Nordic Slate', icon: '❄️', bg: '#2e3440', text: '#eceff4', accent: '#88c0d0', atmosphere: '#88c0d0' },
     { id: 'dracula', name: 'Dracula Dark', icon: '🧛', bg: '#282a36', text: '#f8f8f2', accent: '#bd93f9', atmosphere: '#bd93f9' },
-    { id: 'sepia', name: 'Sepia Papier', icon: '📜', bg: '#fbf0d9', text: '#433422', accent: '#b45309', atmosphere: '#b45309' },
+    { id: 'sepia', name: 'Sepia Paper', icon: '📜', bg: '#fbf0d9', text: '#433422', accent: '#b45309', atmosphere: '#b45309' },
     { id: 'obsidian', name: 'Obsidian OLED', icon: '🖤', bg: '#000000', text: '#e0e0e0', accent: '#6366f1', atmosphere: '#6366f1' },
-    { id: 'custom', name: 'Aangepast (Vrij)', icon: '🎨', bg: settings.customBgColor || '#141312', text: settings.customTextColor || '#faf6ee', accent: settings.accentColor, atmosphere: settings.atmosphereColor }
+    { id: 'custom', name: 'Custom', icon: '🎨', bg: settings.customBgColor || '#141312', text: settings.customTextColor || '#faf6ee', accent: settings.accentColor, atmosphere: settings.atmosphereColor }
   ];
 
   return (
@@ -235,7 +276,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         <div className="modal-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Sliders size={20} className="modal-header-icon" />
-            <h2>Instellingen</h2>
+            <h2>Settings</h2>
             <span style={{
               fontSize: '0.72rem',
               color: 'var(--text-secondary)',
@@ -248,7 +289,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               v{updaterState?.currentVersion || '0.1.7'}
             </span>
           </div>
-          <button className="icon-button" onClick={onClose} title="Sluiten (Esc)">
+          <button className="icon-button" onClick={onClose} title="Close (Esc)">
             <X size={18} />
           </button>
         </div>
@@ -256,11 +297,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         {/* Tab Bar */}
         <div className="settings-tabs">
           <button
+            className={`settings-tab ${activeTab === 'general' ? 'active' : ''}`}
+            onClick={() => setActiveTab('general')}
+          >
+            <Sliders size={16} />
+            <span>General</span>
+          </button>
+          <button
             className={`settings-tab ${activeTab === 'appearance' ? 'active' : ''}`}
             onClick={() => setActiveTab('appearance')}
           >
             <Palette size={16} />
-            <span>Weergave</span>
+            <span>Appearance</span>
           </button>
           <button
             className={`settings-tab ${activeTab === 'editor' ? 'active' : ''}`}
@@ -270,18 +318,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <span>Editor</span>
           </button>
           <button
-            className={`settings-tab ${activeTab === 'general' ? 'active' : ''}`}
-            onClick={() => setActiveTab('general')}
-          >
-            <Sliders size={16} />
-            <span>Algemeen</span>
-          </button>
-          <button
             className={`settings-tab ${activeTab === 'ai' ? 'active' : ''}`}
             onClick={() => setActiveTab('ai')}
           >
             <Bot size={16} />
-            <span>AI & Integraties</span>
+            <span>AI & Integrations</span>
           </button>
         </div>
 
@@ -292,8 +333,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {/* Theme Presets Grid */}
               <div className="setting-item">
                 <div className="setting-info">
-                  <label>Thema Presets</label>
-                  <span className="setting-description">Kies een compleet stijlthema voor de gehele applicatie</span>
+                  <label>Theme Presets</label>
+                  <span className="setting-description">Choose a complete visual theme for the entire application</span>
                 </div>
                 <div className="preset-grid">
                   {themePresets.map(preset => (
@@ -337,12 +378,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {/* Custom Color Pickers */}
               <div className="setting-item">
                 <div className="setting-info">
-                  <label>Aangepaste Kleuren</label>
-                  <span className="setting-description">Selecteer of verfijn je eigen accent-, sfeer-, selectie-, agent-alert-, achtergrond- en tekstkleur</span>
+                  <label>Custom Colors</label>
+                  <span className="setting-description">Choose or refine your accent, atmosphere, selection, agent alert, background, and text colors</span>
                 </div>
                 <div className="color-picker-row">
                   <div className="color-picker-field">
-                    <span>Accentkleur</span>
+                    <span>Accent Color</span>
                     <div className="color-picker-input-wrapper">
                       <input
                         type="color"
@@ -354,7 +395,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
 
                   <div className="color-picker-field">
-                    <span>Sfeerkleur (randen en tinten)</span>
+                    <span>Atmosphere Color (borders and tints)</span>
                     <div className="color-picker-input-wrapper">
                       <input
                         type="color"
@@ -366,7 +407,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
 
                   <div className="color-picker-field">
-                    <span>Agent-alertkleur</span>
+                    <span>Agent Alert Color</span>
                     <div className="color-picker-input-wrapper">
                       <input
                         type="color"
@@ -378,7 +419,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
 
                   <div className="color-picker-field">
-                    <span>Achtergrond</span>
+                    <span>Background</span>
                     <div className="color-picker-input-wrapper">
                       <input
                         type="color"
@@ -390,7 +431,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
 
                   <div className="color-picker-field">
-                    <span>Geselecteerde kaarten (gradient)</span>
+                    <span>Selected Cards (gradient)</span>
                     <div className="color-picker-input-wrapper">
                       <input
                         type="color"
@@ -402,7 +443,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
 
                   <div className="color-picker-field">
-                    <span>Tekstkleur</span>
+                    <span>Text Color</span>
                     <div className="color-picker-input-wrapper">
                       <input
                         type="color"
@@ -417,14 +458,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
               <div className="setting-item">
                 <div className="setting-info">
-                  <label>Opgeslagen thema’s</label>
-                  <span className="setting-description">Bewaar de huidige kleuren als een persoonlijk thema en pas ze later opnieuw toe</span>
+                  <label>Saved Themes</label>
+                  <span className="setting-description">Save the current colors as a personal theme and apply them again later</span>
                 </div>
                 {settings.savedThemes.length > 0 && (
                   <div className="saved-theme-grid">
                     {settings.savedThemes.map(theme => (
                       <div key={theme.id} className="saved-theme-card" style={{ background: theme.backgroundColor, color: theme.textColor }}>
-                        <button type="button" className="saved-theme-apply" onClick={() => applySavedTheme(theme)} title={`Thema “${theme.name}” toepassen`}>
+                        <button type="button" className="saved-theme-apply" onClick={() => applySavedTheme(theme)} title={`Apply theme “${theme.name}”`}>
                           <span className="saved-theme-name">{theme.name}</span>
                           <span className="preset-preview-dots">
                             <span className="dot" style={{ backgroundColor: theme.backgroundColor, border: '1px solid rgba(255,255,255,0.2)' }} />
@@ -434,7 +475,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             <span className="dot" style={{ backgroundColor: theme.selectedCardColor }} />
                           </span>
                         </button>
-                        <button type="button" className="saved-theme-delete" onClick={() => deleteSavedTheme(theme.id, theme.name)} title={`Thema “${theme.name}” verwijderen`} aria-label={`Thema “${theme.name}” verwijderen`}>
+                        <button type="button" className="saved-theme-delete" onClick={() => deleteSavedTheme(theme.id, theme.name)} title={`Delete theme “${theme.name}”`} aria-label={`Delete theme “${theme.name}”`}>
                           <Trash2 size={13} />
                         </button>
                       </div>
@@ -446,7 +487,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     type="text"
                     value={themeName}
                     maxLength={40}
-                    placeholder="Naam van dit thema..."
+                    placeholder="Name this theme..."
                     onChange={event => {
                       setThemeName(event.target.value);
                       setThemeSaveError(null);
@@ -459,7 +500,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     }}
                   />
                   <button type="button" className="secondary-button save-theme-button" onClick={handleSaveTheme}>
-                    <Save size={14} /> Opslaan
+                    <Save size={14} /> Save
                   </button>
                 </div>
                 {themeSaveError && <span className="setting-inline-error" role="alert">{themeSaveError}</span>}
@@ -468,14 +509,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {/* Visual Effects Toggles */}
               <div className="setting-item">
                 <div className="setting-info">
-                  <label>Visuele Effecten</label>
-                  <span className="setting-description">Schakel glas-effecten en kaartgloed in of uit voor extra prestatie of sfeer</span>
+                  <label>Visual Effects</label>
+                  <span className="setting-description">Enable or disable glass effects and card glow for more performance or atmosphere</span>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
                       <Sparkles size={16} />
-                      <span>Glassmorphic Vervaging (Backdrop Blur)</span>
+                      <span>Glassmorphic Blur (Backdrop Blur)</span>
                     </div>
                     <label className="toggle-switch">
                       <input
@@ -490,7 +531,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
                       <Eye size={16} />
-                      <span>Neon Kaartglow & Schaduweffecten</span>
+                      <span>Neon Card Glow & Shadow Effects</span>
                     </div>
                     <label className="toggle-switch">
                       <input
@@ -510,8 +551,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div className="settings-section">
               <div className="setting-item">
                 <div className="setting-info">
-                  <label>Lettertype (Font)</label>
-                  <span className="setting-description">Kies het lettertype voor de tekst-editor</span>
+                  <label>Font</label>
+                  <span className="setting-description">Choose the font used by the text editor</span>
                 </div>
                 <div className="setting-control-group">
                   {(['sans', 'serif', 'mono'] as FontFamily[]).map(font => (
@@ -528,8 +569,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
               <div className="setting-item">
                 <div className="setting-info">
-                  <label>Lettergrootte ({settings.fontSize}px)</label>
-                  <span className="setting-description">Pas de tekstgrootte aan in het schrijfvenster</span>
+                  <label>Font Size ({settings.fontSize}px)</label>
+                  <span className="setting-description">Adjust the text size in the writing panel</span>
                 </div>
                 <input
                   type="range"
@@ -544,8 +585,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
               <div className="setting-item">
                 <div className="setting-info">
-                  <label>Regelafstand ({settings.lineHeight})</label>
-                  <span className="setting-description">Ruimte tussen de regels in de tekst</span>
+                  <label>Line Height ({settings.lineHeight})</label>
+                  <span className="setting-description">Spacing between lines of text</span>
                 </div>
                 <div className="setting-control-group">
                   {[1.4, 1.6, 1.8].map(lh => (
@@ -554,7 +595,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       className={`setting-chip ${settings.lineHeight === lh ? 'active' : ''}`}
                       onClick={() => onUpdateSettings({ lineHeight: lh })}
                     >
-                      {lh === 1.4 ? 'Compact (1.4)' : lh === 1.6 ? 'Standaard (1.6)' : 'Ruim (1.8)'}
+                      {lh === 1.4 ? 'Compact (1.4)' : lh === 1.6 ? 'Standard (1.6)' : 'Spacious (1.8)'}
                     </button>
                   ))}
                 </div>
@@ -562,8 +603,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
               <div className="setting-item">
                 <div className="setting-info">
-                  <label>Maximale Tekstbreedte</label>
-                  <span className="setting-description">Maximale breedte van de alinea's tijdens het schrijven</span>
+                  <label>Maximum Text Width</label>
+                  <span className="setting-description">Maximum paragraph width while writing</span>
                 </div>
                 <div className="setting-control-group">
                   {(['narrow', 'standard', 'full'] as ContentWidth[]).map(width => (
@@ -572,7 +613,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       className={`setting-chip ${settings.contentWidth === width ? 'active' : ''}`}
                       onClick={() => onUpdateSettings({ contentWidth: width })}
                     >
-                      {width === 'narrow' ? 'Comfortabel (680px)' : width === 'standard' ? 'Standaard (800px)' : 'Volledig'}
+                      {width === 'narrow' ? 'Comfortable (680px)' : width === 'standard' ? 'Standard (800px)' : 'Full'}
                     </button>
                   ))}
                 </div>
@@ -585,10 +626,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div className="setting-item">
                 <div className="setting-info">
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <RefreshCw size={15} /> Versie & Updates
+                    <RefreshCw size={15} /> Version & Updates
                   </label>
                   <span className="setting-description">
-                    DeepScribe kan automatisch op updates controleren en direct in-app worden bijgewerkt.
+                    DeepScribe can check for updates automatically and update directly in the app.
                   </span>
                 </div>
                 {window.electronAPI?.updater ? (
@@ -596,7 +637,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                          Huidige versie: v{updaterState?.currentVersion || '0.1.6'}
+                          Current version: v{updaterState?.currentVersion || '0.1.6'}
                         </span>
                         {updaterState?.status === 'downloaded' && (
                           <span style={{
@@ -607,7 +648,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             color: '#10B981',
                             fontWeight: 600
                           }}>
-                            Update v{updaterState.availableVersion || ''} gereed!
+                            Update v{updaterState.availableVersion || ''} ready!
                           </span>
                         )}
                       </div>
@@ -620,7 +661,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             onClick={handleInstallUpdate}
                             style={{ display: 'flex', alignItems: 'center', gap: 6 }}
                           >
-                            <ArrowUpCircle size={14} /> Nu herstarten & bijwerken
+                            <ArrowUpCircle size={14} /> Restart & Update Now
                           </button>
                         ) : (
                           <button
@@ -631,7 +672,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             style={{ display: 'flex', alignItems: 'center', gap: 6 }}
                           >
                             <RefreshCw size={14} style={{ animation: isCheckingUpdate ? 'spin 1s linear infinite' : 'none' }} />
-                            {isCheckingUpdate ? 'Zoeken...' : 'Zoeken naar updates'}
+                            {isCheckingUpdate ? 'Checking...' : 'Check for Updates'}
                           </button>
                         )}
                       </div>
@@ -640,7 +681,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     {updaterState?.status === 'downloading' && updaterState.progress && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                          <span>Update v{updaterState.availableVersion || ''} downloaden...</span>
+                          <span>Downloading update v{updaterState.availableVersion || ''}...</span>
                           <span>{updaterState.progress.percent}%</span>
                         </div>
                         <div style={{ width: '100%', height: '6px', background: 'var(--bg-tertiary)', borderRadius: '3px', overflow: 'hidden' }}>
@@ -656,40 +697,40 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     )}
                   </div>
                 ) : (
-                  <span className="setting-description">In-app updates zijn beschikbaar in de geïnstalleerde desktopversie.</span>
+                  <span className="setting-description">In-app updates are available in the installed desktop version.</span>
                 )}
               </div>
 
               <div className="setting-item">
                 <div className="setting-info">
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Database size={15} /> Dataopslag</label>
-                  <span className="setting-description">Projecten, instellingen en bijlagen staan samen in één verplaatsbare workspace.</span>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Database size={15} /> Data Storage</label>
+                  <span className="setting-description">Projects, settings, and attachments are stored together in one portable workspace.</span>
                 </div>
                 {window.electronAPI?.workspace ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     <code style={{ fontSize: '0.72rem', overflowWrap: 'anywhere', color: 'var(--text-secondary)' }}>
-                      {workspaceStatus?.path ?? 'Locatie wordt geladen...'}
+                      {workspaceStatus?.path ?? 'Loading location...'}
                     </code>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                       <button className="secondary-button" type="button" onClick={() => window.electronAPI?.workspace.openFolder()}>
-                        <FolderOpen size={14} /> Open workspacemap
+                        <FolderOpen size={14} /> Open Workspace Folder
                       </button>
                       <button className="secondary-button" type="button" disabled={isMovingWorkspace} onClick={handleMoveWorkspace}>
-                        <FolderInput size={14} /> {isMovingWorkspace ? 'Bezig...' : 'Locatie wijzigen'}
+                        <FolderInput size={14} /> {isMovingWorkspace ? 'Working...' : 'Change Location'}
                       </button>
                     </div>
-                    <span style={{ color: '#F59E0B', fontSize: '0.72rem' }}>Niet versleuteld — bestanden zijn leesbaar voor processen met toegang tot deze map.</span>
+                    <span style={{ color: '#F59E0B', fontSize: '0.72rem' }}>Not encrypted — files are readable by processes with access to this folder.</span>
                     {workspaceMessage && <span className="setting-description" role="status">{workspaceMessage}</span>}
                   </div>
                 ) : (
-                  <span className="setting-description">De verplaatsbare workspace is beschikbaar in de desktop-app.</span>
+                  <span className="setting-description">The portable workspace is available in the desktop app.</span>
                 )}
               </div>
 
               <div className="setting-item">
                 <div className="setting-info">
-                  <label>Miller-kolombreedte ({settings.columnWidth}px)</label>
-                  <span className="setting-description">Breedte van elke navigatiekolom in de hoofdweergave</span>
+                  <label>Miller Column Width ({settings.columnWidth}px)</label>
+                  <span className="setting-description">Width of each navigation column in the main view</span>
                 </div>
                 <div className="setting-control-group">
                   {[280, 320, 380].map(cw => (
@@ -698,7 +739,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       className={`setting-chip ${settings.columnWidth === cw ? 'active' : ''}`}
                       onClick={() => onUpdateSettings({ columnWidth: cw })}
                     >
-                      {cw === 280 ? 'Compact (280px)' : cw === 320 ? 'Standaard (320px)' : 'Breed (380px)'}
+                      {cw === 280 ? 'Compact (280px)' : cw === 320 ? 'Standard (320px)' : 'Wide (380px)'}
                     </button>
                   ))}
                 </div>
@@ -706,8 +747,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
               <div className="setting-item">
                 <div className="setting-info">
-                  <label>Native Spellingscontrole</label>
-                  <span className="setting-description">Ingebouwde browser/systeem spellingscontrole inschakelen</span>
+                  <label>Native Spell Check</label>
+                  <span className="setting-description">Enable the built-in browser/system spell checker</span>
                 </div>
                 <label className="toggle-switch">
                   <input
@@ -737,14 +778,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10B981', display: 'inline-block', boxShadow: '0 0 8px #10B981' }} />
-                      <strong style={{ color: '#10B981', fontSize: '13px' }}>Smart Dual-Mode MCP Server Actief</strong>
+                      <strong style={{ color: '#10B981', fontSize: '13px' }}>Smart Dual-Mode MCP Server Active</strong>
                     </div>
                     <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '12px', background: 'rgba(16, 185, 129, 0.15)', color: '#10B981', fontWeight: 600 }}>
                       24/7 Agent Ready
                     </span>
                   </div>
                   <span style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
-                    AI-agents (zoals in Antigravity, Claude Desktop en Cursor) kunnen DeepScribe altijd uitlezen en bijwerken — zowel live als het venster open staat als rechtstreeks via SQLite wanneer de app gesloten is.
+                    AI agents (such as Antigravity, Claude Desktop, and Cursor) can always read and update DeepScribe — live while the window is open or directly through SQLite while the app is closed.
                   </span>
                 </div>
               </div>
@@ -753,8 +794,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div className="setting-item">
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div className="setting-info">
-                    <label>Directe SQLite Offline Toegang</label>
-                    <span className="setting-description">Laat AI-agents rechtstreeks in workspace.sqlite lezen en schrijven als de app gesloten is</span>
+                  <label>Direct SQLite Offline Access</label>
+                  <span className="setting-description">Allow AI agents to read and write workspace.sqlite directly while the app is closed</span>
                   </div>
                   <label className="toggle-switch">
                     <input
@@ -769,24 +810,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
               <div className="setting-item">
                 <div className="setting-info">
-                  <label>Afronding van nieuwe taken</label>
-                  <span className="setting-description">Standaardbeleid voor nieuwe taakblokken; per taak kan hiervan worden afgeweken.</span>
+                  <label>New Task Completion</label>
+                  <span className="setting-description">Default policy for new task blocks; individual tasks can override it.</span>
                 </div>
                 <select
                   value={settings.defaultTaskCompletionPolicy}
                   onChange={event => onUpdateSettings({ defaultTaskCompletionPolicy: event.target.value as UserSettings['defaultTaskCompletionPolicy'] })}
                   style={{ marginTop: 8, width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border-subtle)', background: 'var(--bg-deep)', color: 'var(--text-primary)' }}
                 >
-                  <option value="review-required">Review verplicht</option>
-                  <option value="auto-complete">Automatisch afronden</option>
+                  <option value="review-required">Review required</option>
+                  <option value="auto-complete">Complete automatically</option>
                 </select>
               </div>
 
               {/* MCP Configuration Generator */}
               <div className="setting-item">
                 <div className="setting-info">
-                  <label>MCP Client Configuratie</label>
-                  <span className="setting-description">Kopieer de kant-en-klare configuratie voor jouw AI assistent of ontwikkelomgeving:</span>
+                  <label>MCP Client Configuration</label>
+                  <span className="setting-description">Copy the ready-to-use configuration for your AI assistant or development environment:</span>
                 </div>
                 <div className="setting-control-group">
                   {(['claude', 'antigravity', 'cursor', 'cli'] as const).map(client => (
@@ -796,7 +837,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       className={`setting-chip ${selectedMcpClient === client ? 'active' : ''}`}
                       onClick={() => setSelectedMcpClient(client)}
                     >
-                      {client === 'claude' ? 'Claude Desktop' : client === 'antigravity' ? 'Antigravity / Gemini' : client === 'cursor' ? 'Cursor / VS Code' : 'Universele CLI'}
+                      {client === 'claude' ? 'Claude Desktop' : client === 'antigravity' ? 'Antigravity / Gemini' : client === 'cursor' ? 'Cursor / VS Code' : 'Universal CLI'}
                     </button>
                   ))}
                 </div>
@@ -870,12 +911,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     {copiedClient === selectedMcpClient ? (
                       <>
                         <CheckCheck size={12} color="#10B981" />
-                        <span style={{ color: '#10B981' }}>Gekopieerd!</span>
+                        <span style={{ color: '#10B981' }}>Copied!</span>
                       </>
                     ) : (
                       <>
                         <Copy size={12} />
-                        <span>Kopieer</span>
+                        <span>Copy</span>
                       </>
                     )}
                   </button>
@@ -885,9 +926,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {/* Best practices note */}
               <div className="setting-item" style={{ marginTop: '4px' }}>
                 <div className="setting-info">
-                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>💡 Aanbevolen AI Tags &amp; Workflows</label>
+                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>💡 Recommended AI Tags &amp; Workflows</label>
                   <span className="setting-description" style={{ fontSize: '11px', lineHeight: '1.5' }}>
-                    Gebruik tags zoals <code style={{ color: 'var(--accent-color)' }}>#todo</code>, <code style={{ color: 'var(--accent-color)' }}>#agent-ready</code> of <code style={{ color: 'var(--accent-color)' }}>#concept</code> om taken en kennisblokken direct vindbaar te maken voor agents. Vraag een agent om <code style={{ color: 'var(--accent-color)' }}>get_or_create_daily_plan</code> aan te roepen voor een overzichtelijke dagplanning.
+                    Use tags such as <code style={{ color: 'var(--accent-color)' }}>#todo</code>, <code style={{ color: 'var(--accent-color)' }}>#agent-ready</code>, or <code style={{ color: 'var(--accent-color)' }}>#concept</code> to make tasks and knowledge blocks easy for agents to find. Ask an agent to call <code style={{ color: 'var(--accent-color)' }}>get_or_create_daily_plan</code> for a clear daily plan.
                   </span>
                 </div>
               </div>
@@ -905,27 +946,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 onClick={() => setShowResetConfirm(true)}
               >
                 <RotateCcw size={14} />
-                <span>Standaardwaarden herstellen</span>
+                <span>Restore Defaults</span>
               </button>
             ) : (
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '12px', color: '#ef4444' }}>Zeker weten?</span>
+                <span style={{ fontSize: '12px', color: '#ef4444' }}>Are you sure?</span>
                 <button className="danger-button" style={{ padding: '4px 8px', fontSize: '12px' }} onClick={handleReset}>
-                  Ja, herstel
+                  Yes, restore
                 </button>
                 <button
                   className="secondary-button"
                   style={{ padding: '4px 8px', fontSize: '12px' }}
                   onClick={() => setShowResetConfirm(false)}
                 >
-                  Annuleren
+                  Cancel
                 </button>
               </div>
             )}
           </div>
 
           <button className="primary-button" onClick={onClose}>
-            Sluiten
+            Close
           </button>
         </div>
       </div>

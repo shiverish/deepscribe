@@ -189,12 +189,12 @@ export function computeDiffSummary(oldText: string, newText: string): DiffSummar
 
   const hasChanges = addedLines > 0 || removedLines > 0 || oldText !== newText;
 
-  let label = 'Geen wijzigingen';
+  let label = 'No changes';
   if (hasChanges) {
     const parts: string[] = [];
-    if (addedLines > 0) parts.push(`+${addedLines} regel${addedLines === 1 ? '' : 's'}`);
-    if (removedLines > 0) parts.push(`-${removedLines} regel${removedLines === 1 ? '' : 's'}`);
-    if (parts.length === 0) parts.push('Kleine inline aanpassing');
+    if (addedLines > 0) parts.push(`+${addedLines} line${addedLines === 1 ? '' : 's'}`);
+    if (removedLines > 0) parts.push(`-${removedLines} line${removedLines === 1 ? '' : 's'}`);
+    if (parts.length === 0) parts.push('Minor inline change');
     label = parts.join(', ');
   }
 

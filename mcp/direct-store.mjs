@@ -215,10 +215,10 @@ function createTaskMetadata(completionPolicy = 'review-required') {
 
 function validateTaskMetadata(task) {
   const errors = [];
-  if (!TASK_STATUSES.includes(task.status)) errors.push('De taakstatus is ongeldig.');
-  if (!TASK_AGENT_TARGETS.includes(task.agentTarget)) errors.push('De agentdoelgroep is ongeldig.');
-  if (!TASK_COMPLETION_POLICIES.includes(task.completionPolicy)) errors.push('Het afrondingsbeleid is ongeldig.');
-  if (task.agentTarget === 'custom' && !String(task.customAgentName || '').trim()) errors.push('Vul een naam in voor de andere agent.');
+  if (!TASK_STATUSES.includes(task.status)) errors.push('The task status is invalid.');
+  if (!TASK_AGENT_TARGETS.includes(task.agentTarget)) errors.push('The agent target is invalid.');
+  if (!TASK_COMPLETION_POLICIES.includes(task.completionPolicy)) errors.push('The completion policy is invalid.');
+  if (task.agentTarget === 'custom' && !String(task.customAgentName || '').trim()) errors.push('Enter a name for the other agent.');
   return errors;
 }
 
@@ -278,13 +278,21 @@ function taskSection(content, name) {
   return match?.[1] || '';
 }
 
+function taskSectionAny(content, names) {
+  for (const name of names) {
+    const section = taskSection(content, name);
+    if (section) return section;
+  }
+  return '';
+}
+
 function validateTaskReady(title, content, task) {
   const errors = validateTaskMetadata(task);
-  if (!String(title || '').trim()) errors.push('Vul een titel in.');
-  if (!stripHtmlText(taskSection(content, 'Doel'))) errors.push('Vul Doel in.');
-  if (!stripHtmlText(taskSection(content, 'Context'))) errors.push('Vul Context in.');
-  const criteria = taskSection(content, 'Acceptatiecriteria');
-  if (!stripHtmlText(criteria) || !(criteria.match(/<li\b/gi) || []).length) errors.push('Voeg minimaal één acceptatiecriterium toe.');
+  if (!String(title || '').trim()) errors.push('Enter a title.');
+  if (!stripHtmlText(taskSectionAny(content, ['Goal', 'Doel']))) errors.push('Enter a Goal.');
+  if (!stripHtmlText(taskSection(content, 'Context'))) errors.push('Enter Context.');
+  const criteria = taskSectionAny(content, ['Acceptance Criteria', 'Acceptatiecriteria']);
+  if (!stripHtmlText(criteria) || !(criteria.match(/<li\b/gi) || []).length) errors.push('Add at least one acceptance criterion.');
   return errors;
 }
 
@@ -299,7 +307,7 @@ function canTransitionTask(from, to) {
 
 function convertContentToTask(content) {
   const context = String(content || '').trim() && String(content).trim() !== '<p></p>' ? content : '<p></p>';
-  return `<h2>Doel</h2><p></p><h2>Context</h2>${context}<h2>Acceptatiecriteria</h2><ul><li><p></p></li></ul>`;
+  return `<h2>Goal</h2><p></p><h2>Context</h2>${context}<h2>Acceptance Criteria</h2><ul><li><p></p></li></ul>`;
 }
 
 export function isBlockCompleted(block) {
@@ -391,17 +399,17 @@ export function formatDependencyMarkdown(dependencies) {
   const lines = dependencies.map(dep => {
     const completed = isBlockCompleted(dep);
     const check = completed ? '[x]' : '[ ]';
-    const statusText = completed ? 'Afgerond' : 'Openstaand';
+    const statusText = completed ? 'Done' : 'Pending';
     return `- ${check} [[${dep.title}]] (\`${dep.id}\`) — *${statusText}*`;
   });
-  return `## Afhankelijkheden\n\n${lines.join('\n')}`;
+  return `## Dependencies\n\n${lines.join('\n')}`;
 }
 
 export function formatWorkItemContent(goal, context, acceptanceCriteria, dependencyBlocks = []) {
   const sections = [
-    `## Doel\n\n${goal}`,
+    `## Goal\n\n${goal}`,
     `## Context\n\n${context}`,
-    `## Acceptatiecriteria\n\n${acceptanceCriteria.map(criterion => `- ${criterion}`).join('\n')}`
+    `## Acceptance Criteria\n\n${acceptanceCriteria.map(criterion => `- ${criterion}`).join('\n')}`
   ];
   if (dependencyBlocks.length > 0) {
     sections.push(formatDependencyMarkdown(dependencyBlocks));
@@ -695,7 +703,7 @@ export class DirectWorkspaceStore {
     if (!currentBlock || currentBlock.isTrash) throw new Error('Het bijbehorende blok is niet beschikbaar.');
 
     // Backup current state
-    this.recordBlockRevision(currentBlock, 'restore', `Backup vóór herstel naar versie van ${new Date(revision.createdAt).toLocaleString('nl-NL')}`, true);
+    this.recordBlockRevision(currentBlock, 'restore', `Backup before restoring version from ${new Date(revision.createdAt).toLocaleString('en-US')}`, true);
 
     const taskMatches = [...revision.content.matchAll(/<li\s+[^>]*data-type="taskItem"[^>]*>/gi)];
     const completedMatches = [...revision.content.matchAll(/<li\s+[^>]*data-type="taskItem"[^>]*data-checked="true"[^>]*>/gi)];
@@ -718,7 +726,7 @@ export class DirectWorkspaceStore {
       blockId: currentBlock.id,
       source: 'agent',
       action: 'block-restored',
-      summary: `Blok “${revision.title}” hersteld naar revisie van ${new Date(revision.createdAt).toLocaleDateString('nl-NL')}`
+      summary: `Block “${revision.title}” restored to revision from ${new Date(revision.createdAt).toLocaleDateString('en-US')}`
     });
     return updated;
   }
@@ -1041,7 +1049,7 @@ export class DirectWorkspaceStore {
           updatedAt: now
         };
         this.saveProject(project);
-        this.recordActivity({ projectId: project.id, source: 'agent', action: 'project-created', summary: `Agent maakte project “${project.title}”` });
+        this.recordActivity({ projectId: project.id, source: 'agent', action: 'project-created', summary: `Agent created project “${project.title}”` });
         return project;
       }
 
@@ -1088,13 +1096,13 @@ export class DirectWorkspaceStore {
             this.saveBlock({ ...parent, childCount, updatedAt: now });
           }
         }
-        this.recordBlockRevision(block, 'agent', 'Initiële aanmaak door agent');
+        this.recordBlockRevision(block, 'agent', 'Initial creation by agent');
         this.recordActivity({
           projectId,
           blockId: block.id,
           source: 'agent',
           action: block.kind === 'task' ? 'task-created' : 'block-created',
-          summary: `Agent maakte ${block.kind === 'task' ? 'taak' : 'blok'} “${block.title}”`
+          summary: `Agent created ${block.kind === 'task' ? 'task' : 'block'} “${block.title}”`
         });
         return block;
       }
@@ -1172,7 +1180,7 @@ export class DirectWorkspaceStore {
           blockId,
           source: 'agent',
           action: 'block-reordered',
-          summary: `Agent verplaatste blok “${block.title}” ${position} “${target.title}”`
+          summary: `Agent moved block “${block.title}” ${position} “${target.title}”`
         });
         return await this.handleRequest('get_block', { blockId });
       }
@@ -1240,13 +1248,13 @@ export class DirectWorkspaceStore {
         if (task.status === 'done' && block.task.status !== 'done' && task.completionPolicy === 'review-required') {
           throw new Error('Deze taak vereist review en kan door een agent niet direct worden afgerond.');
         }
-        this.recordBlockRevision(block, 'user', 'Status vóór taakwijziging door agent');
+        this.recordBlockRevision(block, 'user', 'State before agent task edit');
         const now = Date.now();
         const updated = { ...block, task, updatedAt: now, lastAgentEditAt: now };
         this.saveBlock(updated);
-        this.recordBlockRevision(updated, 'agent', 'Agent wijzigde taakmetadata');
+        this.recordBlockRevision(updated, 'agent', 'Agent changed task metadata');
         const action = block.task.status !== task.status ? task.status === 'ready' ? 'task-readiness-changed' : task.status === 'done' ? 'task-completed' : 'task-status-changed' : 'task-metadata-updated';
-        this.recordActivity({ projectId: block.projectId, blockId, source: 'agent', action, summary: `Agent wijzigde taak “${block.title}” → ${task.status}` });
+        this.recordActivity({ projectId: block.projectId, blockId, source: 'agent', action, summary: `Agent changed task “${block.title}” → ${task.status}` });
         return updated;
       }
 
@@ -1305,7 +1313,7 @@ export class DirectWorkspaceStore {
           this.saveBlock(updated);
           const nextReceipts = [...receipts.filter(receipt => receipt.createdAt >= now - 7 * 86400000), { agentId, requestId, blockId: updated.id, token, createdAt: now }].slice(-500);
           this.saveSetting({ key: CLAIM_RECEIPTS_KEY, value: nextReceipts });
-          this.recordActivity({ projectId: updated.projectId, blockId: updated.id, action: candidate.task.status === 'claimed' ? 'task-claim-taken-over' : 'task-claimed', summary: `${agentId} claimde taak “${updated.title}”` });
+          this.recordActivity({ projectId: updated.projectId, blockId: updated.id, action: candidate.task.status === 'claimed' ? 'task-claim-taken-over' : 'task-claimed', summary: `${agentId} claimed task “${updated.title}”` });
           this.database.exec('COMMIT');
           return { block: redactTaskClaim(updated), claimToken: token, expiresAt: claim.expiresAt, replayed: false };
         } catch (error) {
@@ -1359,7 +1367,7 @@ export class DirectWorkspaceStore {
           const task = { ...block.task, status, claim: undefined, ...(status === 'ready' ? { readyAt: now } : {}) };
           const updated = { ...block, task, updatedAt: now, lastAgentEditAt: now };
           this.saveBlock(updated);
-          this.recordActivity({ projectId: block.projectId, blockId, action: `task-${status}`, summary: optionalStr('summary')?.trim() || `${agentId} zette “${block.title}” op ${status}` });
+          this.recordActivity({ projectId: block.projectId, blockId, action: `task-${status}`, summary: optionalStr('summary')?.trim() || `${agentId} changed “${block.title}” to ${status}` });
           this.database.exec('COMMIT');
           return redactTaskClaim(updated);
         } catch (error) {
@@ -1384,7 +1392,7 @@ export class DirectWorkspaceStore {
         const block = this.getBlock(blockId);
         if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
         if (block.kind === 'task') return block;
-        this.recordBlockRevision(block, 'user', 'Status vóór omzetting naar taak');
+        this.recordBlockRevision(block, 'user', 'State before conversion to task');
         const setting = this.getSetting('user_settings');
         const task = createTaskMetadata(setting?.value?.defaultTaskCompletionPolicy === 'auto-complete' ? 'auto-complete' : 'review-required');
         const content = convertContentToTask(block.content);
@@ -1392,8 +1400,8 @@ export class DirectWorkspaceStore {
         const now = Date.now();
         const updated = { ...block, ...contentStats(content), kind: 'task', task, tags: (block.tags || []).filter(tag => !agentStatuses.has(tag)), updatedAt: now, lastAgentEditAt: now };
         this.saveBlock(updated);
-        this.recordBlockRevision(updated, 'agent', 'Blok omgezet naar taak');
-        this.recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'task-converted', summary: `Agent zette “${block.title}” om naar taakconcept` });
+        this.recordBlockRevision(updated, 'agent', 'Block converted to task');
+        this.recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'task-converted', summary: `Agent converted “${block.title}” to a draft task` });
         return updated;
       }
 
@@ -1412,7 +1420,7 @@ export class DirectWorkspaceStore {
           updated.scratchpadUpdatedAt = now;
         }
         this.saveProject(updated);
-        this.recordActivity({ projectId, source: 'agent', action: 'project-updated', summary: `Agent wijzigde project “${updated.title}”` });
+        this.recordActivity({ projectId, source: 'agent', action: 'project-updated', summary: `Agent changed project “${updated.title}”` });
         return updated;
       }
 
@@ -1420,7 +1428,7 @@ export class DirectWorkspaceStore {
         const blockId = requireString('blockId');
         const block = this.getBlock(blockId);
         if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
-        this.recordBlockRevision(block, 'user', 'Status vóór agent-wijziging');
+        this.recordBlockRevision(block, 'user', 'State before agent edit');
         const now = Date.now();
         const updated = { ...block, updatedAt: now, lastAgentEditAt: now };
         if (typeof params.title === 'string' && params.title.trim()) updated.title = params.title.trim();
@@ -1437,8 +1445,8 @@ export class DirectWorkspaceStore {
           updated.dependsOn = sanitized;
         }
         this.saveBlock(updated);
-        this.recordBlockRevision(updated, 'agent', `Agent wijzigde “${updated.title}”`);
-        this.recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'block-updated', summary: `Agent wijzigde “${updated.title}”` });
+        this.recordBlockRevision(updated, 'agent', `Agent changed “${updated.title}”`);
+        this.recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'block-updated', summary: `Agent changed “${updated.title}”` });
         return updated;
       }
 
@@ -1447,15 +1455,15 @@ export class DirectWorkspaceStore {
         const text = requireString('text');
         const block = this.getBlock(blockId);
         if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
-        this.recordBlockRevision(block, 'user', 'Status vóór toevoeging door agent');
+        this.recordBlockRevision(block, 'user', 'State before agent addition');
         const addition = markdownToHtml(text);
         const newContent = `${block.content || '<p></p>'}${addition}`;
         const stats = contentStats(newContent);
         const now = Date.now();
         const updated = { ...block, ...stats, updatedAt: now, lastAgentEditAt: now };
         this.saveBlock(updated);
-        this.recordBlockRevision(updated, 'agent', `Agent voegde tekst toe`);
-        this.recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'block-appended', summary: `Agent voegde tekst toe aan “${block.title}”` });
+        this.recordBlockRevision(updated, 'agent', `Agent appended text`);
+        this.recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'block-appended', summary: `Agent appended text to “${block.title}”` });
         return updated;
       }
 
@@ -1477,7 +1485,7 @@ export class DirectWorkspaceStore {
         const block = this.getBlock(blockId);
         if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
 
-        this.recordBlockRevision(block, 'user', 'Status vóór toevoegen van todo');
+        this.recordBlockRevision(block, 'user', 'State before adding todo');
         const itemHtml = `<li data-type="taskItem" data-checked="${completed}"><label><input type="checkbox"${completed ? ' checked' : ''}><span></span></label><div><p>${escapeHtml(text)}</p></div></li>`;
         let newContent = '';
         if (block.content && block.content.includes('</ul>')) {
@@ -1490,8 +1498,8 @@ export class DirectWorkspaceStore {
         const now = Date.now();
         const updated = { ...block, ...stats, updatedAt: now, lastAgentEditAt: now };
         this.saveBlock(updated);
-        this.recordBlockRevision(updated, 'agent', `Agent voegde todo “${text}” toe`);
-        this.recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'todo-added', summary: `Agent voegde todo “${text}” toe aan “${block.title}”` });
+        this.recordBlockRevision(updated, 'agent', `Agent added todo “${text}”`);
+        this.recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'todo-added', summary: `Agent added todo “${text}” to “${block.title}”` });
         return todosFromBlock(updated);
       }
 
@@ -1503,7 +1511,7 @@ export class DirectWorkspaceStore {
         const block = this.getBlock(blockId);
         if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
 
-        this.recordBlockRevision(block, 'user', 'Status vóór todo statuswijziging');
+        this.recordBlockRevision(block, 'user', 'State before todo status change');
         let currentIndex = 0;
         let replaced = false;
         const newContent = (block.content || '').replace(/(<li\s+[^>]*data-type="taskItem"[^>]*data-checked=")(true|false)("[^>]*>)/gi, (match, prefix, _state, suffix) => {
@@ -1521,8 +1529,8 @@ export class DirectWorkspaceStore {
         const now = Date.now();
         const updated = { ...block, ...stats, updatedAt: now, lastAgentEditAt: now };
         this.saveBlock(updated);
-        this.recordBlockRevision(updated, 'agent', `Agent markeerde todo als ${params.completed ? 'afgerond' : 'open'}`);
-        this.recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'todo-status', summary: `Agent markeerde een todo in “${block.title}” als ${params.completed ? 'afgerond' : 'open'}` });
+        this.recordBlockRevision(updated, 'agent', `Agent marked todo as ${params.completed ? 'done' : 'open'}`);
+        this.recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'todo-status', summary: `Agent marked a todo in “${block.title}” as ${params.completed ? 'done' : 'open'}` });
         return todosFromBlock(updated)[taskIndex];
       }
 

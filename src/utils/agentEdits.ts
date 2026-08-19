@@ -12,9 +12,9 @@ export interface AgentEditCounts {
 
 export function formatAgentEditBadgeLabel(hasOwnUpdate: boolean, subtreeCount: number): string {
   const descendantCount = Math.max(0, subtreeCount - (hasOwnUpdate ? 1 : 0));
-  if (hasOwnUpdate && descendantCount > 0) return `Nieuw · ${descendantCount} lager`;
-  if (hasOwnUpdate) return 'Nieuw van agent';
-  return `${descendantCount} lager`;
+  if (hasOwnUpdate && descendantCount > 0) return `New · ${descendantCount} below`;
+  if (hasOwnUpdate) return 'New from agent';
+  return `${descendantCount} below`;
 }
 
 export function calculateAgentEditCounts(blocks: Block[]): AgentEditCounts {

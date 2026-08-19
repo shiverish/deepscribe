@@ -65,7 +65,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
       }}
     >
       <div style={{ padding: '6px 14px', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', borderBottom: '1px solid var(--border-subtle)' }}>
-        {type === 'project' ? 'Project Opties' : 'Blok Opties'}
+        {type === 'project' ? 'Project Options' : 'Block Options'}
       </div>
 
       <button
@@ -87,7 +87,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
         }}
       >
         <Plus size={14} color="#00F0FF" />
-        <span>Nieuw kind-blok</span>
+        <span>New child block</span>
       </button>
 
       {type === 'block' && (
@@ -96,7 +96,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
           onClick={() => { onAddTask(item.id); onClose(); }}
         >
           <ListTodo size={14} color="#A78BFA" />
-          <span>Nieuwe taak</span>
+          <span>New task</span>
         </button>
       )}
 
@@ -106,7 +106,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
           onClick={() => { onConvertToTask(item.id); onClose(); }}
         >
           <RefreshCw size={14} color="#F59E0B" />
-          <span>Omzetten naar taak</span>
+          <span>Convert to task</span>
         </button>
       )}
 
@@ -129,7 +129,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
         }}
       >
         <Copy size={14} color="#38BDF8" />
-        <span>Dupliceren</span>
+        <span>Duplicate</span>
       </button>
 
       <button
@@ -149,13 +149,13 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
           try {
             await copyAgentReference(item, type);
           } catch (error) {
-            console.error('Agentreferentie kopieren is mislukt.', error);
+            console.error('Failed to copy agent reference.', error);
           }
           onClose();
         }}
       >
         <ClipboardCopy size={14} color="#A78BFA" />
-        <span>Kopieer agentreferentie</span>
+        <span>Copy agent reference</span>
       </button>
 
       <button
@@ -177,7 +177,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
         }}
       >
         <CheckCheck size={14} color="#22C55E" />
-        <span>Markeer als gelezen</span>
+        <span>Mark as read</span>
       </button>
 
       <div style={{ height: 1, background: 'var(--border-subtle)', margin: '4px 0' }} />
@@ -201,7 +201,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
         }}
       >
         <Trash2 size={14} />
-        <span>Naar prullenbak</span>
+        <span>Move to trash</span>
       </button>
     </div>
   );

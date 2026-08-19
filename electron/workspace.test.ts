@@ -58,7 +58,7 @@ describe('plaintext workspace store', () => {
     const root = temporaryRoot();
     const store = new WorkspaceStore({ userDataPath: path.join(root, 'user'), documentsPath: path.join(root, 'docs') });
     const current = store.status().path;
-    expect(() => store.move(path.join(current, 'nested'))).toThrow(/niet binnen/);
+    expect(() => store.move(path.join(current, 'nested'))).toThrow(/cannot be placed inside/);
     store.close();
   });
 });

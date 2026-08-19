@@ -64,6 +64,6 @@ describe('diffUtils', () => {
     expect(summary.hasChanges).toBe(true);
     expect(summary.addedLines).toBe(2);
     expect(summary.removedLines).toBe(0);
-    expect(summary.label).toBe('+2 regels');
+    expect(summary.label).toBe('+2 lines');
   });
 });

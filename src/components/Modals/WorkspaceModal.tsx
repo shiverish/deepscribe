@@ -19,7 +19,7 @@ interface WorkspaceModalProps {
   onApplyTemplate: (template: BlockTemplate) => Promise<void>;
 }
 
-const sourceLabels = { user: 'Jij', agent: 'Agent', system: 'Systeem' } as const;
+const sourceLabels = { user: 'You', agent: 'Agent', system: 'System' } as const;
 
 export const WorkspaceModal: React.FC<WorkspaceModalProps> = ({
   isOpen, onClose, activeProject, activeBlock, blocks, onOpenBlock, onApplyTemplate
@@ -69,7 +69,7 @@ export const WorkspaceModal: React.FC<WorkspaceModalProps> = ({
     if (block.kind === 'task' && block.task) {
       const taskStatus = status ? status.replace('agent-', '') as TaskStatus : 'draft';
       if (taskStatus === 'claimed' && !block.task.claim) {
-        setError('Een taak kan alleen via Auto Task Pickup worden geclaimd.');
+        setError('A task can only be claimed through Auto Task Pickup.');
         return;
       }
       const nextTask = {
@@ -86,7 +86,7 @@ export const WorkspaceModal: React.FC<WorkspaceModalProps> = ({
         }
       }
       await db.blocks.update(block.id, { task: nextTask, updatedAt: Date.now() });
-      await recordActivity({ projectId: block.projectId, blockId: block.id, action: block.task.claim && !nextTask.claim ? 'task-claim-released-by-user' : 'task-status-changed', summary: `“${block.title}” → ${status ? AGENT_STATUS_LABELS[status] : 'Concept'}` });
+      await recordActivity({ projectId: block.projectId, blockId: block.id, action: block.task.claim && !nextTask.claim ? 'task-claim-released-by-user' : 'task-status-changed', summary: `“${block.title}” → ${status ? AGENT_STATUS_LABELS[status] : 'Draft'}` });
       setError(null);
       return;
     }
@@ -96,16 +96,16 @@ export const WorkspaceModal: React.FC<WorkspaceModalProps> = ({
       projectId: block.projectId,
       blockId: block.id,
       action: 'agent-status',
-      summary: status ? `“${block.title}” → ${AGENT_STATUS_LABELS[status]}` : `“${block.title}” uit Agent Inbox verwijderd`
+      summary: status ? `“${block.title}” → ${AGENT_STATUS_LABELS[status]}` : `“${block.title}” removed from Agent Inbox`
     });
   };
 
   const saveTemplate = async () => {
     const name = templateName.trim();
-    if (!activeBlock) return setError('Open eerst een blok dat je als template wilt bewaren.');
-    if (activeBlock.kind === 'task') return setError('Taakblokken gebruiken het vaste taaktemplate en kunnen niet als gebruikers­template worden opgeslagen.');
-    if (!name) return setError('Geef de template een naam.');
-    if (name.length > 60) return setError('Een templatenaam mag maximaal 60 tekens bevatten.');
+    if (!activeBlock) return setError('Open a block you want to save as a template first.');
+    if (activeBlock.kind === 'task') return setError('Task blocks use the fixed task template and cannot be saved as user templates.');
+    if (!name) return setError('Enter a name for the template.');
+    if (name.length > 60) return setError('A template name can contain no more than 60 characters.');
     const template: BlockTemplate = {
       id: `template-${crypto.randomUUID()}`,
       name,
@@ -116,7 +116,7 @@ export const WorkspaceModal: React.FC<WorkspaceModalProps> = ({
       createdAt: Date.now()
     };
     await db.templates.add(template);
-    await recordActivity({ projectId: activeBlock.projectId, blockId: activeBlock.id, action: 'template-created', summary: `Template “${name}” opgeslagen vanuit “${activeBlock.title}”` });
+    await recordActivity({ projectId: activeBlock.projectId, blockId: activeBlock.id, action: 'template-created', summary: `Template “${name}” saved from “${activeBlock.title}”` });
     setTemplateName('');
     setError(null);
   };
@@ -125,12 +125,12 @@ export const WorkspaceModal: React.FC<WorkspaceModalProps> = ({
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-container workspace-modal" onClick={event => event.stopPropagation()}>
         <div className="modal-header">
-          <div className="workspace-title"><Bot size={19} /><h2>Werkruimte</h2></div>
-          <button className="icon-button" onClick={onClose} title="Sluiten"><X size={18} /></button>
+          <div className="workspace-title"><Bot size={19} /><h2>Workspace</h2></div>
+          <button className="icon-button" onClick={onClose} title="Close"><X size={18} /></button>
         </div>
         <div className="workspace-tabs">
           <button className={tab === 'inbox' ? 'active' : ''} onClick={() => setTab('inbox')}><Bot size={14} /> Agent Inbox</button>
-          <button className={tab === 'activity' ? 'active' : ''} onClick={() => setTab('activity')}><History size={14} /> Activiteit</button>
+          <button className={tab === 'activity' ? 'active' : ''} onClick={() => setTab('activity')}><History size={14} /> Activity</button>
           <button className={tab === 'templates' ? 'active' : ''} onClick={() => setTab('templates')}><LayoutTemplate size={14} /> Templates</button>
         </div>
         <div className="workspace-body">
@@ -138,21 +138,21 @@ export const WorkspaceModal: React.FC<WorkspaceModalProps> = ({
             <>
               {activeBlock && activeBlock.kind !== 'task' && !getAgentStatus(activeBlock) && (
                 <button className="workspace-primary-action" onClick={() => void updateStatus(activeBlock, 'agent-ready')}>
-                  <FilePlus2 size={14} /> Huidig blok naar Agent Inbox
+                  <FilePlus2 size={14} /> Add Current Block to Agent Inbox
                 </button>
               )}
-              {inboxBlocks.length === 0 ? <p className="workspace-empty">Nog geen werk voor agents. Voeg het geopende blok toe om te beginnen.</p> : inboxBlocks.map(block => {
+              {inboxBlocks.length === 0 ? <p className="workspace-empty">No work for agents yet. Add the open block to get started.</p> : inboxBlocks.map(block => {
                 const status = getAgentStatus(block)!;
                 return (
                   <div className="workspace-row" key={block.id}>
                     <button className="workspace-row-main" onClick={() => { onOpenBlock(block.id); onClose(); }}>
                       <strong>{block.title}</strong>
-                      <span>{AGENT_STATUS_LABELS[status]}{block.task?.claim ? ` · ${block.task.claim.ownerId} · poging ${block.task.claim.attempt} · tot ${new Date(block.task.claim.expiresAt).toLocaleString('nl-NL')}` : ''}</span>
+                      <span>{AGENT_STATUS_LABELS[status]}{block.task?.claim ? ` · ${block.task.claim.ownerId} · attempt ${block.task.claim.attempt} · until ${new Date(block.task.claim.expiresAt).toLocaleString('en-US')}` : ''}</span>
                     </button>
                     <select disabled={Boolean(block.task?.claim)} value={status} onChange={event => void updateStatus(block, event.target.value as AgentStatus)}>
                       {AGENT_STATUSES.map(value => <option key={value} value={value} disabled={block.kind === 'task' && value === 'agent-claimed'}>{AGENT_STATUS_LABELS[value]}</option>)}
                     </select>
-                    <button className="workspace-row-delete" onClick={() => void updateStatus(block, block.task?.claim ? 'agent-ready' : null)} title={block.task?.claim ? 'Claim vrijgeven en opnieuw klaarzetten' : 'Uit Inbox verwijderen'}><X size={13} /></button>
+                    <button className="workspace-row-delete" onClick={() => void updateStatus(block, block.task?.claim ? 'agent-ready' : null)} title={block.task?.claim ? 'Release claim and mark ready again' : 'Remove from Inbox'}><X size={13} /></button>
                   </div>
                 );
               })}
@@ -176,7 +176,7 @@ export const WorkspaceModal: React.FC<WorkspaceModalProps> = ({
                     }}
                     onClick={() => setActivitySourceFilter('all')}
                   >
-                    Alle ({visibleActivities.length})
+                    All ({visibleActivities.length})
                   </button>
                   <button
                     type="button"
@@ -212,7 +212,7 @@ export const WorkspaceModal: React.FC<WorkspaceModalProps> = ({
                     }}
                     onClick={() => setActivitySourceFilter('user')}
                   >
-                    <Clock3 size={11} /> Jij ({visibleActivities.filter(a => a.source === 'user').length})
+                    <Clock3 size={11} /> You ({visibleActivities.filter(a => a.source === 'user').length})
                   </button>
                   <button
                     type="button"
@@ -230,7 +230,7 @@ export const WorkspaceModal: React.FC<WorkspaceModalProps> = ({
                     }}
                     onClick={() => setActivitySourceFilter('system')}
                   >
-                    <CheckCircle2 size={11} /> Systeem ({visibleActivities.filter(a => a.source === 'system').length})
+                    <CheckCircle2 size={11} /> System ({visibleActivities.filter(a => a.source === 'system').length})
                   </button>
                 </div>
 
@@ -240,7 +240,7 @@ export const WorkspaceModal: React.FC<WorkspaceModalProps> = ({
                     type="text"
                     value={activitySearchQuery}
                     onChange={e => setActivitySearchQuery(e.target.value)}
-                    placeholder="Zoek in activiteit..."
+                    placeholder="Search activity..."
                     style={{
                       width: '100%',
                       padding: '4px 8px 4px 24px',
@@ -256,7 +256,7 @@ export const WorkspaceModal: React.FC<WorkspaceModalProps> = ({
               </div>
 
               {filteredActivities.length === 0 ? (
-                <p className="workspace-empty">Geen activiteiten gevonden.</p>
+                <p className="workspace-empty">No activity found.</p>
               ) : (
                 filteredActivities.map(entry => (
                   <button
@@ -286,22 +286,22 @@ export const WorkspaceModal: React.FC<WorkspaceModalProps> = ({
           {tab === 'templates' && (
             <>
               <div className="template-save-row">
-                <input value={templateName} maxLength={60} onChange={event => { setTemplateName(event.target.value); setError(null); }} placeholder={activeBlock?.kind === 'task' ? 'Taakblokken gebruiken het vaste template' : activeBlock ? `Template van “${activeBlock.title}”` : 'Open eerst een blok...'} disabled={!activeBlock || activeBlock.kind === 'task'} />
-                <button className="secondary-button" onClick={() => void saveTemplate()} disabled={!activeBlock || activeBlock.kind === 'task'}>Opslaan</button>
+                <input value={templateName} maxLength={60} onChange={event => { setTemplateName(event.target.value); setError(null); }} placeholder={activeBlock?.kind === 'task' ? 'Task blocks use the fixed template' : activeBlock ? `Template from “${activeBlock.title}”` : 'Open a block first...'} disabled={!activeBlock || activeBlock.kind === 'task'} />
+                <button className="secondary-button" onClick={() => void saveTemplate()} disabled={!activeBlock || activeBlock.kind === 'task'}>Save</button>
               </div>
-              {templates.length === 0 ? <p className="workspace-empty">Nog geen templates opgeslagen.</p> : templates.map(template => (
+              {templates.length === 0 ? <p className="workspace-empty">No templates saved yet.</p> : templates.map(template => (
                 <div className="workspace-row" key={template.id}>
                   <button className="workspace-row-main" onClick={async () => {
                     try { await onApplyTemplate(template); onClose(); }
-                    catch (cause) { setError(cause instanceof Error ? cause.message : 'Template toepassen is mislukt.'); }
+                    catch (cause) { setError(cause instanceof Error ? cause.message : 'Failed to apply template.'); }
                   }}>
                     <strong>{template.name}</strong><span>{template.title} · {template.tags.length} tags</span>
                   </button>
                   <button className="workspace-row-delete" onClick={async () => {
-                    if (!window.confirm(`Template “${template.name}” verwijderen?`)) return;
+                    if (!window.confirm(`Delete template “${template.name}”?`)) return;
                     await db.templates.delete(template.id);
-                    await recordActivity({ action: 'template-deleted', summary: `Template “${template.name}” verwijderd` });
-                  }} title="Template verwijderen"><Trash2 size={13} /></button>
+                    await recordActivity({ action: 'template-deleted', summary: `Template “${template.name}” deleted` });
+                  }} title="Delete template"><Trash2 size={13} /></button>
                 </div>
               ))}
             </>

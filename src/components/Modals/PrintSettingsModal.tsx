@@ -21,9 +21,9 @@ interface PrintSettingsModalProps {
 }
 
 const PRESETS = [
-  { key: 'a4Document', label: 'A4 document', description: '11 pt · normale marges' },
-  { key: 'a5Book', label: 'A5 boek', description: '11 pt · compacte marges' },
-  { key: 'largeText', label: 'Grote letters', description: '13 pt · compacte marges' }
+  { key: 'a4Document', label: 'A4 document', description: '11 pt · normal margins' },
+  { key: 'a5Book', label: 'A5 book', description: '11 pt · compact margins' },
+  { key: 'largeText', label: 'Large text', description: '13 pt · compact margins' }
 ] as const;
 
 export const PrintSettingsModal: React.FC<PrintSettingsModalProps> = ({
@@ -55,16 +55,16 @@ export const PrintSettingsModal: React.FC<PrintSettingsModalProps> = ({
         <div className="modal-header">
           <div className="print-settings-title">
             <Printer size={19} className="modal-header-icon" />
-            <h2 id="print-settings-title">Printinstellingen</h2>
+            <h2 id="print-settings-title">Print Settings</h2>
           </div>
-          <button className="icon-button" type="button" onClick={onClose} disabled={isPrinting} title="Sluiten" aria-label="Printinstellingen sluiten">
+          <button className="icon-button" type="button" onClick={onClose} disabled={isPrinting} title="Close" aria-label="Close print settings">
             <X size={18} />
           </button>
         </div>
 
         <div className="modal-body print-settings-body">
           <section>
-            <span className="print-settings-label">Snelle keuze</span>
+            <span className="print-settings-label">Quick Presets</span>
             <div className="print-preset-grid">
               {PRESETS.map(preset => {
                 const presetSettings = BLOCK_PRINT_PRESETS[preset.key];
@@ -86,31 +86,31 @@ export const PrintSettingsModal: React.FC<PrintSettingsModalProps> = ({
 
           <section className="print-control-grid">
             <label>
-              <span className="print-settings-label">Papierformaat</span>
+              <span className="print-settings-label">Paper Size</span>
               <select value={settings.pageSize} onChange={event => update('pageSize', event.target.value as PrintPageSize)}>
                 <option value="A4">A4</option>
                 <option value="A5">A5</option>
               </select>
             </label>
             <label>
-              <span className="print-settings-label">Tekstgrootte</span>
+              <span className="print-settings-label">Text Size</span>
               <select value={settings.fontSize} onChange={event => update('fontSize', Number(event.target.value) as PrintFontSize)}>
                 {[10, 11, 12, 13, 14].map(size => <option key={size} value={size}>{size} pt</option>)}
               </select>
             </label>
             <label>
-              <span className="print-settings-label">Marges</span>
+              <span className="print-settings-label">Margins</span>
               <select value={settings.margin} onChange={event => update('margin', event.target.value as PrintMargin)}>
                 <option value="compact">Compact · 10 mm</option>
-                <option value="normal">Normaal · 16 mm</option>
-                <option value="wide">Ruim · 22 mm</option>
+                <option value="normal">Normal · 16 mm</option>
+                <option value="wide">Wide · 22 mm</option>
               </select>
             </label>
             <label>
-              <span className="print-settings-label">Lettertype</span>
+              <span className="print-settings-label">Font</span>
               <select value={settings.font} onChange={event => update('font', event.target.value as PrintFont)}>
-                <option value="serif">Boek · Georgia</option>
-                <option value="sans">Zakelijk · sans-serif</option>
+                <option value="serif">Book · Georgia</option>
+                <option value="sans">Business · sans-serif</option>
               </select>
             </label>
           </section>
@@ -122,32 +122,32 @@ export const PrintSettingsModal: React.FC<PrintSettingsModalProps> = ({
               onChange={event => update('pageBreakPerBlock', event.target.checked)}
             />
             <span>
-              <strong>Ieder blok op een nieuwe pagina</strong>
-              <small>Schakel dit uit voor een doorlopend document.</small>
+              <strong>Start every block on a new page</strong>
+              <small>Turn this off for one continuous document.</small>
             </span>
           </label>
 
           <section>
-            <span className="print-settings-label">Blokheader</span>
+            <span className="print-settings-label">Block Header</span>
             <div className="print-control-grid">
               <label>
-                <span className="print-settings-label">Opmaak</span>
+                <span className="print-settings-label">Layout</span>
                 <select value={settings.headerStyle} onChange={event => update('headerStyle', event.target.value as PrintHeaderStyle)}>
-                  <option value="full">Uitgebreid · project, pad en titel</option>
-                  <option value="compact">Compact · metadata op één regel</option>
-                  <option value="title">Alleen bloktitel</option>
-                  <option value="none">Geen header</option>
+                  <option value="full">Full · project, path, and title</option>
+                  <option value="compact">Compact · metadata on one line</option>
+                  <option value="title">Block title only</option>
+                  <option value="none">No header</option>
                 </select>
               </label>
               <label>
-                <span className="print-settings-label">Uitlijning</span>
+                <span className="print-settings-label">Alignment</span>
                 <select
                   value={settings.headerAlignment}
                   disabled={settings.headerStyle === 'none'}
                   onChange={event => update('headerAlignment', event.target.value as PrintHeaderAlignment)}
                 >
-                  <option value="left">Links</option>
-                  <option value="center">Gecentreerd</option>
+                  <option value="left">Left</option>
+                  <option value="center">Centered</option>
                 </select>
               </label>
             </div>
@@ -159,22 +159,22 @@ export const PrintSettingsModal: React.FC<PrintSettingsModalProps> = ({
                 onChange={event => update('headerDivider', event.target.checked)}
               />
               <span>
-                <strong>Scheidingslijn onder de header</strong>
-                <small>Geeft de bloktitel een duidelijk einde vóór de inhoud.</small>
+                <strong>Divider below the header</strong>
+                <small>Adds a clear divider between the block title and its content.</small>
               </span>
             </label>
           </section>
 
           <div className="print-settings-summary">
-            {settings.pageSize} · {settings.fontSize} pt · {settings.margin === 'compact' ? '10' : settings.margin === 'normal' ? '16' : '22'} mm · {settings.font === 'serif' ? 'Georgia' : 'sans-serif'} · {settings.headerStyle === 'full' ? 'uitgebreide header' : settings.headerStyle === 'compact' ? 'compacte header' : settings.headerStyle === 'title' ? 'alleen titel' : 'geen header'}
+            {settings.pageSize} · {settings.fontSize} pt · {settings.margin === 'compact' ? '10' : settings.margin === 'normal' ? '16' : '22'} mm · {settings.font === 'serif' ? 'Georgia' : 'sans-serif'} · {settings.headerStyle === 'full' ? 'full header' : settings.headerStyle === 'compact' ? 'compact header' : settings.headerStyle === 'title' ? 'title only' : 'no header'}
           </div>
         </div>
 
         <div className="modal-footer print-settings-footer">
-          <button className="secondary-button" type="button" onClick={onClose} disabled={isPrinting}>Annuleren</button>
+          <button className="secondary-button" type="button" onClick={onClose} disabled={isPrinting}>Cancel</button>
           <button className="primary-button print-settings-submit" type="button" onClick={onPrint} disabled={isPrinting}>
             <Printer size={14} />
-            {isPrinting ? 'Printdialoog openen…' : 'Printen'}
+            {isPrinting ? 'Opening print dialog…' : 'Print'}
           </button>
         </div>
       </div>

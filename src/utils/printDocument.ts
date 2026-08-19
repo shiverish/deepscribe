@@ -129,18 +129,18 @@ function getBlockPath(block: Block, blocksById: Map<string, Block>): Block[] {
 
 function renderBlockSection(block: Block, project: Project, blocksById: Map<string, Block>, settings: BlockPrintSettings): string {
   const path = getBlockPath(block, blocksById)
-    .map(segment => escapeHtml(segment.title || 'Naamloos blok'))
+    .map(segment => escapeHtml(segment.title || 'Untitled block'))
     .join('<span class="path-separator" aria-hidden="true">/</span>');
 
   const headerClass = `block-header ${settings.headerStyle} align-${settings.headerAlignment}${settings.headerDivider ? ' with-divider' : ''}`;
   const metadata = settings.headerStyle === 'full' || settings.headerStyle === 'compact'
-    ? `<div class="project-name">${escapeHtml(project.title || 'Naamloos project')}</div>
-      <nav class="block-path" aria-label="Blokpad">${path}</nav>`
+    ? `<div class="project-name">${escapeHtml(project.title || 'Untitled project')}</div>
+      <nav class="block-path" aria-label="Block path">${path}</nav>`
     : '';
   const header = settings.headerStyle === 'none' ? '' : `
       <header class="${headerClass}">
         ${metadata}
-        <h1>${escapeHtml(block.title || 'Naamloos blok')}</h1>
+        <h1>${escapeHtml(block.title || 'Untitled block')}</h1>
       </header>`;
 
   return `
@@ -160,7 +160,7 @@ export function buildBlockPrintDocument({
   const settings = normalizeBlockPrintSettings(requestedSettings);
   const projectBlocks = blocks.filter(block => block.projectId === project.id && !block.isTrash);
   const originalRoot = projectBlocks.find(block => block.id === rootBlockId);
-  if (!originalRoot) throw new Error('Het te printen blok is niet beschikbaar.');
+  if (!originalRoot) throw new Error('The block to print is unavailable.');
 
   const root = draft
     ? { ...originalRoot, title: draft.title, content: draft.content }
@@ -168,10 +168,10 @@ export function buildBlockPrintDocument({
   const effectiveBlocks = projectBlocks.map(block => block.id === rootBlockId ? root : block);
   const blocksById = new Map(effectiveBlocks.map(block => [block.id, block]));
   const printableBlocks = collectSubtree(root, effectiveBlocks);
-  const documentTitle = `${root.title || 'Naamloos blok'} - ${project.title || 'DeepScribe'}`;
+  const documentTitle = `${root.title || 'Untitled block'} - ${project.title || 'DeepScribe'}`;
 
   const html = `<!doctype html>
-<html lang="nl">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:">
@@ -225,7 +225,7 @@ export function buildBlockPrintDocument({
 
   return {
     html,
-    jobName: `DeepScribe - ${root.title || 'Naamloos blok'}`,
+    jobName: `DeepScribe - ${root.title || 'Untitled block'}`,
     blockIds: printableBlocks.map(block => block.id)
   };
 }

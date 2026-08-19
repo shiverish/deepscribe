@@ -100,8 +100,8 @@ export const TagBadge: React.FC<TagBadgeProps> = ({
             opacity: 0.6,
             borderRadius: '50%',
           }}
-          title={`Verwijder tag ${normalized}`}
-          aria-label={`Verwijder tag ${normalized}`}
+          title={`Remove tag ${normalized}`}
+          aria-label={`Remove tag ${normalized}`}
         >
           <X size={isSmall ? 10 : 12} />
         </button>

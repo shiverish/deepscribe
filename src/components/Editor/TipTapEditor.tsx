@@ -53,14 +53,14 @@ export const TipTapEditor = forwardRef<TipTapEditorHandle, TipTapEditorProps>(({
   const [isImageDragActive, setIsImageDragActive] = useState(false);
 
   const resolveImageSource = useCallback(async (file: File): Promise<string> => {
-    if (!file.type.startsWith('image/')) throw new Error(`“${file.name}” is geen afbeelding.`);
+      if (!file.type.startsWith('image/')) throw new Error(`“${file.name}” is not an image.`);
     if (file.size > 5 * 1024 * 1024) throw new Error(`“${file.name}” is groter dan 5 MB.`);
     if (onUploadImage) return await onUploadImage(file);
 
     return await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('De afbeelding kon niet worden gelezen.'));
-      reader.onerror = () => reject(new Error('De afbeelding kon niet worden gelezen.'));
+      reader.onload = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('Could not read the image.'));
+      reader.onerror = () => reject(new Error('Could not read the image.'));
       reader.readAsDataURL(file);
     });
   }, [onUploadImage]);
@@ -116,7 +116,7 @@ export const TipTapEditor = forwardRef<TipTapEditorHandle, TipTapEditorProps>(({
               view.dispatch(view.state.tr.insert(safePosition, imageNode));
               position = safePosition + imageNode.nodeSize;
             } catch (error) {
-              window.alert(error instanceof Error ? error.message : 'De afbeelding kon niet worden ingevoegd.');
+              window.alert(error instanceof Error ? error.message : 'Could not insert the image.');
             }
           }
           view.focus();
@@ -163,13 +163,13 @@ export const TipTapEditor = forwardRef<TipTapEditorHandle, TipTapEditorProps>(({
         editor.chain().focus().setImage({ src: url }).run();
       } catch (error) {
         console.error(error);
-        window.alert(error instanceof Error ? error.message : 'De afbeelding kon niet worden opgeslagen.');
+        window.alert(error instanceof Error ? error.message : 'Could not save the image.');
       }
     }
   };
 
   const handleAddLink = () => {
-    const url = window.prompt('Voer de URL in:');
+    const url = window.prompt('Enter the URL:');
     if (url) {
       editor.chain().focus().setLink({ href: url }).run();
     }
@@ -181,7 +181,7 @@ export const TipTapEditor = forwardRef<TipTapEditorHandle, TipTapEditorProps>(({
         <button
           className={`toolbar-btn ${editor.isActive('bold') ? 'is-active' : ''}`}
           onClick={() => editor.chain().focus().toggleBold().run()}
-          title="Vet (Ctrl+B)"
+          title="Bold (Ctrl+B)"
         >
           <Bold size={15} />
         </button>
@@ -189,7 +189,7 @@ export const TipTapEditor = forwardRef<TipTapEditorHandle, TipTapEditorProps>(({
         <button
           className={`toolbar-btn ${editor.isActive('italic') ? 'is-active' : ''}`}
           onClick={() => editor.chain().focus().toggleItalic().run()}
-          title="Cursief (Ctrl+I)"
+          title="Italic (Ctrl+I)"
         >
           <Italic size={15} />
         </button>
@@ -197,7 +197,7 @@ export const TipTapEditor = forwardRef<TipTapEditorHandle, TipTapEditorProps>(({
         <button
           className={`toolbar-btn ${editor.isActive('underline') ? 'is-active' : ''}`}
           onClick={() => editor.chain().focus().toggleUnderline().run()}
-          title="Onderstreept (Ctrl+U)"
+          title="Underline (Ctrl+U)"
         >
           <UnderlineIcon size={15} />
         </button>
@@ -207,7 +207,7 @@ export const TipTapEditor = forwardRef<TipTapEditorHandle, TipTapEditorProps>(({
         <button
           className={`toolbar-btn ${editor.isActive('heading', { level: 1 }) ? 'is-active' : ''}`}
           onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-          title="Kop 1"
+          title="Heading 1"
         >
           <Heading1 size={15} />
         </button>
@@ -215,7 +215,7 @@ export const TipTapEditor = forwardRef<TipTapEditorHandle, TipTapEditorProps>(({
         <button
           className={`toolbar-btn ${editor.isActive('heading', { level: 2 }) ? 'is-active' : ''}`}
           onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-          title="Kop 2"
+          title="Heading 2"
         >
           <Heading2 size={15} />
         </button>
@@ -223,7 +223,7 @@ export const TipTapEditor = forwardRef<TipTapEditorHandle, TipTapEditorProps>(({
         <button
           className={`toolbar-btn ${editor.isActive('heading', { level: 3 }) ? 'is-active' : ''}`}
           onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
-          title="Kop 3"
+          title="Heading 3"
         >
           <Heading3 size={15} />
         </button>
@@ -233,7 +233,7 @@ export const TipTapEditor = forwardRef<TipTapEditorHandle, TipTapEditorProps>(({
         <button
           className={`toolbar-btn ${editor.isActive('bulletList') ? 'is-active' : ''}`}
           onClick={() => editor.chain().focus().toggleBulletList().run()}
-          title="Opsomming"
+          title="Bullet List"
         >
           <List size={15} />
         </button>
@@ -241,7 +241,7 @@ export const TipTapEditor = forwardRef<TipTapEditorHandle, TipTapEditorProps>(({
         <button
           className={`toolbar-btn ${editor.isActive('orderedList') ? 'is-active' : ''}`}
           onClick={() => editor.chain().focus().toggleOrderedList().run()}
-          title="Genummerde lijst"
+          title="Numbered List"
         >
           <ListOrdered size={15} />
         </button>
@@ -249,7 +249,7 @@ export const TipTapEditor = forwardRef<TipTapEditorHandle, TipTapEditorProps>(({
         <button
           className={`toolbar-btn ${editor.isActive('taskList') ? 'is-active' : ''}`}
           onClick={() => editor.chain().focus().toggleTaskList().run()}
-          title="Takenlijst"
+          title="Task List"
         >
           <CheckSquare size={15} />
         </button>
@@ -259,7 +259,7 @@ export const TipTapEditor = forwardRef<TipTapEditorHandle, TipTapEditorProps>(({
         <button
           className={`toolbar-btn ${editor.isActive('blockquote') ? 'is-active' : ''}`}
           onClick={() => editor.chain().focus().toggleBlockquote().run()}
-          title="Citaat"
+          title="Quote"
         >
           <Quote size={15} />
         </button>
@@ -267,7 +267,7 @@ export const TipTapEditor = forwardRef<TipTapEditorHandle, TipTapEditorProps>(({
         <button
           className={`toolbar-btn ${editor.isActive('codeBlock') ? 'is-active' : ''}`}
           onClick={() => editor.chain().focus().toggleCodeBlock().run()}
-          title="Codeblok"
+          title="Code Block"
         >
           <Code size={15} />
         </button>
@@ -275,7 +275,7 @@ export const TipTapEditor = forwardRef<TipTapEditorHandle, TipTapEditorProps>(({
         <button
           className={`toolbar-btn ${editor.isActive('table') ? 'is-active' : ''}`}
           onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
-          title="Tabel invoegen"
+          title="Insert Table"
         >
           <TableIcon size={15} />
         </button>
@@ -283,12 +283,12 @@ export const TipTapEditor = forwardRef<TipTapEditorHandle, TipTapEditorProps>(({
         <button
           className={`toolbar-btn ${editor.isActive('link') ? 'is-active' : ''}`}
           onClick={handleAddLink}
-          title="Link invoegen"
+          title="Insert Link"
         >
           <LinkIcon size={15} />
         </button>
 
-        <label className="toolbar-btn" title="Afbeelding uploaden" style={{ cursor: 'pointer' }}>
+        <label className="toolbar-btn" title="Upload Image" style={{ cursor: 'pointer' }}>
           <Upload size={15} />
           <input type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={handleImageFileChange} />
         </label>
@@ -299,7 +299,7 @@ export const TipTapEditor = forwardRef<TipTapEditorHandle, TipTapEditorProps>(({
           className="toolbar-btn"
           onClick={() => editor.chain().focus().undo().run()}
           disabled={!editor.can().undo()}
-          title="Ongedaan maken (Ctrl+Z)"
+          title="Undo (Ctrl+Z)"
         >
           <Undo size={15} />
         </button>
@@ -308,7 +308,7 @@ export const TipTapEditor = forwardRef<TipTapEditorHandle, TipTapEditorProps>(({
           className="toolbar-btn"
           onClick={() => editor.chain().focus().redo().run()}
           disabled={!editor.can().redo()}
-          title="Opnieuw (Ctrl+Y)"
+          title="Redo (Ctrl+Y)"
         >
           <Redo size={15} />
         </button>
@@ -336,7 +336,7 @@ export const TipTapEditor = forwardRef<TipTapEditorHandle, TipTapEditorProps>(({
         {isImageDragActive && (
           <div className="image-drop-overlay" aria-hidden="true">
             <Upload size={22} />
-            <span>Laat afbeeldingen los om ze in te voegen</span>
+            <span>Drop images to insert them</span>
           </div>
         )}
       </div>

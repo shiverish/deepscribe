@@ -7,7 +7,7 @@ describe('tagUtils', () => {
     expect(normalizeTag('  ###Cyberpunk  ')).toBe('cyberpunk');
     expect(normalizeTag('')).toBe('');
     expect(normalizeTag('  #Cafe\u0301 ')).toBe('café');
-    expect(parseTag('twee woorden').error).toMatch(/alleen letters/);
+    expect(parseTag('two words').error).toMatch(/only letters/);
     expect(parseTag('a'.repeat(49)).error).toMatch(/48/);
   });
 

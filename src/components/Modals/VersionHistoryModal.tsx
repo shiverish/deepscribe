@@ -70,7 +70,7 @@ export const VersionHistoryModal: React.FC<VersionHistoryModalProps> = ({
         content: previousRevision.content,
         plainText: previousRevision.plainText,
         tags: previousRevision.tags,
-        label: `Versie van ${new Date(previousRevision.createdAt).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}`
+        label: `Version from ${new Date(previousRevision.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`
       };
     }
     // Default: compare selected revision with current live block
@@ -79,7 +79,7 @@ export const VersionHistoryModal: React.FC<VersionHistoryModalProps> = ({
       content: block.content,
       plainText: block.plainText,
       tags: block.tags,
-      label: 'Huidige live versie'
+      label: 'Current live version'
     } : null;
   }, [compareMode, previousRevision, block]);
 
@@ -105,8 +105,8 @@ export const VersionHistoryModal: React.FC<VersionHistoryModalProps> = ({
 
   const handleRestore = async () => {
     if (!selectedRevision || isRestoring) return;
-    const dateStr = new Date(selectedRevision.createdAt).toLocaleString('nl-NL');
-    if (!window.confirm(`Weet je zeker dat je dit blok wilt terugzetten naar de versie van ${dateStr}?`)) {
+    const dateStr = new Date(selectedRevision.createdAt).toLocaleString('en-US');
+    if (!window.confirm(`Restore this block to the version from ${dateStr}?`)) {
       return;
     }
 
@@ -121,7 +121,7 @@ export const VersionHistoryModal: React.FC<VersionHistoryModalProps> = ({
       }, 2500);
     } catch (err) {
       console.error(err);
-      alert('Fout bij het herstellen van de versie.');
+      alert('Failed to restore the version.');
     } finally {
       setIsRestoring(false);
     }
@@ -129,11 +129,11 @@ export const VersionHistoryModal: React.FC<VersionHistoryModalProps> = ({
 
   const formatRelativeTime = (timestamp: number) => {
     const deltaSeconds = Math.floor((Date.now() - timestamp) / 1000);
-    if (deltaSeconds < 60) return 'Zojuist';
-    if (deltaSeconds < 3600) return `${Math.floor(deltaSeconds / 60)}m geleden`;
-    if (deltaSeconds < 86400) return `${Math.floor(deltaSeconds / 3600)}u geleden`;
+    if (deltaSeconds < 60) return 'Just now';
+    if (deltaSeconds < 3600) return `${Math.floor(deltaSeconds / 60)}m ago`;
+    if (deltaSeconds < 86400) return `${Math.floor(deltaSeconds / 3600)}h ago`;
     const date = new Date(timestamp);
-    return date.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleDateString('en-US', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   };
 
   const renderSourceBadge = (source: string) => {
@@ -169,7 +169,7 @@ export const VersionHistoryModal: React.FC<VersionHistoryModalProps> = ({
             border: '1px solid rgba(52, 211, 153, 0.25)',
             fontWeight: 500
           }}>
-            <RotateCcw size={11} /> Hersteld
+            <RotateCcw size={11} /> Restored
           </span>
         );
       case 'user':
@@ -187,7 +187,7 @@ export const VersionHistoryModal: React.FC<VersionHistoryModalProps> = ({
             border: '1px solid rgba(235, 222, 195, 0.25)',
             fontWeight: 500
           }}>
-            <User size={11} /> Ontwikkelaar
+            <User size={11} /> Developer
           </span>
         );
     }
@@ -241,10 +241,10 @@ export const VersionHistoryModal: React.FC<VersionHistoryModalProps> = ({
             <History size={19} color="var(--atmosphere-color, #EBDEC3)" />
             <div>
               <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-primary, #fff)' }}>
-                Versiehistorie & Diffs
+                Version History & Diffs
               </div>
               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted, #888)' }}>
-                Blok: {block.title}
+                Block: {block.title}
               </div>
             </div>
           </div>
@@ -259,7 +259,7 @@ export const VersionHistoryModal: React.FC<VersionHistoryModalProps> = ({
               padding: 4,
               borderRadius: 4
             }}
-            title="Sluiten"
+            title="Close"
           >
             <X size={18} />
           </button>
@@ -289,13 +289,13 @@ export const VersionHistoryModal: React.FC<VersionHistoryModalProps> = ({
                 letterSpacing: '0.05em'
               }}
             >
-              Geschiedenis ({revisions.length} {revisions.length === 1 ? 'versie' : 'versies'})
+              History ({revisions.length} {revisions.length === 1 ? 'version' : 'versions'})
             </div>
 
             <div style={{ flex: 1, overflowY: 'auto', padding: '10px' }}>
               {revisions.length === 0 ? (
                 <div style={{ padding: '30px 15px', textAlign: 'center', color: 'var(--text-muted, #888)', fontSize: '0.8rem' }}>
-                  Nog geen opgeslagen revisies voor dit blok. Revisies worden automatisch aangemaakt bij wijzigingen.
+                  No saved revisions for this block yet. Revisions are created automatically when changes are made.
                 </div>
               ) : (
                 revisions.map(rev => {
@@ -336,7 +336,7 @@ export const VersionHistoryModal: React.FC<VersionHistoryModalProps> = ({
                         textOverflow: 'ellipsis',
                         marginBottom: 2
                       }}>
-                        {rev.title || 'Naamloos'}
+                          {rev.title || 'Untitled'}
                       </div>
 
                       {rev.summary && (
@@ -373,7 +373,7 @@ export const VersionHistoryModal: React.FC<VersionHistoryModalProps> = ({
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8rem' }}>
-                    <span style={{ color: 'var(--text-muted, #888)' }}>Vergelijk met:</span>
+                <span style={{ color: 'var(--text-muted, #888)' }}>Compare with:</span>
                     <div style={{ display: 'inline-flex', background: 'rgba(0, 0, 0, 0.25)', borderRadius: '6px', padding: '2px', border: '1px solid var(--border-subtle, rgba(255, 255, 255, 0.08))' }}>
                       <button
                         type="button"
@@ -388,7 +388,7 @@ export const VersionHistoryModal: React.FC<VersionHistoryModalProps> = ({
                           cursor: 'pointer'
                         }}
                       >
-                        Huidige versie
+                    Current version
                       </button>
                       <button
                         type="button"
@@ -405,7 +405,7 @@ export const VersionHistoryModal: React.FC<VersionHistoryModalProps> = ({
                           opacity: previousRevision ? 1 : 0.4
                         }}
                       >
-                        Vorige versie
+                    Previous version
                       </button>
                     </div>
                   </div>
@@ -431,7 +431,7 @@ export const VersionHistoryModal: React.FC<VersionHistoryModalProps> = ({
                       }}
                     >
                       <div style={{ fontSize: '0.7rem', color: 'var(--text-muted, #888)', textTransform: 'uppercase', marginBottom: 4 }}>
-                        Titelwijziging
+                        Title change
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.85rem' }}>
                         <div style={{ color: '#F87171', textDecoration: 'line-through' }}>
@@ -456,7 +456,7 @@ export const VersionHistoryModal: React.FC<VersionHistoryModalProps> = ({
                       }}
                     >
                       <div style={{ fontSize: '0.7rem', color: 'var(--text-muted, #888)', textTransform: 'uppercase', marginBottom: 6 }}>
-                        Gewijzigde tags
+                        Changed tags
                       </div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                         {tagDiff.removed.map(tag => (
@@ -522,7 +522,7 @@ export const VersionHistoryModal: React.FC<VersionHistoryModalProps> = ({
                   >
                     {lineDiffs.length === 0 ? (
                       <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted, #888)' }}>
-                        Geen tekstverschillen tussen de vergeleken versies.
+                        No text differences between the compared versions.
                       </div>
                     ) : (
                       lineDiffs.map((item, idx) => {
@@ -587,10 +587,10 @@ export const VersionHistoryModal: React.FC<VersionHistoryModalProps> = ({
                   <div style={{ fontSize: '0.75rem', color: 'var(--text-muted, #888)' }}>
                     {restoreSuccess ? (
                       <span style={{ color: '#4ADE80', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                        <Check size={14} /> Versie succesvol hersteld!
+                        <Check size={14} /> Version restored successfully!
                       </span>
                     ) : (
-                      <span>Selecteer een versie om eerdere inhoud te inspecteren of te herstellen.</span>
+                      <span>Select a version to inspect or restore earlier content.</span>
                     )}
                   </div>
 
@@ -608,7 +608,7 @@ export const VersionHistoryModal: React.FC<VersionHistoryModalProps> = ({
                         fontSize: '0.8rem'
                       }}
                     >
-                      Sluiten
+                      Close
                     </button>
                     <button
                       type="button"
@@ -629,14 +629,14 @@ export const VersionHistoryModal: React.FC<VersionHistoryModalProps> = ({
                       }}
                     >
                       <RotateCcw size={13} />
-                      {isRestoring ? 'Bezig met herstel...' : 'Herstel deze versie'}
+                      {isRestoring ? 'Restoring...' : 'Restore this version'}
                     </button>
                   </div>
                 </div>
               </>
             ) : (
               <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted, #888)', fontSize: '0.85rem' }}>
-                Geen versie geselecteerd.
+                No version selected.
               </div>
             )}
           </div>
