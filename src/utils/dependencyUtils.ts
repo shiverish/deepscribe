@@ -7,6 +7,7 @@ import type { Block, BlockDependencyStatus } from '../types';
  */
 export function isBlockCompleted(block: Block): boolean {
   if (block.isTrash) return false;
+  if (block.kind === 'task' && block.task) return block.task.status === 'done';
 
   const hasDoneTag = block.tags.some(tag => {
     const normalized = tag.toLowerCase().trim();

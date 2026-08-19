@@ -3,8 +3,9 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { Bot, CheckCircle2, Clock3, FilePlus2, History, LayoutTemplate, Trash2, X, Search } from 'lucide-react';
 import { db } from '../../db/db';
 import { recordActivity } from '../../db/activity';
-import type { Block, BlockTemplate, Project } from '../../types';
+import type { Block, BlockTemplate, Project, TaskStatus } from '../../types';
 import { AGENT_STATUSES, AGENT_STATUS_LABELS, getAgentStatus, tagsWithAgentStatus, type AgentStatus } from '../../utils/agentInbox';
+import { validateTaskReady } from '../../utils/taskBlocks';
 
 type WorkspaceTab = 'inbox' | 'activity' | 'templates';
 
@@ -65,6 +66,21 @@ export const WorkspaceModal: React.FC<WorkspaceModalProps> = ({
   if (!isOpen) return null;
 
   const updateStatus = async (block: Block, status: AgentStatus | null) => {
+    if (block.kind === 'task' && block.task) {
+      const taskStatus = status ? status.replace('agent-', '') as TaskStatus : 'draft';
+      const nextTask = { ...block.task, status: taskStatus };
+      if (taskStatus === 'ready') {
+        const validationErrors = validateTaskReady(block.title, block.content, nextTask);
+        if (validationErrors.length > 0) {
+          setError(validationErrors.join(' '));
+          return;
+        }
+      }
+      await db.blocks.update(block.id, { task: { ...block.task, status: taskStatus }, updatedAt: Date.now() });
+      await recordActivity({ projectId: block.projectId, blockId: block.id, action: 'task-status-changed', summary: `“${block.title}” → ${status ? AGENT_STATUS_LABELS[status] : 'Concept'}` });
+      setError(null);
+      return;
+    }
     const tags = tagsWithAgentStatus(block.tags, status);
     await db.blocks.update(block.id, { tags, updatedAt: Date.now() });
     await recordActivity({
@@ -78,6 +94,7 @@ export const WorkspaceModal: React.FC<WorkspaceModalProps> = ({
   const saveTemplate = async () => {
     const name = templateName.trim();
     if (!activeBlock) return setError('Open eerst een blok dat je als template wilt bewaren.');
+    if (activeBlock.kind === 'task') return setError('Taakblokken gebruiken het vaste taaktemplate en kunnen niet als gebruikers­template worden opgeslagen.');
     if (!name) return setError('Geef de template een naam.');
     if (name.length > 60) return setError('Een templatenaam mag maximaal 60 tekens bevatten.');
     const template: BlockTemplate = {
@@ -110,7 +127,7 @@ export const WorkspaceModal: React.FC<WorkspaceModalProps> = ({
         <div className="workspace-body">
           {tab === 'inbox' && (
             <>
-              {activeBlock && !getAgentStatus(activeBlock) && (
+              {activeBlock && activeBlock.kind !== 'task' && !getAgentStatus(activeBlock) && (
                 <button className="workspace-primary-action" onClick={() => void updateStatus(activeBlock, 'agent-ready')}>
                   <FilePlus2 size={14} /> Huidig blok naar Agent Inbox
                 </button>
@@ -259,8 +276,8 @@ export const WorkspaceModal: React.FC<WorkspaceModalProps> = ({
           {tab === 'templates' && (
             <>
               <div className="template-save-row">
-                <input value={templateName} maxLength={60} onChange={event => { setTemplateName(event.target.value); setError(null); }} placeholder={activeBlock ? `Template van “${activeBlock.title}”` : 'Open eerst een blok...'} disabled={!activeBlock} />
-                <button className="secondary-button" onClick={() => void saveTemplate()} disabled={!activeBlock}>Opslaan</button>
+                <input value={templateName} maxLength={60} onChange={event => { setTemplateName(event.target.value); setError(null); }} placeholder={activeBlock?.kind === 'task' ? 'Taakblokken gebruiken het vaste template' : activeBlock ? `Template van “${activeBlock.title}”` : 'Open eerst een blok...'} disabled={!activeBlock || activeBlock.kind === 'task'} />
+                <button className="secondary-button" onClick={() => void saveTemplate()} disabled={!activeBlock || activeBlock.kind === 'task'}>Opslaan</button>
               </div>
               {templates.length === 0 ? <p className="workspace-empty">Nog geen templates opgeslagen.</p> : templates.map(template => (
                 <div className="workspace-row" key={template.id}>

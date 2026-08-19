@@ -462,6 +462,10 @@
   transition: all var(--transition-fast);
 }
 
+.column-add-actions { display: flex; gap: 6px; padding: 0 8px 8px; }
+.column-add-actions .column-add-btn { flex: 1; }
+.column-add-btn.task { color: #c4b5fd; border-color: rgba(167, 139, 250, 0.35); }
+
 .column-add-btn:hover {
   background: rgba(var(--atmosphere-rgb), 0.06);
   border-color: rgba(var(--atmosphere-rgb), 0.3);

@@ -62,6 +62,17 @@
   font-size: 0.75rem;
 }
 
+.task-inspector-panel { margin: 0 24px 12px; padding: 12px; border: 1px solid rgba(167, 139, 250, .35); border-radius: 8px; background: rgba(109, 40, 217, .08); }
+.task-inspector-heading, .task-inspector-heading > span, .task-status-actions { display: flex; align-items: center; gap: 7px; }
+.task-inspector-heading { justify-content: space-between; font-size: .78rem; font-weight: 650; }
+.task-status-actions { flex-wrap: wrap; justify-content: flex-end; }
+.task-status-actions button { border: 1px solid var(--border-subtle); border-radius: 5px; background: var(--bg-surface); color: var(--text-secondary); padding: 3px 7px; font-size: .68rem; cursor: pointer; }
+.task-metadata-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.task-metadata-grid label, .task-custom-agent { display: flex; flex-direction: column; gap: 4px; color: var(--text-muted); font-size: .68rem; }
+.task-metadata-grid select, .task-custom-agent input { width: 100%; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--bg-deep); color: var(--text-primary); padding: 6px 7px; font-size: .74rem; }
+.task-custom-agent { margin-top: 8px; }
+.task-validation-errors { margin: 9px 0 0; padding-left: 18px; color: #fca5a5; font-size: .7rem; }
+
 .icon-btn-subtle:disabled {
   cursor: not-allowed !important;
   opacity: 0.55;

@@ -2,10 +2,11 @@ import { db } from '../db/db';
 import { recordActivity } from '../db/activity';
 import { recordBlockRevision, getBlockRevisions, getBlockRevision, restoreBlockRevision } from '../db/revisions';
 import { sanitizeDependsOn, detectCircularDependency, getBlockDependencyStatus, formatDependencyMarkdown } from '../utils/dependencyUtils';
-import type { Attachment, Block, Project, ActivityEntry, ActivitySource } from '../types';
+import type { Attachment, Block, Project, ActivityEntry, ActivitySource, TaskAgentTarget, TaskCompletionPolicy, TaskMetadata, TaskStatus, UserSettings } from '../types';
 import { sanitizeTags } from '../utils/tagUtils';
 import { rankBlocksLocally } from '../utils/semanticSearch';
 import { isDescendantOrSelf, moveBlockInTree } from '../utils/dragAndDrop';
+import { canTransitionTask, convertContentToTask, createTaskMetadata, validateTaskMetadata, validateTaskReady } from '../utils/taskBlocks';
 
 type JsonObject = Record<string, unknown>;
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
@@ -314,7 +315,7 @@ async function getProjectContext(params: JsonObject) {
           isBlocked: depStatus.isBlocked
         });
       }
-    } else if ((block.tags || []).includes('todo') || (block.tags || []).includes('agent-ready')) {
+    } else if ((block.kind === 'task' && block.task?.status !== 'done') || (block.tags || []).includes('todo') || (block.tags || []).includes('agent-ready')) {
       openTasks.push({
         blockId: block.id,
         blockTitle: block.title,
@@ -416,6 +417,7 @@ async function createBlock(params: JsonObject) {
     attachmentCount: 0,
     tags: sanitizeTags(Array.isArray(params.tags) ? params.tags.filter((tag): tag is string => typeof tag === 'string') : []),
     dependsOn: dependsOn.length > 0 ? dependsOn : undefined,
+    ...(params.kind === 'task' && params.task ? { kind: 'task' as const, task: params.task as TaskMetadata } : {}),
     lastAgentEditAt: now,
     isTrash: false,
     createdAt: now,
@@ -427,8 +429,106 @@ async function createBlock(params: JsonObject) {
     if (parentId) await db.blocks.update(parentId, { childCount: await db.blocks.filter(item => item.parentId === parentId && !item.isTrash).count(), updatedAt: now });
   });
   await recordBlockRevision(block, 'agent', 'Initiële aanmaak door agent');
-  await recordActivity({ projectId, blockId: block.id, source: 'agent', action: 'block-created', summary: `Agent maakte blok “${block.title}”` });
+  await recordActivity({
+    projectId,
+    blockId: block.id,
+    source: 'agent',
+    action: block.kind === 'task' ? 'task-created' : 'block-created',
+    summary: `Agent maakte ${block.kind === 'task' ? 'taak' : 'blok'} “${block.title}”`
+  });
   return block;
+}
+
+async function defaultTaskCompletionPolicy(): Promise<TaskCompletionPolicy> {
+  const record = await db.settings.get('user_settings');
+  const value = record?.value as Partial<UserSettings> | undefined;
+  return value?.defaultTaskCompletionPolicy === 'auto-complete' ? 'auto-complete' : 'review-required';
+}
+
+function taskMetadataFromParams(params: JsonObject, current?: TaskMetadata): TaskMetadata {
+  const base = current ?? createTaskMetadata('review-required');
+  const status = typeof params.status === 'string' ? params.status as TaskStatus : base.status;
+  const agentTarget = typeof params.agentTarget === 'string' ? params.agentTarget as TaskAgentTarget : base.agentTarget;
+  const completionPolicy = typeof params.completionPolicy === 'string' ? params.completionPolicy as TaskCompletionPolicy : base.completionPolicy;
+  const task: TaskMetadata = {
+    status,
+    agentTarget,
+    completionPolicy,
+    ...(agentTarget === 'custom' ? { customAgentName: optionalString(params, 'customAgentName') ?? base.customAgentName } : {})
+  };
+  const errors = validateTaskMetadata(task);
+  if (errors.length) throw new Error(errors.join(' '));
+  return task;
+}
+
+async function createTaskBlock(params: JsonObject) {
+  const parentId = requiredString(params, 'parentId');
+  const projectId = requiredString(params, 'projectId');
+  const parent = await db.blocks.get(parentId);
+  if (!parent || parent.isTrash || parent.projectId !== projectId) throw new Error('Bovenliggend blok niet gevonden.');
+  const goal = requiredString(params, 'goal');
+  const context = requiredString(params, 'context');
+  const acceptanceCriteria = Array.isArray(params.acceptanceCriteria)
+    ? params.acceptanceCriteria.filter((item): item is string => typeof item === 'string' && Boolean(item.trim())).map(item => item.trim())
+    : [];
+  if (!acceptanceCriteria.length) throw new Error('Minimaal één acceptanceCriterion is verplicht.');
+  const completionPolicy = typeof params.completionPolicy === 'string'
+    ? params.completionPolicy as TaskCompletionPolicy
+    : await defaultTaskCompletionPolicy();
+  const task = taskMetadataFromParams({ ...params, status: params.ready === true ? 'ready' : 'draft', completionPolicy });
+  const taskContent = formatWorkItemContent(goal, context, acceptanceCriteria);
+  if (task.status === 'ready') {
+    const errors = validateTaskReady(requiredString(params, 'title'), markdownToHtml(taskContent), task);
+    if (errors.length) throw new Error(errors.join(' '));
+  }
+  const block = await createBlock({
+    ...params,
+    projectId,
+    parentId,
+    content: taskContent,
+    kind: 'task',
+    task,
+    tags: Array.isArray(params.tags) ? params.tags : []
+  });
+  return block;
+}
+
+async function updateTaskBlock(params: JsonObject) {
+  const blockId = requiredString(params, 'blockId');
+  const block = await db.blocks.get(blockId);
+  if (!block || block.isTrash || block.kind !== 'task' || !block.task) throw new Error('Taakblok niet gevonden.');
+  const task = taskMetadataFromParams(params, block.task);
+  if (!canTransitionTask(block.task.status, task.status)) throw new Error('Ongeldige taakstatusovergang.');
+  if (task.status === 'ready') {
+    const errors = validateTaskReady(block.title, block.content, task);
+    if (errors.length) throw new Error(errors.join(' '));
+  }
+  if (task.status === 'done' && block.task.status !== 'done' && task.completionPolicy === 'review-required') {
+    throw new Error('Deze taak vereist review en kan door een agent niet direct worden afgerond.');
+  }
+  await recordBlockRevision(block, 'user', 'Status vóór taakwijziging door agent');
+  const updated = { ...block, task, updatedAt: Date.now(), lastAgentEditAt: Date.now() };
+  await db.blocks.put(updated);
+  await recordBlockRevision(updated, 'agent', 'Agent wijzigde taakmetadata');
+  const action = block.task.status !== task.status ? task.status === 'ready' ? 'task-readiness-changed' : task.status === 'done' ? 'task-completed' : 'task-status-changed' : 'task-metadata-updated';
+  await recordActivity({ projectId: block.projectId, blockId, source: 'agent', action, summary: `Agent wijzigde taak “${block.title}” → ${task.status}` });
+  return updated;
+}
+
+async function convertBlockToTask(params: JsonObject) {
+  const blockId = requiredString(params, 'blockId');
+  const block = await db.blocks.get(blockId);
+  if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
+  if (block.kind === 'task') return block;
+  await recordBlockRevision(block, 'user', 'Status vóór omzetting naar taak');
+  const task = createTaskMetadata(await defaultTaskCompletionPolicy());
+  const agentStatuses = new Set(['agent-ready', 'agent-claimed', 'agent-blocked', 'agent-review', 'agent-done']);
+  const content = convertContentToTask(block.content);
+  const updated = { ...block, kind: 'task' as const, task, ...contentStats(content), tags: block.tags.filter(tag => !agentStatuses.has(tag)), updatedAt: Date.now(), lastAgentEditAt: Date.now() };
+  await db.blocks.put(updated);
+  await recordBlockRevision(updated, 'agent', 'Blok omgezet naar taak');
+  await recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'task-converted', summary: `Agent zette “${block.title}” om naar taakconcept` });
+  return updated;
 }
 
 async function moveBlock(params: JsonObject) {
@@ -776,7 +876,7 @@ async function getOrCreateDailyPlan(params: JsonObject) {
           for (const todo of todos) {
             openTasks.push({ projectTitle, blockTitle: b.title, text: `${statusLabel} ${todo.text}` });
           }
-        } else if (b.tags.includes('todo') || b.tags.includes('agent-ready')) {
+        } else if ((b.kind === 'task' && b.task?.status !== 'done') || b.tags.includes('todo') || b.tags.includes('agent-ready')) {
           openTasks.push({ projectTitle, blockTitle: b.title, text: `${statusLabel} ${b.title}` });
         }
       }
@@ -915,6 +1015,12 @@ export async function handleMcpBridgeRequest(method: string, rawParams: unknown)
       return await moveBlock(params);
     case 'create_work_item':
       return await createWorkItem(params);
+    case 'create_task_block':
+      return await createTaskBlock(params);
+    case 'update_task_block':
+      return await updateTaskBlock(params);
+    case 'convert_block_to_task':
+      return await convertBlockToTask(params);
     case 'update_project': {
       const projectId = requiredString(params, 'projectId');
       const project = await db.projects.get(projectId);

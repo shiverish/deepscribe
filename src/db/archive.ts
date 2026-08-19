@@ -1,4 +1,4 @@
-import type { Attachment, Block, BlockRevision, Project } from '../types';
+import type { Attachment, Block, BlockRevision, Project, RevisionSource, TaskMetadata } from '../types';
 import { sanitizeTags } from '../utils/tagUtils';
 
 export const MAX_ARCHIVE_FILE_BYTES = 250 * 1024 * 1024;
@@ -29,6 +29,27 @@ const requiredNumber = (value: unknown, field: string): number => {
   if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`Ongeldig veld: ${field}.`);
   return value;
 };
+
+const TASK_STATUSES = new Set(['draft', 'ready', 'claimed', 'blocked', 'review', 'done']);
+const TASK_AGENT_TARGETS = new Set(['none', 'openai', 'claude', 'gemini', 'custom', 'any']);
+const TASK_COMPLETION_POLICIES = new Set(['review-required', 'auto-complete']);
+const REVISION_SOURCES = new Set<RevisionSource>(['user', 'agent', 'system', 'restore']);
+
+function parseTaskMetadata(value: unknown, field: string): TaskMetadata {
+  if (!isRecord(value) || typeof value.status !== 'string' || !TASK_STATUSES.has(value.status) ||
+    typeof value.agentTarget !== 'string' || !TASK_AGENT_TARGETS.has(value.agentTarget) ||
+    typeof value.completionPolicy !== 'string' || !TASK_COMPLETION_POLICIES.has(value.completionPolicy)) {
+    throw new Error(`Ongeldige taakmetadata: ${field}.`);
+  }
+  const customAgentName = typeof value.customAgentName === 'string' ? value.customAgentName.trim() : '';
+  if (value.agentTarget === 'custom' && !customAgentName) throw new Error(`Ongeldige taakmetadata: ${field}.customAgentName.`);
+  return {
+    status: value.status as TaskMetadata['status'],
+    agentTarget: value.agentTarget as TaskMetadata['agentTarget'],
+    completionPolicy: value.completionPolicy as TaskMetadata['completionPolicy'],
+    ...(value.agentTarget === 'custom' ? { customAgentName } : {})
+  };
+}
 
 export function parseProjectArchive(raw: unknown): ProjectArchive {
   if (!isRecord(raw) || !isRecord(raw.project) || !Array.isArray(raw.blocks)) {
@@ -66,6 +87,7 @@ export function parseProjectArchive(raw: unknown): ProjectArchive {
     if (importedTags.length !== tags.length || importedTags.some((tag, tagIndex) => tag !== tags[tagIndex])) {
       normalizedTagBlocks += 1;
     }
+    const task = entry.kind === 'task' ? parseTaskMetadata(entry.task, `blocks[${index}].task`) : undefined;
     return {
       id,
       projectId: project.id,
@@ -83,6 +105,7 @@ export function parseProjectArchive(raw: unknown): ProjectArchive {
       trashedWithProject: false,
       tags,
       dependsOn: Array.isArray(entry.dependsOn) ? entry.dependsOn.filter((d): d is string => typeof d === 'string' && Boolean(d.trim())) : undefined,
+      ...(task ? { kind: 'task' as const, task } : {}),
       lastAgentEditAt: typeof entry.lastAgentEditAt === 'number' && Number.isFinite(entry.lastAgentEditAt) ? entry.lastAgentEditAt : undefined,
       lastSeenAgentEditAt: typeof entry.lastSeenAgentEditAt === 'number' && Number.isFinite(entry.lastSeenAgentEditAt) ? entry.lastSeenAgentEditAt : undefined,
       createdAt: requiredNumber(entry.createdAt, `blocks[${index}].createdAt`),
@@ -117,5 +140,29 @@ export function parseProjectArchive(raw: unknown): ProjectArchive {
     };
   });
 
-  return { version: typeof raw.version === 'string' ? raw.version : '1.0', project, blocks, attachmentsMeta, normalizedTagBlocks };
+  const rawRevisions = Array.isArray(raw.revisions) ? raw.revisions : [];
+  const revisions = rawRevisions.map((entry, index): BlockRevision => {
+    if (!isRecord(entry)) throw new Error(`Revisie ${index + 1} is ongeldig.`);
+    const blockId = requiredString(entry.blockId, `revisions[${index}].blockId`);
+    if (!ids.has(blockId)) throw new Error('Een revisie verwijst naar een onbekend blok.');
+    if (typeof entry.source !== 'string' || !REVISION_SOURCES.has(entry.source as RevisionSource)) {
+      throw new Error(`Ongeldig veld: revisions[${index}].source.`);
+    }
+    const task = entry.kind === 'task' ? parseTaskMetadata(entry.task, `revisions[${index}].task`) : undefined;
+    return {
+      id: requiredString(entry.id, `revisions[${index}].id`),
+      blockId,
+      projectId: project.id,
+      title: requiredString(entry.title, `revisions[${index}].title`),
+      content: typeof entry.content === 'string' ? entry.content : '<p></p>',
+      plainText: typeof entry.plainText === 'string' ? entry.plainText : '',
+      tags: sanitizeTags(Array.isArray(entry.tags) ? entry.tags.filter((tag): tag is string => typeof tag === 'string') : []),
+      ...(task ? { kind: 'task' as const, task } : {}),
+      source: entry.source as RevisionSource,
+      summary: typeof entry.summary === 'string' ? entry.summary : undefined,
+      createdAt: requiredNumber(entry.createdAt, `revisions[${index}].createdAt`)
+    };
+  });
+
+  return { version: typeof raw.version === 'string' ? raw.version : '1.0', project, blocks, attachmentsMeta, normalizedTagBlocks, revisions };
 }

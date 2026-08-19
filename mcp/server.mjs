@@ -281,6 +281,46 @@ registerTool('create_work_item', {
   annotations: write
 });
 
+registerTool('create_task_block', {
+  title: 'Getypeerd taakblok aanmaken',
+  description: 'Maak onder een bestaand blok een taakconcept aan met doel, context, acceptatiecriteria, agentdoelgroep en afrondingsbeleid. Alleen getypeerde taakblokken komen later in aanmerking voor Auto Task Pickup.',
+  inputSchema: {
+    projectId: z.string().min(1),
+    parentId: z.string().min(1),
+    title: z.string().min(1),
+    goal: z.string().min(1),
+    context: z.string().min(1),
+    acceptanceCriteria: z.array(z.string().min(1)).min(1).max(20),
+    agentTarget: z.enum(['none', 'openai', 'claude', 'gemini', 'custom', 'any']).optional(),
+    customAgentName: z.string().min(1).optional(),
+    completionPolicy: z.enum(['review-required', 'auto-complete']).optional(),
+    ready: z.boolean().optional(),
+    tags: z.array(z.string()).max(20).optional(),
+    dependsOn: z.array(z.string()).max(20).optional()
+  },
+  annotations: write
+});
+
+registerTool('update_task_block', {
+  title: 'Taakmetadata of status bijwerken',
+  description: 'Wijzig de agentdoelgroep, afrondingsregel of status van een getypeerd taakblok. Klaarzetten valideert titel, doel, context en acceptatiecriteria.',
+  inputSchema: {
+    blockId: z.string().min(1),
+    status: z.enum(['draft', 'ready', 'claimed', 'blocked', 'review', 'done']).optional(),
+    agentTarget: z.enum(['none', 'openai', 'claude', 'gemini', 'custom', 'any']).optional(),
+    customAgentName: z.string().min(1).optional(),
+    completionPolicy: z.enum(['review-required', 'auto-complete']).optional()
+  },
+  annotations: write
+});
+
+registerTool('convert_block_to_task', {
+  title: 'Bestaand blok omzetten naar taak',
+  description: 'Zet een bestaand generiek blok veilig om naar een taakconcept. Inhoud wordt Context; titel, tags, dependencies en kinderen blijven behouden.',
+  inputSchema: { blockId: z.string().min(1) },
+  annotations: write
+});
+
 registerTool('update_project', {
   title: 'Project bijwerken',
   description: 'Werk titel, omschrijving, kleur, scratchpad en/of tags van een bestaand project bij.',

@@ -10,10 +10,12 @@ function tagsEqual(a: string[] = [], b: string[] = []): boolean {
   return sortedA.every((val, idx) => val === sortedB[idx]);
 }
 
-export function isRevisionIdentical(rev: BlockRevision, block: { title: string; content: string; tags: string[] }): boolean {
+export function isRevisionIdentical(rev: BlockRevision, block: Pick<Block, 'title' | 'content' | 'tags' | 'kind' | 'task'>): boolean {
   return rev.title === block.title &&
     rev.content === block.content &&
-    tagsEqual(rev.tags, block.tags);
+    tagsEqual(rev.tags, block.tags) &&
+    rev.kind === block.kind &&
+    JSON.stringify(rev.task ?? null) === JSON.stringify(block.task ?? null);
 }
 
 export async function recordBlockRevision(
@@ -39,6 +41,8 @@ export async function recordBlockRevision(
     content: block.content,
     plainText: block.plainText,
     tags: sanitizeTags(block.tags),
+    kind: block.kind,
+    task: block.task ? { ...block.task } : undefined,
     source,
     summary,
     createdAt: now
@@ -96,6 +100,8 @@ export async function restoreBlockRevision(revisionId: string): Promise<Block> {
     taskCount: taskMatches.length,
     completedTaskCount: completedMatches.length,
     tags: sanitizeTags(revision.tags),
+    kind: revision.kind,
+    task: revision.task ? { ...revision.task } : undefined,
     updatedAt: now
   };
 

@@ -31,7 +31,8 @@ Use the connected DeepScribe tools as the only interface to the user's stored wo
 ## Write safely
 
 - Read the destination immediately before writing to it.
-- Use `create_work_item` for planned or delegated work with a concrete goal, sufficient context, and testable acceptance criteria.
+- Use `create_task_block` for new, explicitly assigned or Auto Task Pickup-ready work under an existing planning or context block. Supply a goal, context, acceptance criteria and agent target; keep it as a draft unless the user asks to ready it.
+- Use `create_work_item` only for legacy/general planned work that should not enter the typed Auto Task Pickup queue.
 - Use `add_todo` only for a small action that naturally belongs in an existing block.
 - Use `append_to_block` when adding information so existing content remains intact.
 - Use `update_block` only when the user intends to revise the whole title, body, or tag set, or explicitly asks to reformat an existing block.

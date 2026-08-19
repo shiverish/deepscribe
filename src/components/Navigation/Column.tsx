@@ -18,6 +18,7 @@ interface ColumnProps {
   blockedBlockIds?: Set<string>;
   onSelectItem: (item: Project | Block) => void;
   onAddNewItem: () => void;
+  onAddTask?: () => void;
   onAddChildItem?: (parentId: string) => void;
   onContextMenuItem?: (e: React.MouseEvent, item: Project | Block, type: 'project' | 'block') => void;
   dragTarget?: DragTarget | null;
@@ -42,6 +43,7 @@ export const Column: React.FC<ColumnProps> = ({
   blockedBlockIds,
   onSelectItem,
   onAddNewItem,
+  onAddTask,
   onAddChildItem,
   onContextMenuItem,
   dragTarget,
@@ -172,6 +174,7 @@ export const Column: React.FC<ColumnProps> = ({
                 Wis tagfilter
               </button>
             ) : (
+              <>
               <button
                 onClick={onAddNewItem}
                 style={{
@@ -187,6 +190,10 @@ export const Column: React.FC<ColumnProps> = ({
               >
                 + {type === 'project' ? 'Nieuw Project Maken' : 'Eerste Blok Toevoegen'}
               </button>
+              {onAddTask && (
+                <button className="column-add-btn" onClick={onAddTask}>Nieuwe taak toevoegen</button>
+              )}
+              </>
             )}
           </div>
         ) : (
@@ -217,10 +224,13 @@ export const Column: React.FC<ColumnProps> = ({
         )}
 
         {items.length > 0 && (
-          <button className="column-add-btn" onClick={onAddNewItem}>
-            <Plus size={14} />
-            <span>Nieuw {type === 'project' ? 'project' : 'blok'} toevoegen</span>
-          </button>
+          <div className="column-add-actions">
+            <button className="column-add-btn" onClick={onAddNewItem}>
+              <Plus size={14} />
+              <span>Nieuw {type === 'project' ? 'project' : 'blok'} toevoegen</span>
+            </button>
+            {onAddTask && <button className="column-add-btn task" onClick={onAddTask}>Nieuwe taak</button>}
+          </div>
         )}
       </div>
     </div>

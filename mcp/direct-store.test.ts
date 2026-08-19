@@ -161,6 +161,30 @@ describe('DirectWorkspaceStore offline MCP engine', () => {
     }
   });
 
+  it('keeps typed task behavior equal in direct SQLite mode', async () => {
+    const store = new DirectWorkspaceStore({ workspacePath: temporaryWorkspace() });
+    try {
+      const project = await store.handleRequest('create_project', { title: 'Taken' });
+      const parent = await store.handleRequest('create_block', { projectId: project.id, title: 'Planning' });
+      const task = await store.handleRequest('create_task_block', {
+        projectId: project.id, parentId: parent.id, title: 'Offline taak', goal: 'Maak offline taken mogelijk',
+        context: 'Direct SQLite moet hetzelfde contract volgen', acceptanceCriteria: ['Taak is valide'], agentTarget: 'any'
+      });
+      expect(task.kind).toBe('task');
+      expect(task.task).toMatchObject({ status: 'draft', agentTarget: 'any', completionPolicy: 'review-required' });
+      const ready = await store.handleRequest('update_task_block', { blockId: task.id, status: 'ready' });
+      expect(ready.task.status).toBe('ready');
+      await expect(store.handleRequest('update_task_block', { blockId: task.id, status: 'done' })).rejects.toThrow(/vereist review/);
+
+      const legacy = await store.handleRequest('create_block', { projectId: project.id, parentId: parent.id, title: 'Legacy', content: 'Context', tags: ['agent-ready', 'eigen-tag'] });
+      const converted = await store.handleRequest('convert_block_to_task', { blockId: legacy.id });
+      expect(converted.task.status).toBe('draft');
+      expect(converted.tags).toEqual(['eigen-tag']);
+    } finally {
+      store.close();
+    }
+  });
+
   it('performs local search and semantic ranking on blocks', async () => {
     const wsPath = temporaryWorkspace();
     const store = new DirectWorkspaceStore({ workspacePath: wsPath });

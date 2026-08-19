@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useReducer, useMemo } from 'react';
-import type { Project, Block, Attachment, SaveStatus, PathSegment } from '../../types';
+import type { Project, Block, Attachment, SaveStatus, PathSegment, TaskMetadata, TaskStatus } from '../../types';
 import { TipTapEditor, type TipTapEditorHandle } from './TipTapEditor';
 import { TagBadge } from '../Navigation/TagBadge';
 import { TagManagerModal } from '../Modals/TagManagerModal';
@@ -9,6 +9,7 @@ import { extractHashtags, mergeTags, parseTag, sanitizeTags } from '../../utils/
 import { initialTagComposerState, tagComposerReducer } from '../../utils/tagComposer';
 import { getBlockDependencyStatus, detectCircularDependency, sanitizeDependsOn, isBlockCompleted } from '../../utils/dependencyUtils';
 import { DEFAULT_BLOCK_PRINT_SETTINGS, normalizeBlockPrintSettings, type BlockPrintSettings } from '../../utils/printDocument';
+import { canTransitionTask, TASK_AGENT_LABELS, TASK_AGENT_TARGETS, TASK_STATUS_LABELS, validateTaskReady } from '../../utils/taskBlocks';
 import { Check, Loader2, AlertCircle, FileText, Folder, FolderOpen, Paperclip, PanelRightClose, Edit3, Plus, Tag as TagIcon, Settings2, Trash2, Link2, ArrowUpRight, X, History, Lock, CheckCircle2, Clock, Bot, ClipboardCopy, Printer } from 'lucide-react';
 import './Editor.css';
 
@@ -31,7 +32,8 @@ interface WritingPanelProps {
     completedTaskCount: number,
     tags: string[],
     dependsOn?: string[],
-    scratchpad?: string
+    scratchpad?: string,
+    task?: TaskMetadata
   ) => Promise<void>;
   tagSuggestions?: Array<{ tag: string; count: number }>;
   onRenameProjectTag?: (from: string, to: string) => Promise<number>;
@@ -79,6 +81,8 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
   const [tags, setTags] = useState<string[]>([]);
   const [dependsOn, setDependsOn] = useState<string[]>([]);
   const [scratchpad, setScratchpad] = useState('');
+  const [taskMetadata, setTaskMetadata] = useState<TaskMetadata | undefined>();
+  const [taskErrors, setTaskErrors] = useState<string[]>([]);
   const [scratchpadCopied, setScratchpadCopied] = useState(false);
   const [tagComposer, dispatchTagComposer] = useReducer(tagComposerReducer, initialTagComposerState);
   const [isTagManagerOpen, setIsTagManagerOpen] = useState(false);
@@ -161,6 +165,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
     tags: [] as string[],
     dependsOn: [] as string[],
     scratchpad: '',
+    taskMetadata: undefined as TaskMetadata | undefined,
     isDirty: false,
     itemType: null as 'project' | 'block' | null
   });
@@ -175,10 +180,11 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
       tags,
       dependsOn,
       scratchpad,
+      taskMetadata,
       isDirty,
       itemType
     };
-  }, [title, htmlContent, plainTextContent, taskCount, completedTaskCount, tags, dependsOn, scratchpad, isDirty, itemType]);
+  }, [title, htmlContent, plainTextContent, taskCount, completedTaskCount, tags, dependsOn, scratchpad, taskMetadata, isDirty, itemType]);
 
   const flushSave = useCallback(async () => {
     const currentId = activeItemIdRef.current;
@@ -199,7 +205,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
       setTags(finalTags);
     }
 
-    const { title, htmlContent, plainTextContent, taskCount, completedTaskCount, itemType, dependsOn: currentDependsOn, scratchpad: currentScratchpad } = draftRef.current;
+    const { title, htmlContent, plainTextContent, taskCount, completedTaskCount, itemType, dependsOn: currentDependsOn, scratchpad: currentScratchpad, taskMetadata: currentTask } = draftRef.current;
 
     // Reset dirty flag BEFORE async save so any typing during save marks state dirty again
     setIsDirty(false);
@@ -208,7 +214,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
 
     try {
       if (itemType) {
-        await onSaveItem(currentId, itemType, title, htmlContent, plainTextContent, taskCount, completedTaskCount, finalTags, currentDependsOn, currentScratchpad);
+        await onSaveItem(currentId, itemType, title, htmlContent, plainTextContent, taskCount, completedTaskCount, finalTags, currentDependsOn, currentScratchpad, currentTask);
       }
     } finally {
       isSavingRef.current = false;
@@ -244,6 +250,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
         let nextTags: string[];
         let nextDependsOn: string[] = [];
         let nextScratchpad = '';
+        let nextTaskMetadata: TaskMetadata | undefined;
 
         if (itemType === 'block') {
           const b = activeItem as Block;
@@ -254,6 +261,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
           nextTags = sanitizeTags(b.tags);
           nextDependsOn = sanitizeDependsOn(b.dependsOn);
           nextScratchpad = '';
+          nextTaskMetadata = b.kind === 'task' && b.task ? { ...b.task } : undefined;
           observedHashtagsRef.current = new Set(extractHashtags(b.content || ''));
         } else {
           const p = activeItem as Project;
@@ -264,6 +272,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
           nextTags = sanitizeTags(p.tags);
           nextDependsOn = [];
           nextScratchpad = p.scratchpad || '';
+          nextTaskMetadata = undefined;
           observedHashtagsRef.current = new Set();
         }
 
@@ -276,6 +285,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
           tags: nextTags,
           dependsOn: nextDependsOn,
           scratchpad: nextScratchpad,
+          taskMetadata: nextTaskMetadata,
           isDirty: false,
           itemType
         };
@@ -287,6 +297,8 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
         setTags(nextTags);
         setDependsOn(nextDependsOn);
         setScratchpad(nextScratchpad);
+        setTaskMetadata(nextTaskMetadata);
+        setTaskErrors([]);
         setIsDirty(false);
         loadedUpdatedAtRef.current = activeItem.updatedAt;
         setAttachmentError(null);
@@ -334,6 +346,33 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
     draftRef.current.isDirty = true;
     setIsDirty(true);
     flushSave();
+  };
+
+  const updateTaskMetadata = (next: TaskMetadata) => {
+    setTaskMetadata(next);
+    draftRef.current.taskMetadata = next;
+    draftRef.current.isDirty = true;
+    setTaskErrors([]);
+    setIsDirty(true);
+  };
+
+  const handleTaskStatus = (status: TaskStatus) => {
+    const current = draftRef.current.taskMetadata;
+    if (!current) return;
+    if (!canTransitionTask(current.status, status)) {
+      setTaskErrors([`Overgang van ${TASK_STATUS_LABELS[current.status]} naar ${TASK_STATUS_LABELS[status]} is niet toegestaan.`]);
+      return;
+    }
+    const next = { ...current, status };
+    if (status === 'ready') {
+      const errors = validateTaskReady(draftRef.current.title, draftRef.current.htmlContent, next);
+      if (errors.length > 0) {
+        setTaskErrors(errors);
+        return;
+      }
+    }
+    updateTaskMetadata(next);
+    void flushSave();
   };
 
   const handleScratchpadChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -400,7 +439,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
     if (!isDirty) return;
     const timeout = window.setTimeout(() => void flushSave(), 750);
     return () => window.clearTimeout(timeout);
-  }, [isDirty, title, htmlContent, plainTextContent, taskCount, completedTaskCount, tags, flushSave]);
+  }, [isDirty, title, htmlContent, plainTextContent, taskCount, completedTaskCount, tags, taskMetadata, flushSave]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -423,7 +462,10 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
           draftRef.current.plainTextContent,
           draftRef.current.taskCount,
           draftRef.current.completedTaskCount,
-          draftRef.current.tags
+          draftRef.current.tags,
+          draftRef.current.dependsOn,
+          draftRef.current.scratchpad,
+          draftRef.current.taskMetadata
         );
       }
     };
@@ -610,6 +652,41 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
             placeholder={itemType === 'project' ? 'Projecttitel...' : 'Bloktitel...'}
           />
 
+          {isBlock && taskMetadata && (
+            <section className="task-inspector-panel">
+              <div className="task-inspector-heading">
+                <span><CheckCircle2 size={14} /> Taak · {TASK_STATUS_LABELS[taskMetadata.status]}</span>
+                <div className="task-status-actions">
+                  {taskMetadata.status !== 'ready' && <button type="button" onClick={() => handleTaskStatus('ready')}>Klaarzetten</button>}
+                  {taskMetadata.status !== 'draft' && <button type="button" onClick={() => handleTaskStatus('draft')}>Terug naar concept</button>}
+                  {taskMetadata.status !== 'done' && <button type="button" onClick={() => handleTaskStatus('done')}>Afronden</button>}
+                </div>
+              </div>
+              <div className="task-metadata-grid">
+                <label>
+                  <span>Agent</span>
+                  <select value={taskMetadata.agentTarget} onChange={event => updateTaskMetadata({ ...taskMetadata, agentTarget: event.target.value as TaskMetadata['agentTarget'], customAgentName: event.target.value === 'custom' ? taskMetadata.customAgentName : undefined })}>
+                    {TASK_AGENT_TARGETS.map(target => <option key={target} value={target}>{TASK_AGENT_LABELS[target]}</option>)}
+                  </select>
+                </label>
+                <label>
+                  <span>Afronding</span>
+                  <select value={taskMetadata.completionPolicy} onChange={event => updateTaskMetadata({ ...taskMetadata, completionPolicy: event.target.value as TaskMetadata['completionPolicy'] })}>
+                    <option value="review-required">Review verplicht</option>
+                    <option value="auto-complete">Automatisch afronden</option>
+                  </select>
+                </label>
+              </div>
+              {taskMetadata.agentTarget === 'custom' && (
+                <label className="task-custom-agent">
+                  <span>Andere agent</span>
+                  <input value={taskMetadata.customAgentName ?? ''} onChange={event => updateTaskMetadata({ ...taskMetadata, customAgentName: event.target.value })} placeholder="Naam van agent/provider" />
+                </label>
+              )}
+              {taskErrors.length > 0 && <ul className="task-validation-errors" role="alert">{taskErrors.map(error => <li key={error}>{error}</li>)}</ul>}
+            </section>
+          )}
+
           {itemType && (
             <div style={{ padding: '0 24px 10px 24px', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
               <TagIcon size={13} color="var(--text-muted)" style={{ opacity: 0.7 }} />
@@ -731,6 +808,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                 setTaskCount(restoredBlock.taskCount);
                 setCompletedTaskCount(restoredBlock.completedTaskCount);
                 setTags(restoredBlock.tags);
+                setTaskMetadata(restoredBlock.kind === 'task' ? restoredBlock.task : undefined);
                 draftRef.current = {
                   title: restoredBlock.title,
                   htmlContent: restoredBlock.content,
@@ -740,6 +818,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                   tags: restoredBlock.tags,
                   dependsOn: restoredBlock.dependsOn || [],
                   scratchpad: '',
+                  taskMetadata: restoredBlock.kind === 'task' ? restoredBlock.task : undefined,
                   isDirty: false,
                   itemType: 'block'
                 };

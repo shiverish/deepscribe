@@ -4,6 +4,7 @@ import { TagBadge } from './TagBadge';
 import { Bot, Folder, FileText, Layers, CheckSquare, MoreVertical, Paperclip, Plus, ExternalLink, Check, ClipboardCopy, Lock } from 'lucide-react';
 import { formatAgentEditBadgeLabel, hasUnseenAgentEdits } from '../../utils/agentEdits';
 import { copyAgentReference } from '../../utils/agentReferences';
+import { TASK_AGENT_LABELS, TASK_STATUS_LABELS } from '../../utils/taskBlocks';
 
 interface CardProps {
   item: Block | Project;
@@ -162,7 +163,7 @@ export const Card: React.FC<CardProps> = ({
             </span>
           ) : (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              <FileText size={15} color="var(--atmosphere-secondary)" />
+              {block?.kind === 'task' ? <CheckSquare size={15} color="#A78BFA" /> : <FileText size={15} color="var(--atmosphere-secondary)" />}
               {block?.title || 'Naamloos blok'}
             </span>
           )}
@@ -225,6 +226,12 @@ export const Card: React.FC<CardProps> = ({
       )}
 
       <div className="card-meta-row">
+        {block?.kind === 'task' && block.task && (
+          <>
+            <span className="card-badge magenta"><CheckSquare size={11} /> {TASK_STATUS_LABELS[block.task.status]}</span>
+            <span className="card-badge cyan"><Bot size={11} /> {block.task.agentTarget === 'custom' ? block.task.customAgentName : TASK_AGENT_LABELS[block.task.agentTarget]}</span>
+          </>
+        )}
         {isBlocked && (
           <span
             className="card-badge blocked"

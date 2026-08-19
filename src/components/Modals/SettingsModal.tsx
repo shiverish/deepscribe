@@ -767,6 +767,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
               </div>
 
+              <div className="setting-item">
+                <div className="setting-info">
+                  <label>Afronding van nieuwe taken</label>
+                  <span className="setting-description">Standaardbeleid voor nieuwe taakblokken; per taak kan hiervan worden afgeweken.</span>
+                </div>
+                <select
+                  value={settings.defaultTaskCompletionPolicy}
+                  onChange={event => onUpdateSettings({ defaultTaskCompletionPolicy: event.target.value as UserSettings['defaultTaskCompletionPolicy'] })}
+                  style={{ marginTop: 8, width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border-subtle)', background: 'var(--bg-deep)', color: 'var(--text-primary)' }}
+                >
+                  <option value="review-required">Review verplicht</option>
+                  <option value="auto-complete">Automatisch afronden</option>
+                </select>
+              </div>
+
               {/* MCP Configuration Generator */}
               <div className="setting-item">
                 <div className="setting-info">

@@ -19,8 +19,8 @@ interface HorizontalLayoutProps {
   unseenAgentEditsByBlock?: Record<string, number>;
   blockedBlockIds?: Set<string>;
   onSelectItem: (level: number, item: Project | Block) => void;
-  onAddNewItem: (level: number, parentId: string | null) => void;
-  onAddChildItem?: (parentId: string) => void;
+  onAddNewItem: (level: number, parentId: string | null, kind?: 'text' | 'task') => void;
+  onAddChildItem?: (parentId: string, kind?: 'text' | 'task') => void;
   onContextMenuItem?: (e: React.MouseEvent, item: Project | Block, type: 'project' | 'block') => void;
   dragTarget?: DragTarget | null;
   onDragStart?: (e: React.DragEvent, item: Block | Project, type: 'project' | 'block') => void;
@@ -103,6 +103,7 @@ export const HorizontalLayout: React.FC<HorizontalLayoutProps> = ({
           isCurrentLevel={currentSelectionLevel === col.level}
           onSelectItem={(item) => onSelectItem(col.level, item)}
           onAddNewItem={() => onAddNewItem(col.level, col.parentId)}
+          onAddTask={col.type === 'block' && col.parentId ? () => onAddNewItem(col.level, col.parentId, 'task') : undefined}
           onAddChildItem={onAddChildItem}
           onContextMenuItem={onContextMenuItem}
           dragTarget={dragTarget}

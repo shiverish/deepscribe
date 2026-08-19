@@ -95,6 +95,22 @@ describe('block revisions', () => {
     expect(history[0].source).toBe('restore');
   });
 
+  it('restores task kind and metadata from the selected revision', async () => {
+    const original = (await db.blocks.get('block-1'))!;
+    const taskVersion: Block = {
+      ...original,
+      kind: 'task',
+      task: { status: 'ready', agentTarget: 'claude', completionPolicy: 'review-required' }
+    };
+    await db.blocks.put(taskVersion);
+    const revision = await recordBlockRevision(taskVersion, 'user', 'Taakversie');
+    await db.blocks.put({ ...original, title: 'Weer tekstblok', kind: undefined, task: undefined });
+
+    const restored = await restoreBlockRevision(revision!.id);
+    expect(restored.kind).toBe('task');
+    expect(restored.task).toEqual({ status: 'ready', agentTarget: 'claude', completionPolicy: 'review-required' });
+  });
+
   it('prunes older revisions beyond maxKeep', async () => {
     const b = (await db.blocks.get('block-1'))!;
     for (let i = 0; i < 10; i++) {

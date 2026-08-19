@@ -42,4 +42,33 @@ describe('archive validation', () => {
     expect(parseProjectArchive(source).project.tags).toEqual(['app', 'desktop']);
     expect(parseProjectArchive(source).blocks[0].tags).toEqual(['idee', 'café']);
   });
+
+  it('preserves typed task metadata and revision metadata', () => {
+    const source = validArchive();
+    Object.assign(source.blocks[1], {
+      kind: 'task',
+      task: { status: 'ready', agentTarget: 'openai', completionPolicy: 'review-required' }
+    });
+    Object.assign(source, {
+      revisions: [{
+        id: 'revision-1', blockId: 'child', projectId: 'project-1', title: 'Scène', content: '<p>Oud</p>',
+        plainText: 'Oud', tags: [], kind: 'task',
+        task: { status: 'draft', agentTarget: 'none', completionPolicy: 'auto-complete' },
+        source: 'user', createdAt: 3
+      }]
+    });
+
+    const archive = parseProjectArchive(source);
+    expect(archive.blocks[1].task).toEqual({ status: 'ready', agentTarget: 'openai', completionPolicy: 'review-required' });
+    expect(archive.revisions?.[0].task).toEqual({ status: 'draft', agentTarget: 'none', completionPolicy: 'auto-complete' });
+  });
+
+  it('keeps legacy blocks untyped and rejects invalid task metadata', () => {
+    const legacy = parseProjectArchive(validArchive());
+    expect(legacy.blocks.every(block => block.kind === undefined && block.task === undefined)).toBe(true);
+
+    const source = validArchive();
+    Object.assign(source.blocks[1], { kind: 'task', task: { status: 'ready', agentTarget: 'custom', completionPolicy: 'review-required' } });
+    expect(() => parseProjectArchive(source)).toThrow(/customAgentName/);
+  });
 });

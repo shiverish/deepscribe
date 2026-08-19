@@ -1,5 +1,5 @@
 import { db } from './db';
-import type { Block, Project } from '../types';
+import type { Block, Project, TaskMetadata } from '../types';
 import { parseTag, sanitizeTags } from '../utils/tagUtils';
 import { sanitizeDependsOn } from '../utils/dependencyUtils';
 
@@ -19,6 +19,7 @@ export interface BlockDraftUpdate {
   completedTaskCount: number;
   tags: string[];
   dependsOn?: string[];
+  task?: TaskMetadata;
 }
 
 export async function saveBlockDraft(blockId: string, draft: BlockDraftUpdate): Promise<void> {
@@ -26,6 +27,7 @@ export async function saveBlockDraft(blockId: string, draft: BlockDraftUpdate): 
     ...draft,
     tags: sanitizeTags(draft.tags),
     dependsOn: draft.dependsOn ? sanitizeDependsOn(draft.dependsOn) : undefined,
+    task: draft.task ? { ...draft.task } : undefined,
     updatedAt: Date.now()
   });
 }
@@ -55,7 +57,7 @@ export async function saveProjectDraft(projectId: string, draft: ProjectDraftUpd
   await db.projects.update(projectId, update);
 }
 
-export function createId(prefix: 'proj' | 'block' | 'attachment'): string {
+export function createId(prefix: 'proj' | 'block' | 'attachment' | 'revision'): string {
   return `${prefix}-${crypto.randomUUID()}`;
 }
 

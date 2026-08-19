@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import type { Block, Project } from '../../types';
-import { Plus, Copy, CheckCheck, Trash2, ClipboardCopy } from 'lucide-react';
+import { Plus, Copy, CheckCheck, Trash2, ClipboardCopy, ListTodo, RefreshCw } from 'lucide-react';
 import { copyAgentReference } from '../../utils/agentReferences';
 
 interface ContextMenuProps {
@@ -10,6 +10,8 @@ interface ContextMenuProps {
   type: 'project' | 'block';
   onClose: () => void;
   onAddChild: (parentId: string) => void;
+  onAddTask: (parentId: string) => void;
+  onConvertToTask: (blockId: string) => void;
   onDuplicate: (item: Block | Project, type: 'project' | 'block') => void;
   onMarkAsRead: (item: Block | Project, type: 'project' | 'block') => void;
   onDelete: (item: Block | Project, type: 'project' | 'block') => void;
@@ -22,6 +24,8 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   type,
   onClose,
   onAddChild,
+  onAddTask,
+  onConvertToTask,
   onDuplicate,
   onMarkAsRead,
   onDelete
@@ -85,6 +89,26 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
         <Plus size={14} color="#00F0FF" />
         <span>Nieuw kind-blok</span>
       </button>
+
+      {type === 'block' && (
+        <button
+          style={{ padding: '8px 14px', background: 'none', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8rem', textAlign: 'left' }}
+          onClick={() => { onAddTask(item.id); onClose(); }}
+        >
+          <ListTodo size={14} color="#A78BFA" />
+          <span>Nieuwe taak</span>
+        </button>
+      )}
+
+      {type === 'block' && !(item as Block).kind && (
+        <button
+          style={{ padding: '8px 14px', background: 'none', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8rem', textAlign: 'left' }}
+          onClick={() => { onConvertToTask(item.id); onClose(); }}
+        >
+          <RefreshCw size={14} color="#F59E0B" />
+          <span>Omzetten naar taak</span>
+        </button>
+      )}
 
       <button
         style={{

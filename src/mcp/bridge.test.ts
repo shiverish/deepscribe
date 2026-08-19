@@ -69,6 +69,30 @@ describe('DeepScribe MCP work items', () => {
   });
 });
 
+describe('DeepScribe MCP task blocks', () => {
+  it('creates, validates, updates and converts typed tasks', async () => {
+    const project = await handleMcpBridgeRequest('create_project', { title: 'Taken' }) as Project;
+    const parent = await handleMcpBridgeRequest('create_block', { projectId: project.id, title: 'Planning' }) as Block;
+    const task = await handleMcpBridgeRequest('create_task_block', {
+      projectId: project.id, parentId: parent.id, title: 'Bouw taakflow', goal: 'Maak de taakflow werkend',
+      context: 'De planning heeft getypeerde taken nodig', acceptanceCriteria: ['Validatie slaagt'], agentTarget: 'openai'
+    }) as Block;
+    expect(task.kind).toBe('task');
+    expect(task.task).toMatchObject({ status: 'draft', agentTarget: 'openai', completionPolicy: 'review-required' });
+
+    const ready = await handleMcpBridgeRequest('update_task_block', { blockId: task.id, status: 'ready' }) as Block;
+    expect(ready.task?.status).toBe('ready');
+    await expect(handleMcpBridgeRequest('update_task_block', { blockId: task.id, status: 'done' })).rejects.toThrow(/vereist review/);
+
+    const legacy = await handleMcpBridgeRequest('create_block', { projectId: project.id, parentId: parent.id, title: 'Legacy', content: 'Bestaande context', tags: ['agent-ready', 'eigen-tag'] }) as Block;
+    const converted = await handleMcpBridgeRequest('convert_block_to_task', { blockId: legacy.id }) as Block;
+    expect(converted.kind).toBe('task');
+    expect(converted.task?.status).toBe('draft');
+    expect(converted.tags).toEqual(['eigen-tag']);
+    expect(converted.content).toContain('<h2>Context</h2><p>Bestaande context</p>');
+  });
+});
+
 describe('DeepScribe MCP block relocation', () => {
   it('moves a complete subtree and refuses unsafe or cross-project destinations', async () => {
     const project = await handleMcpBridgeRequest('create_project', { title: 'Herorganisatie' }) as Project;

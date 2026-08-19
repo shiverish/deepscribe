@@ -60,6 +60,7 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
       const blocks = await db.blocks.where('projectId').equals(selectedProjectId).toArray();
       const blockIds = blocks.map(b => b.id);
       const attachments = await db.attachments.where('blockId').anyOf(blockIds).toArray();
+      const revisions = blockIds.length > 0 ? await db.revisions.where('blockId').anyOf(blockIds).toArray() : [];
 
       const zip = new JSZip();
 
@@ -68,6 +69,7 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
         exportedAt: new Date().toISOString(),
         project,
         blocks,
+        revisions,
         attachmentsMeta: attachments.map(a => ({
           id: a.id,
           blockId: a.blockId,
@@ -148,6 +150,12 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
         projectId,
         parentId: block.parentId ? blockIdMap.get(block.parentId)! : null
       }));
+      const revisions = (data.revisions ?? []).map(revision => ({
+        ...revision,
+        id: createId('revision'),
+        blockId: blockIdMap.get(revision.blockId)!,
+        projectId
+      }));
 
       const attachments: Attachment[] = [];
       let totalAttachmentBytes = 0;
@@ -174,10 +182,11 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
         }
       }
 
-      await db.transaction('rw', db.projects, db.blocks, db.attachments, async () => {
+      await db.transaction('rw', db.projects, db.blocks, db.attachments, db.revisions, async () => {
         await db.projects.add(project);
         await db.blocks.bulkAdd(blocks);
         if (attachments.length) await db.attachments.bulkAdd(attachments);
+        if (revisions.length) await db.revisions.bulkAdd(revisions);
       });
 
       setStatusMessage(data.normalizedTagBlocks > 0

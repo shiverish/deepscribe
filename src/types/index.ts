@@ -32,6 +32,17 @@ export interface ProjectContext {
   updatedAt: number;
 }
 
+export type TaskStatus = 'draft' | 'ready' | 'claimed' | 'blocked' | 'review' | 'done';
+export type TaskAgentTarget = 'none' | 'openai' | 'claude' | 'gemini' | 'custom' | 'any';
+export type TaskCompletionPolicy = 'review-required' | 'auto-complete';
+
+export interface TaskMetadata {
+  status: TaskStatus;
+  agentTarget: TaskAgentTarget;
+  customAgentName?: string;
+  completionPolicy: TaskCompletionPolicy;
+}
+
 export interface Block {
   id: string;
   projectId: string;
@@ -49,6 +60,8 @@ export interface Block {
   trashedWithProject?: boolean;
   tags: string[];
   dependsOn?: string[];
+  kind?: 'task';
+  task?: TaskMetadata;
   lastAgentEditAt?: number;
   lastSeenAgentEditAt?: number;
   createdAt: number;
@@ -105,6 +118,8 @@ export interface BlockRevision {
   content: string;
   plainText: string;
   tags: string[];
+  kind?: 'task';
+  task?: TaskMetadata;
   source: RevisionSource;
   summary?: string;
   createdAt: number;
@@ -192,6 +207,7 @@ export interface UserSettings {
   columnWidth: number;
   spellcheck: boolean;
   allowOfflineAgentAccess: boolean;
+  defaultTaskCompletionPolicy: TaskCompletionPolicy;
 }
 
 export const DEFAULT_USER_SETTINGS: UserSettings = {
@@ -212,5 +228,6 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
   contentWidth: 'standard',
   columnWidth: 320,
   spellcheck: true,
-  allowOfflineAgentAccess: true
+  allowOfflineAgentAccess: true,
+  defaultTaskCompletionPolicy: 'review-required'
 };

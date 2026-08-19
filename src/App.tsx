@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, requestPersistentStorage, seedDemoDataIfEmpty } from './db/db';
 import { createId, deleteTagFromProject, markBlockSubtreeAsRead, markProjectAsRead, renameTagInProject, saveBlockDraft, saveProjectDraft, trashBlock, trashProject } from './db/operations';
-import type { Project, Block, Attachment, BlockTemplate, PathSegment, SaveStatus, DragTarget, ActiveView } from './types';
+import type { Project, Block, Attachment, BlockTemplate, PathSegment, SaveStatus, DragTarget, ActiveView, TaskMetadata } from './types';
 import { Breadcrumbs } from './components/Navigation/Breadcrumbs';
 import { HorizontalLayout, type ColumnData } from './components/Navigation/HorizontalLayout';
 import { WritingPanel } from './components/Editor/WritingPanel';
@@ -28,6 +28,7 @@ import { resolveBlockReferences } from './utils/references';
 import { calculateAgentEditCounts } from './utils/agentEdits';
 import { buildBlockPrintDocument, type BlockPrintDraft, type BlockPrintSettings } from './utils/printDocument';
 import { repository } from './db/repository';
+import { canTransitionTask, convertContentToTask, createTaskMetadata, TASK_TEMPLATE_HTML, validateTaskReady } from './utils/taskBlocks';
 import './styles/theme.css';
 import './components/Navigation/Navigation.css';
 
@@ -303,7 +304,7 @@ export function App() {
     setSelectedBlockPath(newPath);
   };
 
-  const handleAddNewItem = async (level: number, parentId: string | null) => {
+  const handleAddNewItem = async (level: number, parentId: string | null, kind: 'text' | 'task' = 'text') => {
     const now = Date.now();
     if (level === 0) {
       const newProjId = createId('proj');
@@ -330,12 +331,13 @@ export function App() {
       const siblings = allBlocks.filter(b => b.projectId === activeProjectId && b.parentId === parentId);
       const newBlockId = createId('block');
 
+      if (kind === 'task' && !parentId) throw new Error('Een taakblok moet onder een bestaand blok staan.');
       const newBlock: Block = {
         id: newBlockId,
         projectId: activeProjectId,
         parentId: parentId,
-        title: 'Nieuw tekstblok',
-        content: '<p></p>',
+        title: kind === 'task' ? 'Nieuwe taak' : 'Nieuw tekstblok',
+        content: kind === 'task' ? TASK_TEMPLATE_HTML : '<p></p>',
         plainText: '',
         order: siblings.length,
         childCount: 0,
@@ -343,6 +345,7 @@ export function App() {
         completedTaskCount: 0,
         attachmentCount: 0,
         tags: [],
+        ...(kind === 'task' ? { kind: 'task' as const, task: createTaskMetadata(settings.defaultTaskCompletionPolicy) } : {}),
         isTrash: false,
         createdAt: now,
         updatedAt: now
@@ -361,7 +364,7 @@ export function App() {
     }
   };
 
-  const handleAddChildItem = async (parentId: string) => {
+  const handleAddChildItem = async (parentId: string, kind: 'text' | 'task' = 'text') => {
     if (!activeProjectId) return;
     const now = Date.now();
     const children = allBlocks.filter(b => b.parentId === parentId);
@@ -371,8 +374,8 @@ export function App() {
       id: newBlockId,
       projectId: activeProjectId,
       parentId: parentId,
-      title: 'Nieuw kind-blok',
-      content: '<p></p>',
+      title: kind === 'task' ? 'Nieuwe taak' : 'Nieuw kind-blok',
+      content: kind === 'task' ? TASK_TEMPLATE_HTML : '<p></p>',
       plainText: '',
       order: children.length,
       childCount: 0,
@@ -380,6 +383,7 @@ export function App() {
       completedTaskCount: 0,
       attachmentCount: 0,
       tags: [],
+      ...(kind === 'task' ? { kind: 'task' as const, task: createTaskMetadata(settings.defaultTaskCompletionPolicy) } : {}),
       isTrash: false,
       createdAt: now,
       updatedAt: now
@@ -387,7 +391,7 @@ export function App() {
 
     await db.blocks.add(newBlock);
     await db.blocks.update(parentId, { childCount: children.length + 1 });
-    await recordActivity({ projectId: activeProjectId, blockId: newBlockId, action: 'block-created', summary: `Kindblok “${newBlock.title}” aangemaakt` });
+    await recordActivity({ projectId: activeProjectId, blockId: newBlockId, action: kind === 'task' ? 'task-created' : 'block-created', summary: `${kind === 'task' ? 'Taakblok' : 'Kindblok'} “${newBlock.title}” aangemaakt` });
 
     const parentIndex = selectedBlockPath.indexOf(parentId);
     if (parentIndex !== -1) {
@@ -468,7 +472,8 @@ export function App() {
     completedTaskCount: number,
     tags: string[],
     dependsOn?: string[],
-    scratchpad?: string
+    scratchpad?: string,
+    task?: TaskMetadata
   ) => {
     setSaveStatus({ state: 'saving' });
     try {
@@ -485,6 +490,13 @@ export function App() {
         if (currentBlock) {
           await recordBlockRevision(currentBlock, 'user', 'Status vóór ontwikkelaar-wijziging');
         }
+        if (task && currentBlock?.kind === 'task' && currentBlock.task) {
+          if (!canTransitionTask(currentBlock.task.status, task.status)) throw new Error('Ongeldige taakstatusovergang.');
+          if (task.status === 'ready') {
+            const errors = validateTaskReady(title, content, task);
+            if (errors.length) throw new Error(errors.join(' '));
+          }
+        }
         await saveBlockDraft(itemId, {
           title,
           content,
@@ -492,13 +504,21 @@ export function App() {
           taskCount,
           completedTaskCount,
           tags,
-          dependsOn
+          dependsOn,
+          task
         });
         const block = await db.blocks.get(itemId);
         if (block) {
           await recordBlockRevision(block, 'user', `Ontwikkelaar bewerkte “${title}”`);
         }
-        await recordActivity({ projectId: block?.projectId, blockId: itemId, action: 'block-updated', summary: `Blok “${title}” bijgewerkt` });
+        const oldTask = currentBlock?.task;
+        const newTask = block?.task;
+        const action = oldTask?.status !== newTask?.status
+          ? newTask?.status === 'ready' ? 'task-readiness-changed' : newTask?.status === 'done' ? 'task-completed' : 'task-status-changed'
+          : oldTask && newTask && (oldTask.agentTarget !== newTask.agentTarget || oldTask.completionPolicy !== newTask.completionPolicy || oldTask.customAgentName !== newTask.customAgentName)
+            ? 'task-metadata-updated'
+            : 'block-updated';
+        await recordActivity({ projectId: block?.projectId, blockId: itemId, action, summary: block?.kind === 'task' ? `Taak “${title}” bijgewerkt${newTask ? ` → ${newTask.status}` : ''}` : `Blok “${title}” bijgewerkt` });
       }
       setSaveStatus({ state: 'saved', lastSavedAt: Date.now() });
     } catch (err) {
@@ -506,6 +526,26 @@ export function App() {
       setSaveStatus({ state: 'error' });
     }
   }, []);
+
+  const handleConvertBlockToTask = useCallback(async (blockId: string) => {
+    const block = await db.blocks.get(blockId);
+    if (!block || block.isTrash || block.kind === 'task') return;
+    await recordBlockRevision(block, 'user', 'Status vóór omzetting naar taak');
+    const agentStatuses = new Set(['agent-ready', 'agent-claimed', 'agent-blocked', 'agent-review', 'agent-done']);
+    const convertedContent = convertContentToTask(block.content);
+    const updated: Block = {
+      ...block,
+      kind: 'task',
+      task: createTaskMetadata(settings.defaultTaskCompletionPolicy),
+      content: convertedContent,
+      plainText: new DOMParser().parseFromString(convertedContent, 'text/html').body.textContent?.replace(/\s+/g, ' ').trim() ?? '',
+      tags: block.tags.filter(tag => !agentStatuses.has(tag)),
+      updatedAt: Date.now()
+    };
+    await db.blocks.put(updated);
+    await recordBlockRevision(updated, 'user', 'Blok omgezet naar taak');
+    await recordActivity({ projectId: block.projectId, blockId, action: 'task-converted', summary: `Blok “${block.title}” omgezet naar taakconcept` });
+  }, [settings.defaultTaskCompletionPolicy]);
 
   const handleDuplicate = async (item: Block | Project, type: 'project' | 'block') => {
     const now = Date.now();
@@ -887,6 +927,8 @@ export function App() {
           type={contextMenu.type}
           onClose={() => setContextMenu(null)}
           onAddChild={handleAddChildItem}
+          onAddTask={parentId => handleAddChildItem(parentId, 'task')}
+          onConvertToTask={blockId => void handleConvertBlockToTask(blockId)}
           onDuplicate={handleDuplicate}
           onMarkAsRead={handleMarkAsRead}
           onDelete={handleDeleteToTrash}
