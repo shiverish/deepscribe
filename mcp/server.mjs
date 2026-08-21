@@ -12,7 +12,7 @@ const server = new McpServer({
   name: 'deepscribe',
   version: '0.1.20'
 }, {
-  instructions: 'DeepScribe stores projects, nested knowledge blocks, concepts, ideas and todos. Prefer read tools before writes. Use tags such as todo, concept, idee, core-concept or agent-ready to make knowledge discoverable. Never replace a block when appending is sufficient. Format block content as readable Markdown: use blank lines between sections, headings for structure and one list item per line. Do not compress a list into a prose paragraph. Actionable work must include enough context for another person or agent to continue independently: use create_work_item with a goal, context and acceptance criteria instead of creating a title-only todo block or placeholder.'
+  instructions: 'DeepScribe stores projects, nested knowledge blocks and user-managed tasks. Read before writing and preserve existing content. Tasks are owned by the user: agents must never create, edit, move, organize, delete or restore tasks or inline todos. Use list_tasks/get_task to read tasks and update_task_status only to report progress. When the user asks for content to be written, write it directly to the requested regular knowledge block without first creating a task, todo, work item or planning placeholder. Format block content as readable Markdown with blank lines between sections and one list item per line.'
 });
 
 function bridgeFileCandidates() {
@@ -301,7 +301,7 @@ registerTool('update_project_scratchpad', {
 
 registerTool('create_block', {
   title: 'Blok aanmaken',
-  description: 'Maak een algemeen hoofd- of kindblok aan. content ondersteunt veilige Markdown voor koppen, alinea’s, links, code en lijsten; zet ieder lijstitem op een eigen regel. Gebruik twee lege regels om bewust één zichtbare lege alinea in de editor te behouden. Gebruik create_work_item voor todo’s en ander uitvoerbaar werk, zodat context en acceptatiecriteria niet ontbreken.',
+  description: 'Maak een algemeen hoofd- of kindblok aan. Gebruik dit alleen voor gevraagde kennis of schrijfcontent, nooit voor een taak, todo, werkitem of voorbereidend planningsblok. content ondersteunt veilige Markdown voor koppen, alinea’s, links, code en lijsten.',
   inputSchema: {
     projectId: z.string().min(1),
     parentId: z.string().nullable().optional(),
@@ -324,53 +324,33 @@ registerTool('move_block', {
   annotations: write
 });
 
-registerTool('create_work_item', {
-  title: 'Werkitem met context aanmaken',
-  description: 'Maak een todo- of agentwerkblok aan met een concreet doel, overdraagbare context, acceptatiecriteria en eventuele taakafhankelijkheden (dependsOn). Gebruik dit voor voorgenomen implementaties in plaats van een blok met alleen een titel.',
-  inputSchema: {
-    projectId: z.string().min(1),
-    parentId: z.string().nullable().optional(),
-    title: z.string().min(1),
-    goal: z.string().min(10),
-    context: z.string().min(20),
-    acceptanceCriteria: z.array(z.string().min(3)).min(1).max(20),
-    tags: z.array(z.string()).max(20).optional(),
-    dependsOn: z.array(z.string()).max(20).optional()
-  },
-  annotations: write
-});
-
-registerTool('create_task_block', {
-  title: 'Getypeerd taakblok aanmaken',
-  description: 'Maak onder een bestaand blok een taakconcept aan met doel, context, acceptatiecriteria, agentdoelgroep en afrondingsbeleid. Alleen getypeerde taakblokken komen later in aanmerking voor Auto Task Pickup.',
-  inputSchema: {
-    projectId: z.string().min(1),
-    parentId: z.string().min(1),
-    title: z.string().min(1),
-    goal: z.string().min(1),
-    context: z.string().min(1),
-    acceptanceCriteria: z.array(z.string().min(1)).min(1).max(20),
-    agentTarget: z.enum(['none', 'openai', 'claude', 'gemini', 'custom', 'any']).optional(),
-    customAgentName: z.string().min(1).optional(),
-    completionPolicy: z.enum(['review-required', 'auto-complete']).optional(),
-    ready: z.boolean().optional(),
-    tags: z.array(z.string()).max(20).optional(),
-    dependsOn: z.array(z.string()).max(20).optional()
-  },
-  annotations: write
-});
-
-registerTool('update_task_block', {
-  title: 'Taakmetadata of status bijwerken',
-  description: 'Wijzig de agentdoelgroep, afrondingsregel of status van een getypeerd taakblok. Klaarzetten valideert titel, doel, context en acceptatiecriteria.',
+registerTool('update_task_status', {
+  title: 'Taakstatus bijwerken',
+  description: 'Wijzig uitsluitend de voortgangsstatus van een bestaande gebruikerstaak. Taakinhoud, ordening en toewijzing blijven alleen door de gebruiker beheerbaar.',
   inputSchema: {
     blockId: z.string().min(1),
-    status: z.enum(['draft', 'ready', 'blocked', 'review', 'done']).optional(),
-    agentTarget: z.enum(['none', 'openai', 'claude', 'gemini', 'custom', 'any']).optional(),
-    customAgentName: z.string().min(1).optional(),
-    completionPolicy: z.enum(['review-required', 'auto-complete']).optional()
+    status: z.enum(['inbox', 'ready', 'blocked', 'review', 'done'])
   },
   annotations: write
+});
+
+registerTool('list_tasks', {
+  title: 'Taken lezen',
+  description: 'Lees gebruikerstaakblokken zonder ze te wijzigen. Filter optioneel op project, status of claimbaarheid.',
+  inputSchema: {
+    projectId: z.string().optional(),
+    status: z.enum(['inbox', 'ready', 'in-progress', 'blocked', 'review', 'done']).optional(),
+    claimable: z.boolean().optional(),
+    limit: z.number().int().min(1).max(100).optional()
+  },
+  annotations: readOnly
+});
+
+registerTool('get_task', {
+  title: 'Taak lezen',
+  description: 'Lees één bestaande gebruikerstaak met vrije inhoud en taakmetadata.',
+  inputSchema: { taskId: z.string().min(1) },
+  annotations: readOnly
 });
 
 const claimantSchema = {
@@ -408,22 +388,14 @@ registerTool('renew_work_item_claim', {
 
 registerTool('transition_work_item', {
   title: 'Geclaimde taak overdragen',
-  description: 'Zet een eigen, geldige claim op ready, blocked, review of done. done vereist auto-complete en expliciet geslaagde acceptatiecontroles.',
+  description: 'Zet een eigen, geldige claim op ready, blocked, review of done. De vrije taakinhoud wordt niet gewijzigd.',
   inputSchema: {
     blockId: z.string().min(1),
     agentId: z.string().min(1),
     claimToken: z.string().min(1),
     status: z.enum(['ready', 'blocked', 'review', 'done']),
-    acceptanceChecksPassed: z.boolean().optional(),
     summary: z.string().min(1).optional()
   },
-  annotations: write
-});
-
-registerTool('convert_block_to_task', {
-  title: 'Bestaand blok omzetten naar taak',
-  description: 'Zet een bestaand generiek blok veilig om naar een taakconcept. Inhoud wordt Context; titel, tags, dependencies en kinderen blijven behouden.',
-  inputSchema: { blockId: z.string().min(1) },
   annotations: write
 });
 
@@ -480,39 +452,6 @@ registerTool('list_todos', {
     limit: z.number().int().min(1).max(100).optional()
   },
   annotations: readOnly
-});
-
-registerTool('add_todo', {
-  title: 'Todo toevoegen',
-  description: 'Voeg een concrete actie toe aan een bestaand blok. Formuleer de tekst zo dat doel en relevante context uit het omliggende blok of de todo zelf duidelijk zijn.',
-  inputSchema: {
-    blockId: z.string().min(1),
-    text: z.string().min(1),
-    completed: z.boolean().optional()
-  },
-  annotations: write
-});
-
-registerTool('set_todo_status', {
-  title: 'Todo-status wijzigen',
-  description: 'Vink een todo aan of uit met blockId en de taskIndex uit list_todos.',
-  inputSchema: {
-    blockId: z.string().min(1),
-    taskIndex: z.number().int().min(0),
-    completed: z.boolean()
-  },
-  annotations: write
-});
-
-registerTool('get_or_create_daily_plan', {
-  title: 'Dagplanning ophalen of aanmaken',
-  description: 'Haal de dagplanning voor vandaag (of een opgegeven datum) op of maak deze automatisch gestructureerd aan met open taken en taakverdeling.',
-  inputSchema: {
-    date: z.string().optional(),
-    focus: z.string().optional(),
-    includeOpenTasks: z.boolean().optional()
-  },
-  annotations: write
 });
 
 registerTool('list_block_revisions', {

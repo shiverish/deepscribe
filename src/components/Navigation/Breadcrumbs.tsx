@@ -13,6 +13,7 @@ import {
   Folder,
   FileText,
   Columns3,
+  CheckSquare,
   Network,
   BarChart3
 } from 'lucide-react';
@@ -81,7 +82,7 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
           })}
         </nav>
 
-        {/* View Switcher: Columns | Graph | Stats */}
+        {/* View Switcher: Columns | Tasks | Graph | Stats */}
         <div className="view-switcher-group">
           <button
             type="button"
@@ -95,9 +96,19 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
 
           <button
             type="button"
+            className={`view-switch-btn ${activeView === 'tasks' ? 'active' : ''}`}
+            onClick={() => onViewChange('tasks')}
+            title="Tasks View (Ctrl+2)"
+          >
+            <CheckSquare size={13} />
+            <span>Tasks</span>
+          </button>
+
+          <button
+            type="button"
             className={`view-switch-btn ${activeView === 'graph' ? 'active' : ''}`}
             onClick={() => onViewChange('graph')}
-            title="Graph View (Ctrl+2)"
+            title="Graph View (Ctrl+3)"
           >
             <Network size={13} />
             <span>Graph</span>
@@ -107,7 +118,7 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
             type="button"
             className={`view-switch-btn ${activeView === 'stats' ? 'active' : ''}`}
             onClick={() => onViewChange('stats')}
-            title="Statistics View (Ctrl+3)"
+            title="Statistics View (Ctrl+4)"
           >
             <BarChart3 size={13} />
             <span>Stats</span>
@@ -161,7 +172,7 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
         <button
           onClick={onOpenWorkspace}
           className="topbar-workspace-button"
-          title="Agent Inbox, activiteit en templates"
+          title="Activity and templates"
         >
           <Bot size={14} />
           <span>Workspace</span>

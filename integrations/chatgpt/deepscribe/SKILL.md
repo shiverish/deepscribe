@@ -1,6 +1,6 @@
 ---
 name: deepscribe
-description: Use DeepScribe tools to find, read, capture, organize, format, and update projects, knowledge blocks, todos, work items, relations, and linked files. Use when the user mentions DeepScribe, DS, @DeepScribe, stored knowledge, a DeepScribe project or block, or asks to save, retrieve, connect, clean up, or revise information in DeepScribe. Do not use merely to change the DeepScribe application source code unless the request also concerns data stored in DeepScribe.
+description: Use DeepScribe tools to find, read, capture, organize, format, and update projects, knowledge blocks, user-managed tasks, relations, and linked files. Use when the user mentions DeepScribe, DS, @DeepScribe, stored knowledge, a DeepScribe project or block, or asks to save, retrieve, connect, clean up, or revise information in DeepScribe. Do not use merely to change the DeepScribe application source code unless the request also concerns data stored in DeepScribe.
 ---
 
 # DeepScribe
@@ -15,7 +15,7 @@ Use the connected DeepScribe tools as the only interface to the user's stored wo
 
 ## Resolve context
 
-1. Use `list_projects`, `search`, `list_blocks`, or `list_todos` to find candidate records.
+1. Use `list_projects`, `search`, `list_blocks`, `list_tasks`, or `list_todos` to find candidate records.
 2. Use `get_project` or `get_block` before changing an existing record.
 3. Resolve titles to actual IDs. Never guess project IDs, block IDs, attachment IDs, or todo indexes.
 4. Infer the target only when context is strong. If multiple records remain plausible, ask one concise question.
@@ -25,15 +25,16 @@ Use the connected DeepScribe tools as the only interface to the user's stored wo
 - Prefer targeted searches and reads over loading entire projects.
 - Preserve relevant project, hierarchy, tag, relation, attachment, and task context.
 - Use `list_todos` with `completed: false` for open work.
+- Use `list_tasks` and `get_task` for user-managed tasks. Task bodies are read-only to agents.
 - Distinguish facts stored in DeepScribe from conclusions or suggestions produced during the conversation.
 - Use `list_attachments` before `read_attachment`. Read only files relevant to the request and state when a binary format cannot be interpreted reliably.
 
 ## Write safely
 
 - Read the destination immediately before writing to it.
-- Use `create_task_block` for new, explicitly assigned or Auto Task Pickup-ready work under an existing planning or context block. Supply a goal, context, acceptance criteria and agent target; keep it as a draft unless the user asks to ready it.
-- Use `create_work_item` only for legacy/general planned work that should not enter the typed Auto Task Pickup queue.
-- Use `add_todo` only for a small action that naturally belongs in an existing block.
+- Never create a task, todo, work item, checklist action, or planning placeholder. Tasks are created and organized by the user in DeepScribe.
+- When the user asks you to write content, write it directly to the intended regular knowledge block. Do not create a task first.
+- Use `update_task_status` only when reporting progress on an existing task. Never change its title, body, tags, links, dependencies, ordering, assignment, or location.
 - Use `append_to_block` when adding information so existing content remains intact.
 - Use `update_block` only when the user intends to revise the whole title, body, or tag set, or explicitly asks to reformat an existing block.
 - Preserve meaning, facts, links, todos, headings, emphasis, and intentional ordering when reformatting. Do not silently summarize or rewrite content unless requested.
@@ -47,7 +48,7 @@ Write readable Markdown that DeepScribe can convert into rich editor content.
 - Separate paragraphs and sections with blank lines.
 - Put each bullet or numbered item on its own line.
 - Use descriptive headings when content has multiple topics.
-- Use task syntax (`- [ ]` and `- [x]`) only for actual tasks.
+- Do not introduce task syntax (`- [ ]` or `- [x]`); inline todos are user-managed.
 - Keep prose as prose; do not turn every sentence into a bullet.
 - Avoid a single dense text blob and avoid decorative over-formatting.
 
@@ -67,7 +68,7 @@ Do not create a relation when duplicate titles make it ambiguous. Explain that r
 ## Interpret common requests
 
 - “Zet dit in DeepScribe”: find the strongest existing destination, prefer appending, and ask only when materially ambiguous.
-- “Maak hier een actie van”: create a contextual work item unless the user explicitly wants a small inline todo.
+- “Maak hier een actie van”: explain that DeepScribe tasks are user-managed and do not create one through the agent tools.
 - “Koppel dit aan X”: create a verified wiki relation from the current or named source block to X.
 - “Wat staat er over X?”: search, read the strongest matches, and synthesize without writing.
 - “Formatteer dit blok”: preserve all meaning while replacing the full body with clean, structured Markdown.

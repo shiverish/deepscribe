@@ -14,8 +14,9 @@ export const AGENT_STATUS_LABELS: Record<AgentStatus, string> = {
 
 export function getAgentStatus(block: Block): AgentStatus | null {
   if (block.kind === 'task' && block.task) {
-    if (block.task.status === 'draft') return null;
+    if (block.task.status === 'inbox') return null;
     if (block.task.status === 'ready') return block.task.agentTarget === 'none' ? null : 'agent-ready';
+    if (block.task.status === 'in-progress') return 'agent-claimed';
     return `agent-${block.task.status}` as AgentStatus;
   }
   return AGENT_STATUSES.find(status => block.tags.includes(status)) ?? null;

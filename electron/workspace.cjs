@@ -112,7 +112,11 @@ class WorkspaceStore {
       workspaceId: this.manifest.workspaceId,
       formatVersion: this.manifest.formatVersion,
       encrypted: false,
-      counts: { projects: count('projects'), blocks: count('blocks'), attachments: count('attachments') }
+      counts: {
+        projects: Number(this.database.prepare("SELECT COUNT(*) AS count FROM projects WHERE json_extract(json, '$.systemKind') IS NULL").get().count),
+        blocks: count('blocks'),
+        attachments: count('attachments')
+      }
     };
   }
 

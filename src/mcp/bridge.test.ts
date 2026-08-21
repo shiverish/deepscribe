@@ -3,6 +3,14 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../db/db';
 import type { Block, Project } from '../types';
 import { formatDailyPlanContent, formatWorkItemContent, handleMcpBridgeRequest, markdownToHtml } from './bridge';
+import { createTaskMetadata } from '../utils/taskBlocks';
+
+async function insertUserTask(projectId: string, parentId: string | null, title: string, task: Block['task'], dependsOn?: string[]) {
+  const now = Date.now();
+  const block: Block = { id: `task-${crypto.randomUUID()}`, projectId, parentId, title, content: '<p>Free task notes</p>', plainText: 'Free task notes', order: 0, childCount: 0, taskCount: 0, completedTaskCount: 0, attachmentCount: 0, tags: [], dependsOn, kind: 'task', task, isTrash: false, createdAt: now, updatedAt: now };
+  await db.blocks.add(block);
+  return block;
+}
 
 beforeEach(async () => {
   db.close();
@@ -70,35 +78,25 @@ describe('DeepScribe MCP work items', () => {
 });
 
 describe('DeepScribe MCP task blocks', () => {
-  it('creates, validates, updates and converts typed tasks', async () => {
+  it('keeps task creation and content user-owned while allowing reads and status updates', async () => {
     const project = await handleMcpBridgeRequest('create_project', { title: 'Taken' }) as Project;
     const parent = await handleMcpBridgeRequest('create_block', { projectId: project.id, title: 'Planning' }) as Block;
-    const task = await handleMcpBridgeRequest('create_task_block', {
-      projectId: project.id, parentId: parent.id, title: 'Bouw taakflow', goal: 'Maak de taakflow werkend',
-      context: 'De planning heeft getypeerde taken nodig', acceptanceCriteria: ['Validatie slaagt'], agentTarget: 'openai'
-    }) as Block;
-    expect(task.kind).toBe('task');
-    expect(task.task).toMatchObject({ status: 'draft', agentTarget: 'openai', completionPolicy: 'review-required' });
-
-    const ready = await handleMcpBridgeRequest('update_task_block', { blockId: task.id, status: 'ready' }) as Block;
+    await expect(handleMcpBridgeRequest('create_task_block', { projectId: project.id, parentId: parent.id, title: 'No' })).rejects.toThrow(/cannot create or edit tasks/i);
+    await expect(handleMcpBridgeRequest('create_work_item', { projectId: project.id, title: 'No' })).rejects.toThrow(/cannot create or edit tasks/i);
+    const task = await insertUserTask(project.id, parent.id, 'Bouw taakflow', { ...createTaskMetadata(), agentTarget: 'openai' });
+    const listed = await handleMcpBridgeRequest('list_tasks', { projectId: project.id }) as Block[];
+    expect(listed[0]).toMatchObject({ id: task.id, content: '<p>Free task notes</p>' });
+    await expect(handleMcpBridgeRequest('update_block', { blockId: task.id, content: 'Changed' })).rejects.toThrow(/only read task content/i);
+    const ready = await handleMcpBridgeRequest('update_task_status', { blockId: task.id, status: 'ready' }) as Block;
     expect(ready.task?.status).toBe('ready');
-    await expect(handleMcpBridgeRequest('update_task_block', { blockId: task.id, status: 'done' })).rejects.toThrow(/vereist review/);
-
-    const legacy = await handleMcpBridgeRequest('create_block', { projectId: project.id, parentId: parent.id, title: 'Legacy', content: 'Bestaande context', tags: ['agent-ready', 'eigen-tag'] }) as Block;
-    const converted = await handleMcpBridgeRequest('convert_block_to_task', { blockId: legacy.id }) as Block;
-    expect(converted.kind).toBe('task');
-    expect(converted.task?.status).toBe('draft');
-    expect(converted.tags).toEqual(['eigen-tag']);
-    expect(converted.content).toContain('<h2>Context</h2><p>Bestaande context</p>');
+    const done = await handleMcpBridgeRequest('update_task_status', { blockId: task.id, status: 'done' }) as Block;
+    expect(done.task?.status).toBe('done');
   });
 
   it('claims typed tasks atomically, idempotently and without leaking tokens', async () => {
     const project = await handleMcpBridgeRequest('create_project', { title: 'Pickup' }) as Project;
     const parent = await handleMcpBridgeRequest('create_block', { projectId: project.id, title: 'Planning' }) as Block;
-    const task = await handleMcpBridgeRequest('create_task_block', {
-      projectId: project.id, parentId: parent.id, title: 'Eerste taak', goal: 'Voer het doel uit',
-      context: 'Deze context is voldoende voor uitvoering', acceptanceCriteria: ['Controle slaagt'], agentTarget: 'openai', ready: true
-    }) as Block;
+    const task = await insertUserTask(project.id, parent.id, 'Eerste taak', { ...createTaskMetadata(), status: 'ready', agentTarget: 'openai', readyAt: Date.now() });
 
     const claim = await handleMcpBridgeRequest('claim_next_work_item', {
       projectId: project.id, agentId: 'codex-1', agentTarget: 'openai', requestId: 'request-1', leaseSeconds: 60
@@ -113,30 +111,20 @@ describe('DeepScribe MCP task blocks', () => {
     expect(replay).toMatchObject({ claimToken: claim.claimToken, replayed: true });
     expect(JSON.stringify(await handleMcpBridgeRequest('get_block', { blockId: task.id }))).not.toContain(claim.claimToken);
 
-    await expect(handleMcpBridgeRequest('transition_work_item', {
+    const done = await handleMcpBridgeRequest('transition_work_item', {
       blockId: task.id, agentId: 'codex-1', claimToken: claim.claimToken, status: 'done', acceptanceChecksPassed: true
-    })).rejects.toThrow(/auto-complete/);
-    const review = await handleMcpBridgeRequest('transition_work_item', {
-      blockId: task.id, agentId: 'codex-1', claimToken: claim.claimToken, status: 'review'
     }) as Block;
-    expect(review.task?.status).toBe('review');
-    expect(review.task?.claim).toBeUndefined();
+    expect(done.task?.status).toBe('done');
+    expect(done.task?.claim).toBeUndefined();
   });
 
   it('rechecks dependencies, has one concurrent winner and takes over expired leases', async () => {
     const project = await handleMcpBridgeRequest('create_project', { title: 'Concurrent pickup' }) as Project;
     const parent = await handleMcpBridgeRequest('create_block', { projectId: project.id, title: 'Planning' }) as Block;
-    const dependency = await handleMcpBridgeRequest('create_task_block', {
-      projectId: project.id, parentId: parent.id, title: 'Voorwaarde', goal: 'Rond de voorwaarde af',
-      context: 'De volgende taak wacht op deze voorwaarde', acceptanceCriteria: ['Voorwaarde gereed'], completionPolicy: 'auto-complete'
-    }) as Block;
-    const dependent = await handleMcpBridgeRequest('create_task_block', {
-      projectId: project.id, parentId: parent.id, title: 'Afhankelijke taak', goal: 'Voer na de voorwaarde uit',
-      context: 'Deze taak mag niet eerder geclaimd worden', acceptanceCriteria: ['Uitvoering gereed'], agentTarget: 'any', ready: true,
-      dependsOn: [dependency.id]
-    }) as Block;
+    const dependency = await insertUserTask(project.id, parent.id, 'Voorwaarde', createTaskMetadata());
+    const dependent = await insertUserTask(project.id, parent.id, 'Afhankelijke taak', { ...createTaskMetadata(), status: 'ready', agentTarget: 'any', readyAt: Date.now() }, [dependency.id]);
     expect(await handleMcpBridgeRequest('list_claimable_work_items', { agentId: 'one', agentTarget: 'openai', projectId: project.id })).toEqual([]);
-    await handleMcpBridgeRequest('update_task_block', { blockId: dependency.id, status: 'done' });
+    await handleMcpBridgeRequest('update_task_status', { blockId: dependency.id, status: 'done' });
 
     const claims = await Promise.all([
       handleMcpBridgeRequest('claim_next_work_item', { agentId: 'one', agentTarget: 'openai', projectId: project.id, requestId: 'race-one', leaseSeconds: 60 }),
@@ -211,35 +199,11 @@ describe('DeepScribe MCP daily planner', () => {
     expect(content).toContain('## Dagrecap & Notities');
   });
 
-  it('automatically creates planning project and daily block with open tasks, and is idempotent', async () => {
-    const gameProj = await handleMcpBridgeRequest('create_project', { title: 'Game Project' }) as Project;
-    const workBlock = await handleMcpBridgeRequest('create_work_item', {
-      projectId: gameProj.id,
-      title: 'Puzzelmechaniek',
-      goal: 'Bouw de puzzelmechaniek voor level 1',
-      context: 'De speler moet experimenteren met regels',
-      acceptanceCriteria: ['Level 1 werkt', 'Falsificatie toont feedback']
-    }) as Block;
-    expect(workBlock.title).toBe('Puzzelmechaniek');
-
-    const plan = await handleMcpBridgeRequest('get_or_create_daily_plan', {
+  it('does not automatically create planning projects or task lists', async () => {
+    await expect(handleMcpBridgeRequest('get_or_create_daily_plan', {
       date: '2026-08-17',
       focus: 'Eerste speelbare test'
-    }) as Block & { path: Array<{ title: string }>; todos: Array<{ text: string }> };
-
-    expect(plan.title).toBe('Dagplanning — 17 augustus 2026');
-    expect(plan.tags).toContain('planning');
-    expect(plan.tags).toContain('daily-log');
-    expect(plan.tags).toContain('date-2026-08-17');
-    expect(plan.content).toContain('Eerste speelbare test');
-    expect(plan.content).toContain('Game Project');
-    expect(plan.content).toContain('Puzzelmechaniek');
-
-    // Calling it again retrieves the exact same block
-    const retrieved = await handleMcpBridgeRequest('get_or_create_daily_plan', {
-      date: '2026-08-17'
-    }) as Block;
-    expect(retrieved.id).toBe(plan.id);
+    })).rejects.toThrow(/cannot create or edit tasks/i);
   });
 });
 
@@ -320,30 +284,20 @@ describe('DeepScribe MCP block revisions & diff history', () => {
 });
 
 describe('DeepScribe MCP task dependencies (Feature A)', () => {
-  it('creates work item with dependsOn, prevents circular dependencies, and reports dependency status', async () => {
+  it('supports dependencies on regular blocks without creating agent work items', async () => {
     const project = await handleMcpBridgeRequest('create_project', { title: 'Dependency Project' }) as Project;
 
     // 1. Create prerequisite task (Taak A)
-    const taskA = await handleMcpBridgeRequest('create_work_item', {
-      projectId: project.id,
-      title: 'Database Migratie',
-      goal: 'Migreer het datamodel naar v2 schema',
-      context: 'Nodig voor de nieuwe auth flow',
-      acceptanceCriteria: ['Schema gemigreerd', 'Tests groen']
-    }) as Block;
+    const taskA = await handleMcpBridgeRequest('create_block', { projectId: project.id, title: 'Database Migratie' }) as Block;
 
     // 2. Create dependent task (Taak B) depending on Taak A
-    const taskB = await handleMcpBridgeRequest('create_work_item', {
+    const taskB = await handleMcpBridgeRequest('create_block', {
       projectId: project.id,
       title: 'OAuth Integratie',
-      goal: 'Implementeer OAuth login met Google',
-      context: 'Vereist dat de database migratie afgerond is',
-      acceptanceCriteria: ['OAuth flow werkt'],
       dependsOn: [taskA.id]
     }) as Block;
 
     expect(taskB.dependsOn).toEqual([taskA.id]);
-    expect(taskB.content).toContain('Database Migratie');
 
     // 3. Inspect dependency status for Task B (should be blocked by Task A)
     const statusB = await handleMcpBridgeRequest('get_block_dependencies', {
@@ -383,7 +337,7 @@ describe('DeepScribe MCP task dependencies (Feature A)', () => {
     expect(statusBAfter.pendingDependencies.length).toBe(0);
   });
 
-  it('tags blocked tasks appropriately in daily plan generation', async () => {
+  it('does not expose the removed daily plan mutation', async () => {
     const proj = await handleMcpBridgeRequest('create_project', { title: 'Release Plan' }) as Project;
     const prereq = await handleMcpBridgeRequest('create_block', {
       projectId: proj.id,
@@ -400,12 +354,9 @@ describe('DeepScribe MCP task dependencies (Feature A)', () => {
     }) as Block;
     expect(blockedTask.id).toBeDefined();
 
-    const plan = await handleMcpBridgeRequest('get_or_create_daily_plan', {
+    await expect(handleMcpBridgeRequest('get_or_create_daily_plan', {
       date: '2026-08-18'
-    }) as Block;
-
-    expect(plan.content).toContain('[GEBLOKKEERD door: Backend API]');
-    expect(plan.content).toContain('Frontend Dashboard');
+    })).rejects.toThrow(/cannot create or edit tasks/i);
   });
 });
 
@@ -420,14 +371,7 @@ describe('DeepScribe MCP project context & scratchpad (Feature C)', () => {
     expect(project.scratchpad).toContain('React + TypeScript frontend');
     expect(project.scratchpadUpdatedAt).toBeDefined();
 
-    // Create some work items
-    await handleMcpBridgeRequest('create_work_item', {
-      projectId: project.id,
-      title: 'Setup State Machine',
-      goal: 'Bouw state machine voor project context',
-      context: 'Nodig voor agent geheugen',
-      acceptanceCriteria: ['State machine draait']
-    });
+    await insertUserTask(project.id, null, 'Setup State Machine', createTaskMetadata());
 
     // 1. Get project context in single call
     const context1 = await handleMcpBridgeRequest('get_project_context', {

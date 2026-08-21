@@ -1,5 +1,7 @@
 import { db, subscribeToDatabaseMutations } from './db';
-import type { Attachment, WorkspaceSnapshot, WorkspaceStatus } from '../types';
+import type { Attachment, Block, WorkspaceSnapshot, WorkspaceStatus } from '../types';
+import { createTaskInboxProject, normalizeTaskMetadata, TASK_INBOX_PROJECT_ID } from '../utils/taskBlocks';
+import { sanitizeTags } from '../utils/tagUtils';
 
 let initialized = false;
 let initializationPromise: Promise<WorkspaceStatus | null> | null = null;
@@ -18,13 +20,34 @@ export interface DataRepository {
 }
 
 const listeners = new Set<() => void>();
+const legacyStatuses = ['agent-ready', 'agent-claimed', 'agent-blocked', 'agent-review', 'agent-done'] as const;
+
+function normalizeSnapshotBlock(block: Block): Block {
+  const tags = sanitizeTags(block.tags ?? []);
+  const agentStatus = legacyStatuses.find(status => tags.includes(status));
+  const headings = [...(block.content || '').matchAll(/<h[1-6][^>]*>\s*([^<]+?)\s*<\/h[1-6]>/gi)]
+    .map(match => match[1].trim().toLocaleLowerCase('en-US'));
+  const structuredTodo = tags.includes('todo')
+    && (headings.includes('goal') || headings.includes('doel'))
+    && headings.includes('context')
+    && (headings.includes('acceptance criteria') || headings.includes('acceptatiecriteria'));
+  if (block.kind !== 'task' && !agentStatus && !structuredTodo) return { ...block, tags };
+  const task = normalizeTaskMetadata(block.task, block.order ?? block.createdAt);
+  if (!block.task) {
+    task.status = agentStatus === 'agent-ready' ? 'ready' : agentStatus === 'agent-claimed' ? 'in-progress'
+      : agentStatus === 'agent-blocked' ? 'blocked' : agentStatus === 'agent-review' ? 'review'
+        : agentStatus === 'agent-done' ? 'done' : 'inbox';
+    if (agentStatus === 'agent-ready') task.agentTarget = 'any';
+  }
+  return { ...block, kind: 'task', task, tags: tags.filter(tag => !legacyStatuses.includes(tag as typeof legacyStatuses[number])) };
+}
 
 async function createSnapshot(): Promise<WorkspaceSnapshot> {
-  const [projects, blocks, attachments, settings, activities, templates] = await Promise.all([
+  const [projects, blocks, attachments, settings, activities, templates, revisions] = await Promise.all([
     db.projects.toArray(), db.blocks.toArray(), db.attachments.toArray(), db.settings.toArray(),
-    db.activities.toArray(), db.templates.toArray()
+    db.activities.toArray(), db.templates.toArray(), db.revisions.toArray()
   ]);
-  return { projects, blocks, attachments, settings, activities, templates };
+  return { projects, blocks, attachments, settings, activities, templates, revisions };
 }
 
 async function migrateAttachment(attachment: Attachment, projectId: string): Promise<Attachment> {
@@ -48,14 +71,19 @@ async function migrateAttachment(attachment: Attachment, projectId: string): Pro
 async function applySnapshot(snapshot: WorkspaceSnapshot): Promise<void> {
   applyingSnapshot = true;
   try {
-    await db.transaction('rw', [db.projects, db.blocks, db.attachments, db.settings, db.activities, db.templates], async () => {
-      await Promise.all([db.attachments.clear(), db.activities.clear(), db.templates.clear(), db.settings.clear(), db.blocks.clear(), db.projects.clear()]);
-      if (snapshot.projects.length) await db.projects.bulkAdd(snapshot.projects);
-      if (snapshot.blocks.length) await db.blocks.bulkAdd(snapshot.blocks);
+    const projects = snapshot.projects.some(project => project.id === TASK_INBOX_PROJECT_ID)
+      ? snapshot.projects
+      : [...snapshot.projects, createTaskInboxProject()];
+    const blocks = snapshot.blocks.map(normalizeSnapshotBlock);
+    await db.transaction('rw', [db.projects, db.blocks, db.attachments, db.settings, db.activities, db.templates, db.revisions], async () => {
+      await Promise.all([db.revisions.clear(), db.attachments.clear(), db.activities.clear(), db.templates.clear(), db.settings.clear(), db.blocks.clear(), db.projects.clear()]);
+      if (projects.length) await db.projects.bulkAdd(projects);
+      if (blocks.length) await db.blocks.bulkAdd(blocks);
       if (snapshot.attachments.length) await db.attachments.bulkAdd(snapshot.attachments);
       if (snapshot.settings.length) await db.settings.bulkAdd(snapshot.settings);
       if (snapshot.activities.length) await db.activities.bulkAdd(snapshot.activities);
       if (snapshot.templates.length) await db.templates.bulkAdd(snapshot.templates);
+      if (snapshot.revisions?.length) await db.revisions.bulkAdd(snapshot.revisions);
     });
   } finally {
     applyingSnapshot = false;

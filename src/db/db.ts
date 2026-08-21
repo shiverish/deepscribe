@@ -1,6 +1,27 @@
 import Dexie, { type Table } from 'dexie';
 import type { Project, Block, Attachment, ActivityEntry, BlockTemplate, BlockRevision } from '../types';
 import { sanitizeTags } from '../utils/tagUtils';
+import { createTaskInboxProject, normalizeTaskMetadata, TASK_INBOX_PROJECT_ID } from '../utils/taskBlocks';
+
+const LEGACY_AGENT_STATUSES = ['agent-ready', 'agent-claimed', 'agent-blocked', 'agent-review', 'agent-done'] as const;
+
+function legacyTaskStatus(tags: string[]) {
+  if (tags.includes('agent-ready')) return 'ready' as const;
+  if (tags.includes('agent-claimed')) return 'in-progress' as const;
+  if (tags.includes('agent-blocked')) return 'blocked' as const;
+  if (tags.includes('agent-review')) return 'review' as const;
+  if (tags.includes('agent-done')) return 'done' as const;
+  return 'inbox' as const;
+}
+
+function isLegacyStructuredWorkItem(block: Block): boolean {
+  if (!block.tags?.includes('todo')) return false;
+  const headings = [...(block.content || '').matchAll(/<h[1-6][^>]*>\s*([^<]+?)\s*<\/h[1-6]>/gi)]
+    .map(match => match[1].trim().toLocaleLowerCase('en-US'));
+  return (headings.includes('goal') || headings.includes('doel'))
+    && headings.includes('context')
+    && (headings.includes('acceptance criteria') || headings.includes('acceptatiecriteria'));
+}
 
 export class DeepScribeDatabase extends Dexie {
   projects!: Table<Project, string>;
@@ -96,6 +117,32 @@ export class DeepScribeDatabase extends Dexie {
       templates: 'id, name, createdAt',
       revisions: 'id, blockId, projectId, source, createdAt'
     });
+    this.version(12).stores({
+      projects: 'id, title, isTrash, *tags, createdAt, updatedAt',
+      blocks: 'id, projectId, parentId, order, isTrash, kind, task.status, task.position, *tags, *dependsOn, plainText, updatedAt',
+      attachments: 'id, blockId, fileName, createdAt',
+      settings: 'key',
+      activities: 'id, projectId, blockId, source, action, createdAt',
+      templates: 'id, name, createdAt',
+      revisions: 'id, blockId, projectId, source, createdAt'
+    }).upgrade(async transaction => {
+      const projects = transaction.table<Project>('projects');
+      if (!await projects.get(TASK_INBOX_PROJECT_ID)) await projects.add(createTaskInboxProject());
+      await transaction.table<Block>('blocks').toCollection().modify(block => {
+        const tags = sanitizeTags(block.tags ?? []);
+        const legacyStatus = LEGACY_AGENT_STATUSES.some(status => tags.includes(status));
+        if (block.kind === 'task' || legacyStatus || isLegacyStructuredWorkItem({ ...block, tags })) {
+          const normalized = normalizeTaskMetadata(block.task, block.order ?? block.createdAt);
+          normalized.status = block.kind === 'task' ? normalized.status : legacyTaskStatus(tags);
+          if (!block.task && tags.includes('agent-ready')) normalized.agentTarget = 'any';
+          block.kind = 'task';
+          block.task = normalized;
+          block.tags = tags.filter(tag => !LEGACY_AGENT_STATUSES.includes(tag as typeof LEGACY_AGENT_STATUSES[number]));
+        } else {
+          block.tags = tags;
+        }
+      });
+    });
   }
 }
 
@@ -141,11 +188,16 @@ export async function requestPersistentStorage(): Promise<boolean> {
 
 export async function seedDemoDataIfEmpty() {
   const projectCount = await db.projects.count();
-  if (projectCount > 0) return;
+  if (projectCount > 0) {
+    if (!await db.projects.get(TASK_INBOX_PROJECT_ID)) await db.projects.add(createTaskInboxProject());
+    return;
+  }
 
   const now = Date.now();
   const demoProjectId = 'proj-demo-1';
   const demoProject2Id = 'proj-demo-2';
+
+  await db.projects.add(createTaskInboxProject(now));
 
   await db.projects.add({
     id: demoProjectId,

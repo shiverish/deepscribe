@@ -9,7 +9,7 @@ import { extractHashtags, mergeTags, parseTag, sanitizeTags } from '../../utils/
 import { initialTagComposerState, tagComposerReducer } from '../../utils/tagComposer';
 import { getBlockDependencyStatus, detectCircularDependency, sanitizeDependsOn, isBlockCompleted } from '../../utils/dependencyUtils';
 import { DEFAULT_BLOCK_PRINT_SETTINGS, normalizeBlockPrintSettings, type BlockPrintSettings } from '../../utils/printDocument';
-import { canTransitionTask, TASK_AGENT_LABELS, TASK_AGENT_TARGETS, TASK_STATUS_LABELS, validateTaskReady } from '../../utils/taskBlocks';
+import { canTransitionTask, TASK_AGENT_LABELS, TASK_AGENT_TARGETS, TASK_STATUSES, TASK_STATUS_LABELS, validateTaskReady } from '../../utils/taskBlocks';
 import { Check, Loader2, AlertCircle, FileText, Folder, FolderOpen, Paperclip, PanelRightClose, Edit3, Plus, Tag as TagIcon, Settings2, Trash2, Link2, ArrowUpRight, X, History, Lock, CheckCircle2, Clock, Bot, ClipboardCopy, Printer } from 'lucide-react';
 import './Editor.css';
 
@@ -21,6 +21,9 @@ interface WritingPanelProps {
   saveStatus: SaveStatus;
   focusTitleSignal?: number;
   allProjectBlocks?: Block[];
+  taskProjects?: Project[];
+  allWorkspaceBlocks?: Block[];
+  onRelocateTask?: (task: Block, projectId: string | null, parentId: string | null) => Promise<void>;
   onReturnFocusToCards?: () => void;
   onSaveItem: (
     itemId: string,
@@ -57,6 +60,9 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
   saveStatus,
   focusTitleSignal,
   allProjectBlocks = [],
+  taskProjects = [],
+  allWorkspaceBlocks = [],
+  onRelocateTask,
   onReturnFocusToCards,
   onSaveItem,
   tagSuggestions = [],
@@ -104,6 +110,12 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
   const tipTapEditorRef = useRef<TipTapEditorHandle>(null);
   const observedHashtagsRef = useRef<Set<string>>(new Set());
   const [isDirty, setIsDirty] = useState(false);
+  const activeTaskBlock = itemType === 'block' && activeItem && 'projectId' in activeItem && activeItem.kind === 'task' ? activeItem : null;
+  const taskProjectId = activeTaskBlock?.projectId ?? '';
+  const taskContextCandidates = useMemo(
+    () => allWorkspaceBlocks.filter(block => !block.isTrash && block.projectId === taskProjectId && block.id !== activeTaskBlock?.id && block.kind !== 'task'),
+    [allWorkspaceBlocks, taskProjectId, activeTaskBlock?.id]
+  );
 
   const DEFAULT_WIDTH = 480;
   const MIN_WIDTH = 320;
@@ -665,11 +677,9 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                   {taskMetadata.claim ? (
                     <button type="button" onClick={() => handleTaskStatus('ready')}>Release claim</button>
                   ) : (
-                    <>
-                      {taskMetadata.status !== 'ready' && <button type="button" onClick={() => handleTaskStatus('ready')}>Mark ready</button>}
-                      {taskMetadata.status !== 'draft' && <button type="button" onClick={() => handleTaskStatus('draft')}>Back to draft</button>}
-                      {taskMetadata.status !== 'done' && <button type="button" onClick={() => handleTaskStatus('done')}>Complete</button>}
-                    </>
+                    <select value={taskMetadata.status} onChange={event => handleTaskStatus(event.target.value as TaskStatus)} aria-label="Task status">
+                      {TASK_STATUSES.map(status => <option key={status} value={status}>{TASK_STATUS_LABELS[status]}</option>)}
+                    </select>
                   )}
                 </div>
               </div>
@@ -680,18 +690,33 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                   <span>Lease until {new Date(taskMetadata.claim.expiresAt).toLocaleString('en-US')}</span>
                 </div>
               )}
-              <div className="task-metadata-grid">
+              <div className="task-metadata-grid single">
+                <label>
+                  <span>Project</span>
+                  <select
+                    disabled={Boolean(taskMetadata.claim) || !activeTaskBlock || !onRelocateTask}
+                    value={taskProjects.some(project => project.id === taskProjectId) ? taskProjectId : ''}
+                    onChange={event => void onRelocateTask?.(activeTaskBlock!, event.target.value || null, null)}
+                  >
+                    <option value="">Workspace Inbox</option>
+                    {taskProjects.map(project => <option key={project.id} value={project.id}>{project.title}</option>)}
+                  </select>
+                </label>
+                <label>
+                  <span>Context</span>
+                  <select
+                    disabled={Boolean(taskMetadata.claim) || !activeTaskBlock || !onRelocateTask || !taskProjects.some(project => project.id === taskProjectId)}
+                    value={activeTaskBlock?.parentId ?? ''}
+                    onChange={event => void onRelocateTask?.(activeTaskBlock!, taskProjectId, event.target.value || null)}
+                  >
+                    <option value="">No context block</option>
+                    {taskContextCandidates.map(block => <option key={block.id} value={block.id}>{block.title}</option>)}
+                  </select>
+                </label>
                 <label>
                   <span>Agent</span>
                   <select disabled={Boolean(taskMetadata.claim)} value={taskMetadata.agentTarget} onChange={event => updateTaskMetadata({ ...taskMetadata, agentTarget: event.target.value as TaskMetadata['agentTarget'], customAgentName: event.target.value === 'custom' ? taskMetadata.customAgentName : undefined })}>
                     {TASK_AGENT_TARGETS.map(target => <option key={target} value={target}>{TASK_AGENT_LABELS[target]}</option>)}
-                  </select>
-                </label>
-                <label>
-                  <span>Completion</span>
-                  <select disabled={Boolean(taskMetadata.claim)} value={taskMetadata.completionPolicy} onChange={event => updateTaskMetadata({ ...taskMetadata, completionPolicy: event.target.value as TaskMetadata['completionPolicy'] })}>
-                    <option value="review-required">Review required</option>
-                    <option value="auto-complete">Complete automatically</option>
                   </select>
                 </label>
               </div>

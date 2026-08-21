@@ -1,13 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Bot, CheckCircle2, Clock3, FilePlus2, History, LayoutTemplate, Trash2, X, Search } from 'lucide-react';
+import { Bot, CheckCircle2, Clock3, History, LayoutTemplate, Trash2, X, Search } from 'lucide-react';
 import { db } from '../../db/db';
 import { recordActivity } from '../../db/activity';
-import type { Block, BlockTemplate, Project, TaskStatus } from '../../types';
-import { AGENT_STATUSES, AGENT_STATUS_LABELS, getAgentStatus, tagsWithAgentStatus, type AgentStatus } from '../../utils/agentInbox';
-import { validateTaskReady } from '../../utils/taskBlocks';
+import type { Block, BlockTemplate, Project } from '../../types';
 
-type WorkspaceTab = 'inbox' | 'activity' | 'templates';
+type WorkspaceTab = 'activity' | 'templates';
 
 interface WorkspaceModalProps {
   isOpen: boolean;
@@ -22,9 +20,9 @@ interface WorkspaceModalProps {
 const sourceLabels = { user: 'You', agent: 'Agent', system: 'System' } as const;
 
 export const WorkspaceModal: React.FC<WorkspaceModalProps> = ({
-  isOpen, onClose, activeProject, activeBlock, blocks, onOpenBlock, onApplyTemplate
+  isOpen, onClose, activeProject, activeBlock, onOpenBlock, onApplyTemplate
 }) => {
-  const [tab, setTab] = useState<WorkspaceTab>('inbox');
+  const [tab, setTab] = useState<WorkspaceTab>('activity');
   const [templateName, setTemplateName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [activitySourceFilter, setActivitySourceFilter] = useState<'all' | 'agent' | 'user' | 'system'>('all');
@@ -44,9 +42,6 @@ export const WorkspaceModal: React.FC<WorkspaceModalProps> = ({
     return () => window.removeEventListener('keydown', handleKey);
   }, [isOpen, onClose]);
 
-  const inboxBlocks = useMemo(() => blocks
-    .filter(block => getAgentStatus(block))
-    .sort((a, b) => b.updatedAt - a.updatedAt), [blocks]);
   const visibleActivities = activeProject
     ? activities.filter(entry => !entry.projectId || entry.projectId === activeProject.id)
     : activities;
@@ -64,41 +59,6 @@ export const WorkspaceModal: React.FC<WorkspaceModalProps> = ({
   }, [visibleActivities, activitySourceFilter, activitySearchQuery]);
 
   if (!isOpen) return null;
-
-  const updateStatus = async (block: Block, status: AgentStatus | null) => {
-    if (block.kind === 'task' && block.task) {
-      const taskStatus = status ? status.replace('agent-', '') as TaskStatus : 'draft';
-      if (taskStatus === 'claimed' && !block.task.claim) {
-        setError('A task can only be claimed through Auto Task Pickup.');
-        return;
-      }
-      const nextTask = {
-        ...block.task,
-        status: taskStatus,
-        claim: taskStatus === 'claimed' ? block.task.claim : undefined,
-        ...(taskStatus === 'ready' ? { readyAt: Date.now() } : {})
-      };
-      if (taskStatus === 'ready') {
-        const validationErrors = validateTaskReady(block.title, block.content, nextTask);
-        if (validationErrors.length > 0) {
-          setError(validationErrors.join(' '));
-          return;
-        }
-      }
-      await db.blocks.update(block.id, { task: nextTask, updatedAt: Date.now() });
-      await recordActivity({ projectId: block.projectId, blockId: block.id, action: block.task.claim && !nextTask.claim ? 'task-claim-released-by-user' : 'task-status-changed', summary: `“${block.title}” → ${status ? AGENT_STATUS_LABELS[status] : 'Draft'}` });
-      setError(null);
-      return;
-    }
-    const tags = tagsWithAgentStatus(block.tags, status);
-    await db.blocks.update(block.id, { tags, updatedAt: Date.now() });
-    await recordActivity({
-      projectId: block.projectId,
-      blockId: block.id,
-      action: 'agent-status',
-      summary: status ? `“${block.title}” → ${AGENT_STATUS_LABELS[status]}` : `“${block.title}” removed from Agent Inbox`
-    });
-  };
 
   const saveTemplate = async () => {
     const name = templateName.trim();
@@ -129,36 +89,10 @@ export const WorkspaceModal: React.FC<WorkspaceModalProps> = ({
           <button className="icon-button" onClick={onClose} title="Close"><X size={18} /></button>
         </div>
         <div className="workspace-tabs">
-          <button className={tab === 'inbox' ? 'active' : ''} onClick={() => setTab('inbox')}><Bot size={14} /> Agent Inbox</button>
           <button className={tab === 'activity' ? 'active' : ''} onClick={() => setTab('activity')}><History size={14} /> Activity</button>
           <button className={tab === 'templates' ? 'active' : ''} onClick={() => setTab('templates')}><LayoutTemplate size={14} /> Templates</button>
         </div>
         <div className="workspace-body">
-          {tab === 'inbox' && (
-            <>
-              {activeBlock && activeBlock.kind !== 'task' && !getAgentStatus(activeBlock) && (
-                <button className="workspace-primary-action" onClick={() => void updateStatus(activeBlock, 'agent-ready')}>
-                  <FilePlus2 size={14} /> Add Current Block to Agent Inbox
-                </button>
-              )}
-              {inboxBlocks.length === 0 ? <p className="workspace-empty">No work for agents yet. Add the open block to get started.</p> : inboxBlocks.map(block => {
-                const status = getAgentStatus(block)!;
-                return (
-                  <div className="workspace-row" key={block.id}>
-                    <button className="workspace-row-main" onClick={() => { onOpenBlock(block.id); onClose(); }}>
-                      <strong>{block.title}</strong>
-                      <span>{AGENT_STATUS_LABELS[status]}{block.task?.claim ? ` · ${block.task.claim.ownerId} · attempt ${block.task.claim.attempt} · until ${new Date(block.task.claim.expiresAt).toLocaleString('en-US')}` : ''}</span>
-                    </button>
-                    <select disabled={Boolean(block.task?.claim)} value={status} onChange={event => void updateStatus(block, event.target.value as AgentStatus)}>
-                      {AGENT_STATUSES.map(value => <option key={value} value={value} disabled={block.kind === 'task' && value === 'agent-claimed'}>{AGENT_STATUS_LABELS[value]}</option>)}
-                    </select>
-                    <button className="workspace-row-delete" onClick={() => void updateStatus(block, block.task?.claim ? 'agent-ready' : null)} title={block.task?.claim ? 'Release claim and mark ready again' : 'Remove from Inbox'}><X size={13} /></button>
-                  </div>
-                );
-              })}
-            </>
-          )}
-
           {tab === 'activity' && (
             <>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>

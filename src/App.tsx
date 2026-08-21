@@ -8,6 +8,7 @@ import { HorizontalLayout, type ColumnData } from './components/Navigation/Horiz
 import { WritingPanel } from './components/Editor/WritingPanel';
 import { GraphView } from './components/Graph/GraphView';
 import { StatisticsView } from './components/Statistics/StatisticsView';
+import { TasksView } from './components/Tasks/TasksView';
 import { SearchModal } from './components/Search/SearchModal';
 import { TrashModal } from './components/Modals/TrashModal';
 import { ExportImportModal } from './components/Modals/ExportImportModal';
@@ -28,7 +29,8 @@ import { resolveBlockReferences } from './utils/references';
 import { calculateAgentEditCounts } from './utils/agentEdits';
 import { buildBlockPrintDocument, type BlockPrintDraft, type BlockPrintSettings } from './utils/printDocument';
 import { repository } from './db/repository';
-import { canTransitionTask, convertContentToTask, createTaskMetadata, taskWithoutActiveClaim, TASK_TEMPLATE_HTML, validateTaskReady } from './utils/taskBlocks';
+import { canTransitionTask, convertContentToTask, createTaskMetadata, taskWithoutActiveClaim, TASK_INBOX_PROJECT_ID, validateTaskReady } from './utils/taskBlocks';
+import { relocateUserTask } from './utils/taskManagement';
 import './styles/theme.css';
 import './components/Navigation/Navigation.css';
 
@@ -57,7 +59,7 @@ export function App() {
   useEffect(() => {
     void requestPersistentStorage();
     repository.initialize().then(() => seedDemoDataIfEmpty()).then(async () => {
-      const projs = await db.projects.filter(project => !project.isTrash).toArray();
+      const projs = await db.projects.filter(project => !project.isTrash && !project.systemKind).toArray();
       if (projs.length > 0) {
         setActiveProjectId(projs[0].id);
         const rootBlocks = await db.blocks.filter(b => b.projectId === projs[0].id && b.parentId === null && !b.isTrash).toArray();
@@ -117,12 +119,13 @@ export function App() {
     return unsubscribe;
   }, []);
 
-  const projectsQuery = useLiveQuery(() => db.projects.filter(project => !project.isTrash).toArray(), []);
+  const projectsQuery = useLiveQuery(() => db.projects.filter(project => !project.isTrash && !project.systemKind).toArray(), []);
   const blocksQuery = useLiveQuery(() => db.blocks.filter(block => !block.isTrash).toArray(), []);
   const projects = useMemo(() => [...(projectsQuery ?? [])].sort(
     (a, b) => (a.order ?? a.createdAt) - (b.order ?? b.createdAt)
   ), [projectsQuery]);
   const allBlocks = useMemo(() => blocksQuery ?? [], [blocksQuery]);
+  const projectBlocksForViews = useMemo(() => allBlocks.filter(block => block.projectId !== TASK_INBOX_PROJECT_ID), [allBlocks]);
 
   const activeProject = useMemo(() => projects.find(p => p.id === activeProjectId) || null, [projects, activeProjectId]);
 
@@ -337,7 +340,7 @@ export function App() {
         projectId: activeProjectId,
         parentId: parentId,
       title: kind === 'task' ? 'New task' : 'New text block',
-        content: kind === 'task' ? TASK_TEMPLATE_HTML : '<p></p>',
+        content: '<p></p>',
         plainText: '',
         order: siblings.length,
         childCount: 0,
@@ -345,7 +348,7 @@ export function App() {
         completedTaskCount: 0,
         attachmentCount: 0,
         tags: [],
-        ...(kind === 'task' ? { kind: 'task' as const, task: createTaskMetadata(settings.defaultTaskCompletionPolicy) } : {}),
+        ...(kind === 'task' ? { kind: 'task' as const, task: createTaskMetadata() } : {}),
         isTrash: false,
         createdAt: now,
         updatedAt: now
@@ -375,7 +378,7 @@ export function App() {
       projectId: activeProjectId,
       parentId: parentId,
       title: kind === 'task' ? 'New task' : 'New child block',
-      content: kind === 'task' ? TASK_TEMPLATE_HTML : '<p></p>',
+      content: '<p></p>',
       plainText: '',
       order: children.length,
       childCount: 0,
@@ -383,7 +386,7 @@ export function App() {
       completedTaskCount: 0,
       attachmentCount: 0,
       tags: [],
-      ...(kind === 'task' ? { kind: 'task' as const, task: createTaskMetadata(settings.defaultTaskCompletionPolicy) } : {}),
+      ...(kind === 'task' ? { kind: 'task' as const, task: createTaskMetadata() } : {}),
       isTrash: false,
       createdAt: now,
       updatedAt: now
@@ -517,7 +520,7 @@ export function App() {
           ? 'task-claim-released-by-user'
           : oldTask?.status !== newTask?.status
           ? newTask?.status === 'ready' ? 'task-readiness-changed' : newTask?.status === 'done' ? 'task-completed' : 'task-status-changed'
-          : oldTask && newTask && (oldTask.agentTarget !== newTask.agentTarget || oldTask.completionPolicy !== newTask.completionPolicy || oldTask.customAgentName !== newTask.customAgentName)
+          : oldTask && newTask && (oldTask.agentTarget !== newTask.agentTarget || oldTask.customAgentName !== newTask.customAgentName)
             ? 'task-metadata-updated'
             : 'block-updated';
       await recordActivity({ projectId: block?.projectId, blockId: itemId, action, summary: block?.kind === 'task' ? `${action === 'task-claim-released-by-user' ? 'Claim released by user for' : 'Task'} “${title}”${newTask ? ` → ${newTask.status}` : ''}` : `Block “${title}” updated` });
@@ -538,7 +541,7 @@ export function App() {
     const updated: Block = {
       ...block,
       kind: 'task',
-      task: createTaskMetadata(settings.defaultTaskCompletionPolicy),
+      task: createTaskMetadata(),
       content: convertedContent,
       plainText: new DOMParser().parseFromString(convertedContent, 'text/html').body.textContent?.replace(/\s+/g, ' ').trim() ?? '',
       tags: block.tags.filter(tag => !agentStatuses.has(tag)),
@@ -546,8 +549,8 @@ export function App() {
     };
     await db.blocks.put(updated);
     await recordBlockRevision(updated, 'user', 'Block converted to task');
-    await recordActivity({ projectId: block.projectId, blockId, action: 'task-converted', summary: `Block “${block.title}” converted to draft task` });
-  }, [settings.defaultTaskCompletionPolicy]);
+    await recordActivity({ projectId: block.projectId, blockId, action: 'task-converted', summary: `Block “${block.title}” converted to inbox task` });
+  }, []);
 
   const handleDuplicate = async (item: Block | Project, type: 'project' | 'block') => {
     const now = Date.now();
@@ -572,7 +575,7 @@ export function App() {
 
         const newId = createId('block');
         const duplicatedTask = srcBlock.task
-          ? { ...taskWithoutActiveClaim(srcBlock.task, 'draft', now), status: 'draft' as const, readyAt: undefined, claimAttempt: undefined }
+          ? { ...taskWithoutActiveClaim(srcBlock.task, 'inbox', now), status: 'inbox' as const, readyAt: undefined, claimAttempt: undefined, position: now }
           : undefined;
         await db.blocks.add({
           ...srcBlock,
@@ -869,10 +872,14 @@ export function App() {
           />
         )}
 
+        {activeView === 'tasks' && (
+          <TasksView projects={projects} blocks={allBlocks} onOpenTask={openBlockById} />
+        )}
+
         {activeView === 'graph' && (
           <GraphView
             projects={projects}
-            blocks={allBlocks}
+            blocks={projectBlocksForViews}
             activeProjectId={activeProjectId}
             selectedBlockId={activeBlock?.id ?? null}
             onSelectBlock={(blockId) => openBlockById(blockId)}
@@ -886,7 +893,7 @@ export function App() {
         {activeView === 'stats' && (
           <StatisticsView
             projects={projects}
-            blocks={allBlocks}
+            blocks={projectBlocksForViews}
             activeProjectId={activeProjectId}
             onSelectProject={(projId) => {
               setActiveProjectId(projId);
@@ -904,6 +911,9 @@ export function App() {
           saveStatus={saveStatus}
           focusTitleSignal={focusTitleSignal}
           allProjectBlocks={activeProjectId ? allBlocks.filter(b => b.projectId === activeProjectId) : []}
+          taskProjects={projects}
+          allWorkspaceBlocks={allBlocks}
+          onRelocateTask={relocateUserTask}
           onReturnFocusToCards={() => {
             if (document.activeElement instanceof HTMLElement) {
               document.activeElement.blur();

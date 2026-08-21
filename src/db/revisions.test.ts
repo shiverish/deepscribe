@@ -100,7 +100,7 @@ describe('block revisions', () => {
     const taskVersion: Block = {
       ...original,
       kind: 'task',
-      task: { status: 'ready', agentTarget: 'claude', completionPolicy: 'review-required' }
+      task: { status: 'ready', agentTarget: 'claude', position: 0 }
     };
     await db.blocks.put(taskVersion);
     const revision = await recordBlockRevision(taskVersion, 'user', 'Taakversie');
@@ -108,7 +108,7 @@ describe('block revisions', () => {
 
     const restored = await restoreBlockRevision(revision!.id);
     expect(restored.kind).toBe('task');
-    expect(restored.task).toEqual({ status: 'ready', agentTarget: 'claude', completionPolicy: 'review-required' });
+    expect(restored.task).toEqual({ status: 'ready', agentTarget: 'claude', position: 0 });
   });
 
   it('does not snapshot or restore a live task claim', async () => {
@@ -117,7 +117,7 @@ describe('block revisions', () => {
       ...original,
       kind: 'task',
       task: {
-        status: 'claimed', agentTarget: 'openai', completionPolicy: 'review-required',
+        status: 'in-progress', agentTarget: 'openai', position: 0,
         claim: { ownerId: 'agent', agentTarget: 'openai', token: 'secret', requestId: 'request', claimedAt: 1, heartbeatAt: 1, expiresAt: 999, attempt: 1 }
       }
     };

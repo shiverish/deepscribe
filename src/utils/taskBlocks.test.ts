@@ -3,10 +3,10 @@ import type { Block } from '../types';
 import { canTransitionTask, createTaskMetadata, isTaskAutoPickupEligible, taskContentFromParts, taskTargetMatches, taskWithoutActiveClaim, validateTaskReady } from './taskBlocks';
 
 describe('task blocks', () => {
-  it('requires structured task content before ready', () => {
+  it('allows free-form task content before ready', () => {
     const task = { ...createTaskMetadata(), agentTarget: 'openai' as const, status: 'ready' as const };
     expect(validateTaskReady('Taak', '<h2>Doel</h2><p></p><h2>Context</h2><p></p><h2>Acceptatiecriteria</h2><ul><li><p></p></li></ul>', task))
-      .toEqual(['Enter a Goal.', 'Enter Context.', 'Add at least one acceptance criterion.']);
+      .toEqual([]);
     expect(validateTaskReady('Taak', taskContentFromParts('Werkend doel', 'Voldoende context', ['Tests slagen']), task)).toEqual([]);
   });
 
@@ -20,9 +20,9 @@ describe('task blocks', () => {
   });
 
   it('allows only explicit status transitions', () => {
-    expect(canTransitionTask('draft', 'ready')).toBe(true);
-    expect(canTransitionTask('draft', 'review')).toBe(false);
-    expect(canTransitionTask('claimed', 'review')).toBe(true);
+    expect(canTransitionTask('inbox', 'ready')).toBe(true);
+    expect(canTransitionTask('inbox', 'review')).toBe(true);
+    expect(canTransitionTask('in-progress', 'review')).toBe(true);
   });
 
   it('matches provider targets strictly and clears runtime claims from copies', () => {
@@ -30,11 +30,11 @@ describe('task blocks', () => {
     expect(taskTargetMatches({ ...createTaskMetadata(), agentTarget: 'openai' }, 'claude')).toBe(false);
     expect(taskTargetMatches({ ...createTaskMetadata(), agentTarget: 'custom', customAgentName: 'Local Agent' }, 'custom', 'local agent')).toBe(true);
     const copied = taskWithoutActiveClaim({
-      ...createTaskMetadata(), status: 'claimed', agentTarget: 'openai', claim: {
+      ...createTaskMetadata(), status: 'in-progress', agentTarget: 'openai', claim: {
         ownerId: 'agent', agentTarget: 'openai', token: 'secret', requestId: 'request', claimedAt: 1, heartbeatAt: 1, expiresAt: 2, attempt: 3
       }
-    }, 'draft');
-    expect(copied).toMatchObject({ status: 'draft' });
+    }, 'inbox');
+    expect(copied).toMatchObject({ status: 'inbox' });
     expect(copied.claim).toBeUndefined();
   });
 });

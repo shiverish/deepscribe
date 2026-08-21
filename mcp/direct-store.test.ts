@@ -12,6 +12,13 @@ function temporaryWorkspace() {
   return root;
 }
 
+function insertUserTask(store: DirectWorkspaceStore, projectId: string, parentId: string | null, title: string, options: { status?: string; agentTarget?: string; dependsOn?: string[] } = {}) {
+  const now = Date.now();
+  const block = { id: `task-${crypto.randomUUID()}`, projectId, parentId, title, content: '<p>Free task notes</p>', plainText: 'Free task notes', order: 0, childCount: 0, taskCount: 0, completedTaskCount: 0, attachmentCount: 0, tags: [], dependsOn: options.dependsOn, kind: 'task', task: { status: options.status ?? 'inbox', agentTarget: options.agentTarget ?? 'none', position: now, ...(options.status === 'ready' ? { readyAt: now } : {}) }, isTrash: false, createdAt: now, updatedAt: now };
+  store.saveBlock(block);
+  return block;
+}
+
 afterEach(() => {
   for (const root of roots.splice(0)) {
     fs.rmSync(root, { recursive: true, force: true });
@@ -33,11 +40,7 @@ describe('DirectWorkspaceStore offline MCP engine', () => {
     try {
       const project = await store.handleRequest('create_project', { title: 'Offline pickup' });
       const parent = await store.handleRequest('create_block', { projectId: project.id, title: 'Planning' });
-      const task = await store.handleRequest('create_task_block', {
-        projectId: project.id, parentId: parent.id, title: 'Offline taak', goal: 'Voer offline uit',
-        context: 'Genoeg context voor de offline runner', acceptanceCriteria: ['Resultaat gecontroleerd'], agentTarget: 'any', ready: true,
-        completionPolicy: 'auto-complete'
-      });
+      const task = insertUserTask(store, project.id, parent.id, 'Offline taak', { status: 'ready', agentTarget: 'any' });
       const claim = await store.handleRequest('claim_next_work_item', {
         projectId: project.id, agentId: 'claude-1', agentTarget: 'claude', requestId: 'offline-request', leaseSeconds: 60
       });
@@ -97,6 +100,23 @@ describe('DirectWorkspaceStore offline MCP engine', () => {
       });
       expect(project.id).toMatch(/^proj-/);
       expect(project.title).toBe('Offline Project');
+
+      const now = Date.now();
+      store.saveProject({
+        id: 'proj-system-task-inbox',
+        title: 'Workspace Inbox',
+        description: 'Internal workspace container for unassigned tasks.',
+        color: '#A78BFA',
+        order: Number.MAX_SAFE_INTEGER,
+        tags: [],
+        systemKind: 'task-inbox',
+        isTrash: false,
+        createdAt: now,
+        updatedAt: now
+      });
+      const visibleProjects = await store.handleRequest('list_projects', {});
+      expect(visibleProjects.map((item: { id: string }) => item.id)).toEqual([project.id]);
+      expect((await store.handleRequest('status', {})).projects).toBe(1);
 
       const rootBlock = await store.handleRequest('create_block', {
         projectId: project.id,
@@ -159,44 +179,16 @@ describe('DirectWorkspaceStore offline MCP engine', () => {
     }
   });
 
-  it('creates structured work items and manages todos offline', async () => {
+  it('keeps tasks and inline todos user-owned offline', async () => {
     const wsPath = temporaryWorkspace();
     const store = new DirectWorkspaceStore({ workspacePath: wsPath });
     try {
       const project = await store.handleRequest('create_project', { title: 'Todo Project' });
-      const workItem = await store.handleRequest('create_work_item', {
-        projectId: project.id,
-        title: 'Implementeer offline modus',
-        goal: 'Directe SQLite toegang toevoegen',
-        context: 'Zodat agents 24/7 kunnen werken zonder open venster',
-        acceptanceCriteria: ['Tests slagen', 'Smoke test werkt']
-      });
-
-      expect(workItem.tags).toContain('todo');
-      expect(workItem.tags).toContain('agent-ready');
-      expect(workItem.content).toContain('<h2>Goal</h2>');
-      expect(workItem.content).toContain('<h2>Context</h2>');
-
-      const todos = await store.handleRequest('add_todo', {
-        blockId: workItem.id,
-        text: 'Nieuwe subtaak toevoegen'
-      });
-      expect(todos).toHaveLength(1);
-      expect(todos[0].text).toBe('Nieuwe subtaak toevoegen');
-      expect(todos[0].completed).toBe(false);
-
-      const toggled = await store.handleRequest('set_todo_status', {
-        blockId: workItem.id,
-        taskIndex: 0,
-        completed: true
-      });
-      expect(toggled.completed).toBe(true);
-
-      const openTodos = await store.handleRequest('list_todos', { blockId: workItem.id, completed: false });
-      expect(openTodos).toHaveLength(0);
-
-      const doneTodos = await store.handleRequest('list_todos', { blockId: workItem.id, completed: true });
-      expect(doneTodos).toHaveLength(1);
+      const regular = await store.handleRequest('create_block', { projectId: project.id, title: 'Knowledge' });
+      await expect(store.handleRequest('create_work_item', { projectId: project.id, title: 'No' })).rejects.toThrow(/cannot create tasks/i);
+      await expect(store.handleRequest('create_task_block', { projectId: project.id, title: 'No' })).rejects.toThrow(/cannot create tasks/i);
+      await expect(store.handleRequest('add_todo', { blockId: regular.id, text: 'No' })).rejects.toThrow(/cannot create|Unknown/i);
+      await expect(store.handleRequest('create_block', { projectId: project.id, title: 'No todo', content: '- [ ] Hidden task' })).rejects.toThrow(/inline todos/i);
     } finally {
       store.close();
     }
@@ -207,20 +199,14 @@ describe('DirectWorkspaceStore offline MCP engine', () => {
     try {
       const project = await store.handleRequest('create_project', { title: 'Taken' });
       const parent = await store.handleRequest('create_block', { projectId: project.id, title: 'Planning' });
-      const task = await store.handleRequest('create_task_block', {
-        projectId: project.id, parentId: parent.id, title: 'Offline taak', goal: 'Maak offline taken mogelijk',
-        context: 'Direct SQLite moet hetzelfde contract volgen', acceptanceCriteria: ['Taak is valide'], agentTarget: 'any'
-      });
+      const task = insertUserTask(store, project.id, parent.id, 'Offline taak', { agentTarget: 'any' });
       expect(task.kind).toBe('task');
-      expect(task.task).toMatchObject({ status: 'draft', agentTarget: 'any', completionPolicy: 'review-required' });
-      const ready = await store.handleRequest('update_task_block', { blockId: task.id, status: 'ready' });
+      expect(task.task).toMatchObject({ status: 'inbox', agentTarget: 'any' });
+      const ready = await store.handleRequest('update_task_status', { blockId: task.id, status: 'ready' });
       expect(ready.task.status).toBe('ready');
-      await expect(store.handleRequest('update_task_block', { blockId: task.id, status: 'done' })).rejects.toThrow(/vereist review/);
-
-      const legacy = await store.handleRequest('create_block', { projectId: project.id, parentId: parent.id, title: 'Legacy', content: 'Context', tags: ['agent-ready', 'eigen-tag'] });
-      const converted = await store.handleRequest('convert_block_to_task', { blockId: legacy.id });
-      expect(converted.task.status).toBe('draft');
-      expect(converted.tags).toEqual(['eigen-tag']);
+      const done = await store.handleRequest('update_task_status', { blockId: task.id, status: 'done' });
+      expect(done.task.status).toBe('done');
+      await expect(store.handleRequest('update_block', { blockId: task.id, content: 'No' })).rejects.toThrow(/only read task content/i);
     } finally {
       store.close();
     }
@@ -256,27 +242,16 @@ describe('DirectWorkspaceStore offline MCP engine', () => {
     }
   });
 
-  it('generates and updates daily plans aggregating open tasks', async () => {
+  it('does not generate automatic task plans', async () => {
     const wsPath = temporaryWorkspace();
     const store = new DirectWorkspaceStore({ workspacePath: wsPath });
     try {
       const projA = await store.handleRequest('create_project', { title: 'Project A' });
-      const blockA = await store.handleRequest('create_block', {
-        projectId: projA.id,
-        title: 'Features',
-        content: 'Open werk'
-      });
-      await store.handleRequest('add_todo', { blockId: blockA.id, text: 'Fix bug 101' });
-
-      const plan = await store.handleRequest('get_or_create_daily_plan', {
+      await expect(store.handleRequest('get_or_create_daily_plan', {
         date: '2026-08-17',
         focus: 'Offline agent architectuur afronden'
-      });
-
-      expect(plan.title).toContain('Dagplanning');
-      expect(plan.content).toContain('Offline agent architectuur afronden');
-      expect(plan.content).toContain('Fix bug 101');
-      expect(plan.tags).toContain('date-2026-08-17');
+      })).rejects.toThrow(/cannot create task plans/i);
+      expect(projA.title).toBe('Project A');
     } finally {
       store.close();
     }
@@ -369,22 +344,8 @@ describe('DirectWorkspaceStore offline MCP engine', () => {
     const store = new DirectWorkspaceStore({ workspacePath: wsPath });
     try {
       const project = await store.handleRequest('create_project', { title: 'Direct Dependency Project' });
-      const taskA = await store.handleRequest('create_work_item', {
-        projectId: project.id,
-        title: 'Taak A: Basis API',
-        goal: 'Bouw de API endpoint',
-        context: 'Nodig voor de frontend client',
-        acceptanceCriteria: ['API reageert']
-      });
-
-      const taskB = await store.handleRequest('create_work_item', {
-        projectId: project.id,
-        title: 'Taak B: Frontend Client',
-        goal: 'Bouw de UI componenten',
-        context: 'Wacht op de Basis API',
-        acceptanceCriteria: ['UI toont data'],
-        dependsOn: [taskA.id]
-      });
+      const taskA = await store.handleRequest('create_block', { projectId: project.id, title: 'Taak A: Basis API' });
+      const taskB = await store.handleRequest('create_block', { projectId: project.id, title: 'Taak B: Frontend Client', dependsOn: [taskA.id] });
 
       expect(taskB.dependsOn).toEqual([taskA.id]);
 
@@ -426,13 +387,7 @@ describe('DirectWorkspaceStore offline MCP engine', () => {
 
       expect(project.scratchpad).toContain('SQLite direct storage active');
 
-      await store.handleRequest('create_work_item', {
-        projectId: project.id,
-        title: 'Direct Task 1',
-        goal: 'Uitvoeren van offline taak',
-        context: 'Nodig voor validatie',
-        acceptanceCriteria: ['Taak is aangemaakt']
-      });
+      insertUserTask(store, project.id, null, 'Direct Task 1');
 
       const context = await store.handleRequest('get_project_context', { projectId: project.id });
       expect(context.title).toBe('SQLite Scratchpad Project');

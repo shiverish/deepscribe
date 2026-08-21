@@ -14,7 +14,7 @@ interface KeyboardShortcutsHandlers {
   onToggleWritingPanel: () => void;
   onOpenHelp: () => void;
   onOpenSettings?: () => void;
-  onSwitchView?: (view: 'columns' | 'graph' | 'stats') => void;
+  onSwitchView?: (view: 'columns' | 'tasks' | 'graph' | 'stats') => void;
 }
 
 export function useKeyboardShortcuts({
@@ -68,11 +68,17 @@ export function useKeyboardShortcuts({
 
       if (isCtrlOrCmd && e.key === '2') {
         e.preventDefault();
-        if (onSwitchView) onSwitchView('graph');
+        if (onSwitchView) onSwitchView('tasks');
         return;
       }
 
       if (isCtrlOrCmd && e.key === '3') {
+        e.preventDefault();
+        if (onSwitchView) onSwitchView('graph');
+        return;
+      }
+
+      if (isCtrlOrCmd && e.key === '4') {
         e.preventDefault();
         if (onSwitchView) onSwitchView('stats');
         return;

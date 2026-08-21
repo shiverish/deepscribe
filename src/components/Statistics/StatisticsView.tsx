@@ -132,7 +132,7 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({
         <div className="stats-panel">
           <h2 className="stats-panel-title">
             <CheckSquare size={17} />
-            <span>Tasks & Progress</span>
+            <span>Checklist Progress</span>
           </h2>
 
           <div className="task-progress-box">
@@ -233,7 +233,7 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({
                 <th>Project</th>
                 <th>Blocks</th>
                 <th>Words</th>
-                <th>Tasks</th>
+                <th>Checklist items</th>
                 <th>Progress</th>
               </tr>
             </thead>

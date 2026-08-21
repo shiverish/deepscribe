@@ -32,7 +32,7 @@ export const HotkeyHelpModal: React.FC<HotkeyHelpModalProps> = ({ isOpen, onClos
     { key: '←', desc: 'Navigate back to the parent column' },
     { key: 'Ctrl + K', desc: 'Open global search (title, content, and tags)' },
     { key: 'Ctrl + D', desc: 'Duplicate selected block and descendant branch' },
-    { key: 'Ctrl + 1 / 2 / 3', desc: 'Switch view (Columns / Graph / Stats)' },
+    { key: 'Ctrl + 1 / 2 / 3 / 4', desc: 'Switch view (Columns / Tasks / Graph / Stats)' },
     { key: 'Ctrl + Shift + E', desc: 'Expand or collapse the fixed writing panel' },
     { key: 'Shift + ?', desc: 'Open this keyboard shortcut overview' },
   ];

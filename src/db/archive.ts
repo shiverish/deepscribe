@@ -1,5 +1,6 @@
 import type { Attachment, Block, BlockRevision, Project, RevisionSource, TaskMetadata } from '../types';
 import { sanitizeTags } from '../utils/tagUtils';
+import { normalizeTaskMetadata } from '../utils/taskBlocks';
 
 export const MAX_ARCHIVE_FILE_BYTES = 250 * 1024 * 1024;
 export const MAX_PROJECT_JSON_CHARS = 25 * 1024 * 1024;
@@ -30,28 +31,15 @@ const requiredNumber = (value: unknown, field: string): number => {
   return value;
 };
 
-const TASK_STATUSES = new Set(['draft', 'ready', 'claimed', 'blocked', 'review', 'done']);
-const TASK_AGENT_TARGETS = new Set(['none', 'openai', 'claude', 'gemini', 'custom', 'any']);
-const TASK_COMPLETION_POLICIES = new Set(['review-required', 'auto-complete']);
 const REVISION_SOURCES = new Set<RevisionSource>(['user', 'agent', 'system', 'restore']);
 
 function parseTaskMetadata(value: unknown, field: string): TaskMetadata {
-  if (!isRecord(value) || typeof value.status !== 'string' || !TASK_STATUSES.has(value.status) ||
-    typeof value.agentTarget !== 'string' || !TASK_AGENT_TARGETS.has(value.agentTarget) ||
-    typeof value.completionPolicy !== 'string' || !TASK_COMPLETION_POLICIES.has(value.completionPolicy)) {
+  if (!isRecord(value) || typeof value.status !== 'string') {
     throw new Error(`Invalid task metadata: ${field}.`);
   }
-  const customAgentName = typeof value.customAgentName === 'string' ? value.customAgentName.trim() : '';
-  if (value.agentTarget === 'custom' && !customAgentName) throw new Error(`Invalid task metadata: ${field}.customAgentName.`);
-  const status = value.status === 'claimed' ? 'ready' : value.status as TaskMetadata['status'];
-  return {
-    status,
-    agentTarget: value.agentTarget as TaskMetadata['agentTarget'],
-    completionPolicy: value.completionPolicy as TaskMetadata['completionPolicy'],
-    ...(value.agentTarget === 'custom' ? { customAgentName } : {}),
-    ...(typeof value.readyAt === 'number' && Number.isFinite(value.readyAt) ? { readyAt: value.readyAt } : {}),
-    ...(typeof value.claimAttempt === 'number' && Number.isFinite(value.claimAttempt) ? { claimAttempt: Math.max(0, Math.floor(value.claimAttempt)) } : {})
-  };
+  const normalized = normalizeTaskMetadata(value);
+  if (normalized.agentTarget === 'custom' && !normalized.customAgentName) throw new Error(`Invalid task metadata: ${field}.customAgentName.`);
+  return { ...normalized, claim: undefined, status: normalized.status === 'in-progress' ? 'ready' : normalized.status };
 }
 
 export function parseProjectArchive(raw: unknown): ProjectArchive {

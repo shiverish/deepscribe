@@ -59,8 +59,8 @@ describe('archive validation', () => {
     });
 
     const archive = parseProjectArchive(source);
-    expect(archive.blocks[1].task).toEqual({ status: 'ready', agentTarget: 'openai', completionPolicy: 'review-required' });
-    expect(archive.revisions?.[0].task).toEqual({ status: 'draft', agentTarget: 'none', completionPolicy: 'auto-complete' });
+    expect(archive.blocks[1].task).toMatchObject({ status: 'ready', agentTarget: 'openai' });
+    expect(archive.revisions?.[0].task).toMatchObject({ status: 'inbox', agentTarget: 'none' });
   });
 
   it('keeps legacy blocks untyped and rejects invalid task metadata', () => {

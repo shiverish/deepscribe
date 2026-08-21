@@ -808,21 +808,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
               </div>
 
-              <div className="setting-item">
-                <div className="setting-info">
-                  <label>New Task Completion</label>
-                  <span className="setting-description">Default policy for new task blocks; individual tasks can override it.</span>
-                </div>
-                <select
-                  value={settings.defaultTaskCompletionPolicy}
-                  onChange={event => onUpdateSettings({ defaultTaskCompletionPolicy: event.target.value as UserSettings['defaultTaskCompletionPolicy'] })}
-                  style={{ marginTop: 8, width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border-subtle)', background: 'var(--bg-deep)', color: 'var(--text-primary)' }}
-                >
-                  <option value="review-required">Review required</option>
-                  <option value="auto-complete">Complete automatically</option>
-                </select>
-              </div>
-
               {/* MCP Configuration Generator */}
               <div className="setting-item">
                 <div className="setting-info">
@@ -928,7 +913,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <div className="setting-info">
                   <label style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>💡 Recommended AI Tags &amp; Workflows</label>
                   <span className="setting-description" style={{ fontSize: '11px', lineHeight: '1.5' }}>
-                    Use tags such as <code style={{ color: 'var(--accent-color)' }}>#todo</code>, <code style={{ color: 'var(--accent-color)' }}>#agent-ready</code>, or <code style={{ color: 'var(--accent-color)' }}>#concept</code> to make tasks and knowledge blocks easy for agents to find. Ask an agent to call <code style={{ color: 'var(--accent-color)' }}>get_or_create_daily_plan</code> for a clear daily plan.
+                    Tasks are created and organized by you in the Tasks view. Agents can read existing tasks and update their progress, but cannot create or edit task content. Use tags such as <code style={{ color: 'var(--accent-color)' }}>#concept</code> to keep regular knowledge blocks discoverable.
                   </span>
                 </div>
               </div>

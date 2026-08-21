@@ -1,4 +1,4 @@
-export type ActiveView = 'columns' | 'graph' | 'stats';
+export type ActiveView = 'columns' | 'tasks' | 'graph' | 'stats';
 
 export interface Project {
   id: string;
@@ -14,6 +14,7 @@ export interface Project {
   trashedAt?: number;
   createdAt: number;
   updatedAt: number;
+  systemKind?: 'task-inbox';
 }
 
 export interface ProjectContext {
@@ -32,9 +33,8 @@ export interface ProjectContext {
   updatedAt: number;
 }
 
-export type TaskStatus = 'draft' | 'ready' | 'claimed' | 'blocked' | 'review' | 'done';
+export type TaskStatus = 'inbox' | 'ready' | 'in-progress' | 'blocked' | 'review' | 'done';
 export type TaskAgentTarget = 'none' | 'openai' | 'claude' | 'gemini' | 'custom' | 'any';
-export type TaskCompletionPolicy = 'review-required' | 'auto-complete';
 export type ClaimantAgentTarget = Exclude<TaskAgentTarget, 'none' | 'any'>;
 
 export interface TaskClaim {
@@ -53,7 +53,7 @@ export interface TaskMetadata {
   status: TaskStatus;
   agentTarget: TaskAgentTarget;
   customAgentName?: string;
-  completionPolicy: TaskCompletionPolicy;
+  position: number;
   readyAt?: number;
   claimAttempt?: number;
   claim?: TaskClaim;
@@ -223,7 +223,6 @@ export interface UserSettings {
   columnWidth: number;
   spellcheck: boolean;
   allowOfflineAgentAccess: boolean;
-  defaultTaskCompletionPolicy: TaskCompletionPolicy;
 }
 
 export const DEFAULT_USER_SETTINGS: UserSettings = {
@@ -244,6 +243,5 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
   contentWidth: 'standard',
   columnWidth: 320,
   spellcheck: true,
-  allowOfflineAgentAccess: true,
-  defaultTaskCompletionPolicy: 'review-required'
+  allowOfflineAgentAccess: true
 };

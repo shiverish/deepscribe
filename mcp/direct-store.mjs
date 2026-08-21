@@ -203,36 +203,47 @@ export function sanitizeTags(tags = []) {
 }
 
 const TASK_AGENT_TARGETS = ['none', 'openai', 'claude', 'gemini', 'custom', 'any'];
-const TASK_STATUSES = ['draft', 'ready', 'claimed', 'blocked', 'review', 'done'];
-const TASK_COMPLETION_POLICIES = ['review-required', 'auto-complete'];
+const TASK_STATUSES = ['inbox', 'ready', 'in-progress', 'blocked', 'review', 'done'];
 const CLAIMANT_AGENT_TARGETS = ['openai', 'claude', 'gemini', 'custom'];
 const CLAIM_RECEIPTS_KEY = 'task_claim_receipts';
 const DEFAULT_LEASE_SECONDS = 15 * 60;
 
-function createTaskMetadata(completionPolicy = 'review-required') {
-  return { status: 'draft', agentTarget: 'none', completionPolicy };
+function containsMarkdownTask(value) {
+  return /^\s*[-*+]\s+\[[ xX]\]\s+/m.test(String(value || ''));
+}
+
+function createTaskMetadata(position = Date.now()) {
+  return { status: 'inbox', agentTarget: 'none', position };
+}
+
+function normalizeStoredTask(block) {
+  if (!block) return block;
+  const tags = sanitizeTags(block.tags || []);
+  const legacyTag = ['agent-ready', 'agent-claimed', 'agent-blocked', 'agent-review', 'agent-done'].find(tag => tags.includes(tag));
+  const headings = [...String(block.content || '').matchAll(/<h[1-6][^>]*>\s*([^<]+?)\s*<\/h[1-6]>/gi)].map(match => match[1].trim().toLocaleLowerCase('en-US'));
+  const structuredTodo = tags.includes('todo') && (headings.includes('goal') || headings.includes('doel')) && headings.includes('context') && (headings.includes('acceptance criteria') || headings.includes('acceptatiecriteria'));
+  if (block.kind !== 'task' && !legacyTag && !structuredTodo) return block;
+  const sourceTask = block.task || { status: legacyTag === 'agent-ready' ? 'ready' : legacyTag === 'agent-claimed' ? 'in-progress' : legacyTag === 'agent-blocked' ? 'blocked' : legacyTag === 'agent-review' ? 'review' : legacyTag === 'agent-done' ? 'done' : 'inbox', agentTarget: legacyTag === 'agent-ready' ? 'any' : 'none' };
+  const legacyStatus = sourceTask.status;
+  const status = legacyStatus === 'draft' ? 'inbox' : legacyStatus === 'claimed' ? 'in-progress' : legacyStatus;
+  return { ...block, kind: 'task', tags: tags.filter(tag => !tag.startsWith('agent-')), task: { ...sourceTask, status, position: Number.isFinite(sourceTask.position) ? sourceTask.position : (block.order ?? block.createdAt ?? Date.now()) } };
 }
 
 function validateTaskMetadata(task) {
   const errors = [];
   if (!TASK_STATUSES.includes(task.status)) errors.push('The task status is invalid.');
   if (!TASK_AGENT_TARGETS.includes(task.agentTarget)) errors.push('The agent target is invalid.');
-  if (!TASK_COMPLETION_POLICIES.includes(task.completionPolicy)) errors.push('The completion policy is invalid.');
+  if (!Number.isFinite(task.position)) errors.push('The task position is invalid.');
   if (task.agentTarget === 'custom' && !String(task.customAgentName || '').trim()) errors.push('Enter a name for the other agent.');
   return errors;
 }
 
 function taskMetadataFromParams(params, current = createTaskMetadata()) {
-  const agentTarget = typeof params.agentTarget === 'string' ? params.agentTarget : current.agentTarget;
   const status = typeof params.status === 'string' ? params.status : current.status;
   const task = {
+    ...current,
     status,
-    agentTarget,
-    completionPolicy: typeof params.completionPolicy === 'string' ? params.completionPolicy : current.completionPolicy,
-    ...(agentTarget === 'custom' ? { customAgentName: typeof params.customAgentName === 'string' ? params.customAgentName.trim() : current.customAgentName } : {}),
     readyAt: status === 'ready' ? (current.status === 'ready' ? current.readyAt : Date.now()) : current.readyAt,
-    claimAttempt: current.claimAttempt,
-    claim: current.claim
   };
   const errors = validateTaskMetadata(task);
   if (errors.length) throw new Error(errors.join(' '));
@@ -250,7 +261,7 @@ function redactTaskClaim(block) {
 }
 
 function taskWithoutActiveClaim(task, fallbackStatus = 'ready', now = Date.now()) {
-  if (!task?.claim && task?.status !== 'claimed') return task ? { ...task } : task;
+  if (!task?.claim && task?.status !== 'in-progress') return task ? { ...task } : task;
   return { ...task, status: fallbackStatus, claim: undefined, ...(fallbackStatus === 'ready' ? { readyAt: task.readyAt ?? now } : {}) };
 }
 
@@ -263,51 +274,26 @@ function taskTargetMatches(task, agentTarget, customAgentName) {
 
 function isTaskClaimCandidate(block, allBlocks, agentTarget, customAgentName, now) {
   if (block.kind !== 'task' || !block.task || block.isTrash || !taskTargetMatches(block.task, agentTarget, customAgentName)) return false;
-  const available = block.task.status === 'ready' || (block.task.status === 'claimed' && block.task.claim && block.task.claim.expiresAt <= now);
+  const available = block.task.status === 'ready' || (block.task.status === 'in-progress' && block.task.claim && block.task.claim.expiresAt <= now);
   if (!available) return false;
   return !getBlockDependencyStatus(block, allBlocks).isBlocked;
 }
 
-function stripHtmlText(value) {
-  return String(value || '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/\s+/g, ' ').trim();
-}
-
-function taskSection(content, name) {
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const match = String(content || '').match(new RegExp(`<h[1-6][^>]*>\\s*${escaped}\\s*</h[1-6]>([\\s\\S]*?)(?=<h[1-6][^>]*>|$)`, 'i'));
-  return match?.[1] || '';
-}
-
-function taskSectionAny(content, names) {
-  for (const name of names) {
-    const section = taskSection(content, name);
-    if (section) return section;
-  }
-  return '';
-}
-
 function validateTaskReady(title, content, task) {
+  void content;
   const errors = validateTaskMetadata(task);
   if (!String(title || '').trim()) errors.push('Enter a title.');
-  if (!stripHtmlText(taskSectionAny(content, ['Goal', 'Doel']))) errors.push('Enter a Goal.');
-  if (!stripHtmlText(taskSection(content, 'Context'))) errors.push('Enter Context.');
-  const criteria = taskSectionAny(content, ['Acceptance Criteria', 'Acceptatiecriteria']);
-  if (!stripHtmlText(criteria) || !(criteria.match(/<li\b/gi) || []).length) errors.push('Add at least one acceptance criterion.');
   return errors;
 }
 
 function canTransitionTask(from, to) {
   if (from === to) return true;
   const transitions = {
-    draft: ['ready', 'done'], ready: ['draft', 'claimed', 'blocked', 'done'], claimed: ['ready', 'blocked', 'review', 'done'],
-    blocked: ['draft', 'ready', 'claimed'], review: ['draft', 'ready', 'done'], done: ['draft', 'ready']
+    inbox: ['ready', 'in-progress', 'blocked', 'review', 'done'], ready: ['inbox', 'in-progress', 'blocked', 'review', 'done'],
+    'in-progress': ['inbox', 'ready', 'blocked', 'review', 'done'], blocked: ['inbox', 'ready', 'in-progress', 'review', 'done'],
+    review: ['inbox', 'ready', 'in-progress', 'blocked', 'done'], done: ['inbox', 'ready', 'in-progress', 'blocked', 'review']
   };
   return Boolean(transitions[from]?.includes(to));
-}
-
-function convertContentToTask(content) {
-  const context = String(content || '').trim() && String(content).trim() !== '<p></p>' ? content : '<p></p>';
-  return `<h2>Goal</h2><p></p><h2>Context</h2>${context}<h2>Acceptance Criteria</h2><ul><li><p></p></li></ul>`;
 }
 
 export function isBlockCompleted(block) {
@@ -604,13 +590,13 @@ export class DirectWorkspaceStore {
 
   getAllBlocks() {
     this.open();
-    return this.database.prepare('SELECT json FROM blocks').all().map(row => JSON.parse(row.json));
+    return this.database.prepare('SELECT json FROM blocks').all().map(row => normalizeStoredTask(JSON.parse(row.json)));
   }
 
   getBlock(id) {
     this.open();
     const row = this.database.prepare('SELECT json FROM blocks WHERE id = ?').get(id);
-    return row ? JSON.parse(row.json) : null;
+    return row ? normalizeStoredTask(JSON.parse(row.json)) : null;
   }
 
   getAllAttachments() {
@@ -821,7 +807,7 @@ export class DirectWorkspaceStore {
 
     switch (method) {
       case 'status': {
-        const projects = this.getAllProjects().filter(p => !p.isTrash);
+        const projects = this.getAllProjects().filter(p => !p.isTrash && !p.systemKind);
         const blocks = this.getAllBlocks().filter(b => !b.isTrash);
         return {
           app: 'DeepScribe',
@@ -834,14 +820,14 @@ export class DirectWorkspaceStore {
 
       case 'list_projects': {
         const projects = this.getAllProjects()
-          .filter(p => !p.isTrash)
+          .filter(p => !p.isTrash && !p.systemKind)
           .sort((a, b) => (b.order ?? b.createdAt) - (a.order ?? a.createdAt));
         return await Promise.all(projects.map(p => this.projectWithCounts(p)));
       }
 
       case 'get_project': {
         const project = this.getProject(requireString('projectId'));
-        if (!project || project.isTrash) throw new Error('Project niet gevonden.');
+        if (!project || project.isTrash || project.systemKind) throw new Error('Project niet gevonden.');
         return await this.projectWithCounts(project);
       }
 
@@ -1033,7 +1019,7 @@ export class DirectWorkspaceStore {
 
       case 'create_project': {
         const now = Date.now();
-        const projects = this.getAllProjects().filter(p => !p.isTrash);
+        const projects = this.getAllProjects().filter(p => !p.isTrash && !p.systemKind);
         const scratchpad = optionalStr('scratchpad');
         const project = {
           id: `proj-${crypto.randomUUID()}`,
@@ -1054,6 +1040,7 @@ export class DirectWorkspaceStore {
       }
 
       case 'create_block': {
+        if (params.kind === 'task' || params.task) throw new Error('Agents cannot create tasks. Create the requested content directly in a regular block.');
         const projectId = requireString('projectId');
         const project = this.getProject(projectId);
         if (!project || project.isTrash) throw new Error('Project niet gevonden.');
@@ -1065,6 +1052,7 @@ export class DirectWorkspaceStore {
         }
 
         const rawContent = optionalStr('content') || '';
+        if (containsMarkdownTask(rawContent)) throw new Error('Agents cannot create inline todos.');
         const stats = contentStats(markdownToHtml(rawContent));
         const siblingCount = this.getAllBlocks().filter(b => b.projectId === projectId && b.parentId === parentId && !b.isTrash).length;
         const now = Date.now();
@@ -1118,6 +1106,7 @@ export class DirectWorkspaceStore {
         const target = this.getBlock(targetBlockId);
         if (!block || block.isTrash) throw new Error('Te verplaatsen blok niet gevonden.');
         if (!target || target.isTrash) throw new Error('Doelblok niet gevonden.');
+        if (block.kind === 'task' || target.kind === 'task') throw new Error('Agents cannot move tasks or move blocks into tasks.');
         if (block.projectId !== target.projectId) throw new Error('Blokken kunnen alleen binnen hetzelfde project worden verplaatst.');
         const project = this.getProject(block.projectId);
         if (!project || project.isTrash) throw new Error('Project niet gevonden.');
@@ -1186,67 +1175,26 @@ export class DirectWorkspaceStore {
       }
 
       case 'create_work_item': {
-        const goal = requireString('goal');
-        const context = requireString('context');
-        const acceptanceCriteria = Array.isArray(params.acceptanceCriteria)
-          ? params.acceptanceCriteria.filter(c => typeof c === 'string' && Boolean(c.trim())).map(c => c.trim())
-          : [];
-        if (goal.length < 10) throw new Error('goal moet minimaal 10 tekens bevatten.');
-        if (context.length < 20) throw new Error('context moet minimaal 20 tekens bevatten.');
-        if (acceptanceCriteria.length === 0) throw new Error('Minimaal één acceptanceCriterion is verplicht.');
-        const suppliedTags = Array.isArray(params.tags) ? params.tags.filter(t => typeof t === 'string') : [];
-
-        const rawDependsOn = sanitizeDependsOn(params.dependsOn);
-        const dependencyBlocks = rawDependsOn.map(id => this.getBlock(id)).filter(b => Boolean(b && !b.isTrash));
-
-        return await this.handleRequest('create_block', {
-          ...params,
-          content: formatWorkItemContent(goal, context, acceptanceCriteria, dependencyBlocks),
-          dependsOn: rawDependsOn,
-          tags: ['todo', 'agent-ready', ...suppliedTags]
-        });
+        throw new Error('Agents cannot create tasks or work items.');
       }
 
       case 'create_task_block': {
-        const projectId = requireString('projectId');
-        const parentId = requireString('parentId');
-        const parent = this.getBlock(parentId);
-        if (!parent || parent.isTrash || parent.projectId !== projectId) throw new Error('Bovenliggend blok niet gevonden.');
-        const goal = requireString('goal');
-        const context = requireString('context');
-        const acceptanceCriteria = Array.isArray(params.acceptanceCriteria)
-          ? params.acceptanceCriteria.filter(item => typeof item === 'string' && Boolean(item.trim())).map(item => item.trim())
-          : [];
-        if (!acceptanceCriteria.length) throw new Error('Minimaal één acceptanceCriterion is verplicht.');
-        const setting = this.getSetting('user_settings');
-        const defaultPolicy = setting?.value?.defaultTaskCompletionPolicy === 'auto-complete' ? 'auto-complete' : 'review-required';
-        const completionPolicy = typeof params.completionPolicy === 'string' ? params.completionPolicy : defaultPolicy;
-        const task = taskMetadataFromParams({ ...params, status: params.ready === true ? 'ready' : 'draft', completionPolicy });
-        const content = formatWorkItemContent(goal, context, acceptanceCriteria, []);
-        if (task.status === 'ready') {
-          const errors = validateTaskReady(requireString('title'), markdownToHtml(content), task);
-          if (errors.length) throw new Error(errors.join(' '));
-        }
-        const block = await this.handleRequest('create_block', { ...params, projectId, parentId, content, kind: 'task', task, tags: Array.isArray(params.tags) ? params.tags : [] });
-        return block;
+        throw new Error('Agents cannot create tasks.');
       }
 
-      case 'update_task_block': {
+      case 'update_task_status': {
         const blockId = requireString('blockId');
         const block = this.getBlock(blockId);
         if (!block || block.isTrash || block.kind !== 'task' || !block.task) throw new Error('Taakblok niet gevonden.');
         const task = taskMetadataFromParams(params, block.task);
-        if (task.status === 'claimed' && block.task.status !== 'claimed') throw new Error('Gebruik claim_next_work_item om een taak te claimen.');
-        if (block.task.claim && (task.status !== block.task.status || task.agentTarget !== block.task.agentTarget || task.completionPolicy !== block.task.completionPolicy)) {
+        if (task.status === 'in-progress' && block.task.status !== 'in-progress') throw new Error('Use claim_next_work_item to claim a task.');
+        if (block.task.claim && task.status !== block.task.status) {
           throw new Error('Een actief geclaimde taak kan alleen via transition_work_item worden gewijzigd.');
         }
         if (!canTransitionTask(block.task.status, task.status)) throw new Error('Ongeldige taakstatusovergang.');
         if (task.status === 'ready') {
           const errors = validateTaskReady(block.title, block.content, task);
           if (errors.length) throw new Error(errors.join(' '));
-        }
-        if (task.status === 'done' && block.task.status !== 'done' && task.completionPolicy === 'review-required') {
-          throw new Error('Deze taak vereist review en kan door een agent niet direct worden afgerond.');
         }
         this.recordBlockRevision(block, 'user', 'State before agent task edit');
         const now = Date.now();
@@ -1256,6 +1204,25 @@ export class DirectWorkspaceStore {
         const action = block.task.status !== task.status ? task.status === 'ready' ? 'task-readiness-changed' : task.status === 'done' ? 'task-completed' : 'task-status-changed' : 'task-metadata-updated';
         this.recordActivity({ projectId: block.projectId, blockId, source: 'agent', action, summary: `Agent changed task “${block.title}” → ${task.status}` });
         return updated;
+      }
+
+      case 'list_tasks': {
+        const projectId = optionalStr('projectId');
+        const status = optionalStr('status');
+        const now = Date.now();
+        return this.getAllBlocks().filter(block => !block.isTrash && block.kind === 'task' && block.task)
+          .filter(block => !projectId || block.projectId === projectId)
+          .filter(block => !status || block.task.status === status)
+          .filter(block => params.claimable !== true || (block.task.status === 'ready' && block.task.agentTarget !== 'none') || (block.task.status === 'in-progress' && block.task.claim?.expiresAt <= now))
+          .sort((left, right) => (left.task.position ?? left.order) - (right.task.position ?? right.order))
+          .slice(0, clampLimit(params.limit, 100))
+          .map(block => ({ ...redactTaskClaim(block), projectId: block.projectId === 'proj-system-task-inbox' ? null : block.projectId }));
+      }
+
+      case 'get_task': {
+        const block = this.getBlock(requireString('taskId'));
+        if (!block || block.isTrash || block.kind !== 'task' || !block.task) throw new Error('Task not found.');
+        return { ...redactTaskClaim(block), projectId: block.projectId === 'proj-system-task-inbox' ? null : block.projectId };
       }
 
       case 'list_claimable_work_items': {
@@ -1309,11 +1276,11 @@ export class DirectWorkspaceStore {
           const attempt = (candidate.task.claimAttempt ?? candidate.task.claim?.attempt ?? 0) + 1;
           const token = crypto.randomUUID();
           const claim = { ownerId: agentId, agentTarget, ...(customAgentName ? { customAgentName } : {}), token, requestId, claimedAt: now, heartbeatAt: now, expiresAt: now + leaseSeconds * 1000, attempt };
-          const updated = { ...candidate, task: { ...candidate.task, status: 'claimed', claimAttempt: attempt, claim }, updatedAt: now, lastAgentEditAt: now };
+          const updated = { ...candidate, task: { ...candidate.task, status: 'in-progress', claimAttempt: attempt, claim }, updatedAt: now, lastAgentEditAt: now };
           this.saveBlock(updated);
           const nextReceipts = [...receipts.filter(receipt => receipt.createdAt >= now - 7 * 86400000), { agentId, requestId, blockId: updated.id, token, createdAt: now }].slice(-500);
           this.saveSetting({ key: CLAIM_RECEIPTS_KEY, value: nextReceipts });
-          this.recordActivity({ projectId: updated.projectId, blockId: updated.id, action: candidate.task.status === 'claimed' ? 'task-claim-taken-over' : 'task-claimed', summary: `${agentId} claimed task “${updated.title}”` });
+          this.recordActivity({ projectId: updated.projectId, blockId: updated.id, action: candidate.task.status === 'in-progress' ? 'task-claim-taken-over' : 'task-claimed', summary: `${agentId} claimed task “${updated.title}”` });
           this.database.exec('COMMIT');
           return { block: redactTaskClaim(updated), claimToken: token, expiresAt: claim.expiresAt, replayed: false };
         } catch (error) {
@@ -1333,7 +1300,7 @@ export class DirectWorkspaceStore {
         try {
           const block = this.getBlock(blockId);
           const claim = block?.task?.claim;
-          if (!block || block.kind !== 'task' || block.task?.status !== 'claimed' || !claim) throw new Error('Actieve taakclaim niet gevonden.');
+          if (!block || block.kind !== 'task' || block.task?.status !== 'in-progress' || !claim) throw new Error('Actieve taakclaim niet gevonden.');
           if (claim.ownerId !== agentId || claim.token !== token) throw new Error('Claimtoken of eigenaar is ongeldig.');
           if (claim.expiresAt <= now) throw new Error('De taakclaim is verlopen.');
           const renewed = { ...claim, heartbeatAt: now, expiresAt: now + leaseSeconds * 1000 };
@@ -1360,10 +1327,9 @@ export class DirectWorkspaceStore {
         try {
           const block = this.getBlock(blockId);
           const claim = block?.task?.claim;
-          if (!block || block.kind !== 'task' || block.task?.status !== 'claimed' || !claim) throw new Error('Actieve taakclaim niet gevonden.');
+          if (!block || block.kind !== 'task' || block.task?.status !== 'in-progress' || !claim) throw new Error('Actieve taakclaim niet gevonden.');
           if (claim.ownerId !== agentId || claim.token !== token) throw new Error('Claimtoken of eigenaar is ongeldig.');
           if (claim.expiresAt <= now) throw new Error('De taakclaim is verlopen.');
-          if (status === 'done' && (block.task.completionPolicy !== 'auto-complete' || params.acceptanceChecksPassed !== true)) throw new Error('Afronden vereist auto-complete en geslaagde acceptatiecontroles.');
           const task = { ...block.task, status, claim: undefined, ...(status === 'ready' ? { readyAt: now } : {}) };
           const updated = { ...block, task, updatedAt: now, lastAgentEditAt: now };
           this.saveBlock(updated);
@@ -1381,28 +1347,14 @@ export class DirectWorkspaceStore {
         const project = this.getProject(projectId);
         if (!project || project.isTrash) throw new Error('Project niet gevonden.');
         const tasks = this.getAllBlocks()
-          .filter(block => !block.isTrash && block.projectId === projectId && block.kind === 'task' && block.task && ['ready', 'claimed'].includes(block.task.status))
+          .filter(block => !block.isTrash && block.projectId === projectId && block.kind === 'task' && block.task && ['ready', 'in-progress'].includes(block.task.status))
           .sort((left, right) => (left.task?.readyAt ?? left.updatedAt) - (right.task?.readyAt ?? right.updatedAt) || left.id.localeCompare(right.id))
           .map(redactTaskClaim);
         return { projectId, tasks };
       }
 
       case 'convert_block_to_task': {
-        const blockId = requireString('blockId');
-        const block = this.getBlock(blockId);
-        if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
-        if (block.kind === 'task') return block;
-        this.recordBlockRevision(block, 'user', 'State before conversion to task');
-        const setting = this.getSetting('user_settings');
-        const task = createTaskMetadata(setting?.value?.defaultTaskCompletionPolicy === 'auto-complete' ? 'auto-complete' : 'review-required');
-        const content = convertContentToTask(block.content);
-        const agentStatuses = new Set(['agent-ready', 'agent-claimed', 'agent-blocked', 'agent-review', 'agent-done']);
-        const now = Date.now();
-        const updated = { ...block, ...contentStats(content), kind: 'task', task, tags: (block.tags || []).filter(tag => !agentStatuses.has(tag)), updatedAt: now, lastAgentEditAt: now };
-        this.saveBlock(updated);
-        this.recordBlockRevision(updated, 'agent', 'Block converted to task');
-        this.recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'task-converted', summary: `Agent converted “${block.title}” to a draft task` });
-        return updated;
+        throw new Error('Agents cannot convert blocks to tasks.');
       }
 
       case 'update_project': {
@@ -1428,6 +1380,8 @@ export class DirectWorkspaceStore {
         const blockId = requireString('blockId');
         const block = this.getBlock(blockId);
         if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
+        if (block.kind === 'task') throw new Error('Agents can only read task content. Use update_task_status for progress.');
+        if (typeof params.content === 'string' && (block.taskCount > 0 || containsMarkdownTask(params.content))) throw new Error('Agents cannot create or edit inline todos.');
         this.recordBlockRevision(block, 'user', 'State before agent edit');
         const now = Date.now();
         const updated = { ...block, updatedAt: now, lastAgentEditAt: now };
@@ -1455,6 +1409,8 @@ export class DirectWorkspaceStore {
         const text = requireString('text');
         const block = this.getBlock(blockId);
         if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
+        if (block.kind === 'task') throw new Error('Agents can only read task content. Use update_task_status for progress.');
+        if (containsMarkdownTask(text)) throw new Error('Agents cannot create inline todos.');
         this.recordBlockRevision(block, 'user', 'State before agent addition');
         const addition = markdownToHtml(text);
         const newContent = `${block.content || '<p></p>'}${addition}`;
@@ -1479,59 +1435,11 @@ export class DirectWorkspaceStore {
       }
 
       case 'add_todo': {
-        const blockId = requireString('blockId');
-        const text = requireString('text');
-        const completed = params.completed === true;
-        const block = this.getBlock(blockId);
-        if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
-
-        this.recordBlockRevision(block, 'user', 'State before adding todo');
-        const itemHtml = `<li data-type="taskItem" data-checked="${completed}"><label><input type="checkbox"${completed ? ' checked' : ''}><span></span></label><div><p>${escapeHtml(text)}</p></div></li>`;
-        let newContent = '';
-        if (block.content && block.content.includes('</ul>')) {
-          newContent = block.content.replace(/<\/ul>$/, `${itemHtml}</ul>`);
-        } else {
-          newContent = `${block.content || '<p></p>'}<ul data-type="taskList">${itemHtml}</ul>`;
-        }
-
-        const stats = contentStats(newContent);
-        const now = Date.now();
-        const updated = { ...block, ...stats, updatedAt: now, lastAgentEditAt: now };
-        this.saveBlock(updated);
-        this.recordBlockRevision(updated, 'agent', `Agent added todo “${text}”`);
-        this.recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'todo-added', summary: `Agent added todo “${text}” to “${block.title}”` });
-        return todosFromBlock(updated);
+        throw new Error('Agents cannot create or edit inline todos.');
       }
 
       case 'set_todo_status': {
-        const blockId = requireString('blockId');
-        const taskIndex = typeof params.taskIndex === 'number' ? Math.floor(params.taskIndex) : -1;
-        if (taskIndex < 0) throw new Error('taskIndex moet nul of hoger zijn.');
-        if (typeof params.completed !== 'boolean') throw new Error('completed is verplicht.');
-        const block = this.getBlock(blockId);
-        if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
-
-        this.recordBlockRevision(block, 'user', 'State before todo status change');
-        let currentIndex = 0;
-        let replaced = false;
-        const newContent = (block.content || '').replace(/(<li\s+[^>]*data-type="taskItem"[^>]*data-checked=")(true|false)("[^>]*>)/gi, (match, prefix, _state, suffix) => {
-          if (currentIndex === taskIndex) {
-            replaced = true;
-            currentIndex += 1;
-            return `${prefix}${params.completed}${suffix}`;
-          }
-          currentIndex += 1;
-          return match;
-        });
-        if (!replaced) throw new Error('Todo niet gevonden.');
-
-        const stats = contentStats(newContent);
-        const now = Date.now();
-        const updated = { ...block, ...stats, updatedAt: now, lastAgentEditAt: now };
-        this.saveBlock(updated);
-        this.recordBlockRevision(updated, 'agent', `Agent marked todo as ${params.completed ? 'done' : 'open'}`);
-        this.recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'todo-status', summary: `Agent marked a todo in “${block.title}” as ${params.completed ? 'done' : 'open'}` });
-        return todosFromBlock(updated)[taskIndex];
+        throw new Error('Agents cannot create or edit inline todos.');
       }
 
       case 'list_block_revisions': {
@@ -1549,85 +1457,14 @@ export class DirectWorkspaceStore {
 
       case 'restore_block_revision': {
         const revisionId = requireString('revisionId');
+        const revision = this.getBlockRevision(revisionId);
+        const block = revision ? this.getBlock(revision.blockId) : null;
+        if (block?.kind === 'task' || revision?.kind === 'task') throw new Error('Agents cannot restore task revisions.');
         return this.restoreBlockRevision(revisionId);
       }
 
       case 'get_or_create_daily_plan': {
-        const dateInfo = parseDailyPlanDate(optionalStr('date'));
-        const focus = optionalStr('focus');
-        const includeOpenTasks = params.includeOpenTasks !== false;
-
-        const projects = this.getAllProjects().filter(p => !p.isTrash);
-        let project = projects.find(p => (p.tags || []).includes('planning') || (p.tags || []).includes('daily-log') || /dagplanning|daily planning/i.test(p.title));
-
-        if (!project) {
-          project = await this.handleRequest('create_project', {
-            title: 'Dagplanning & Focus',
-            description: 'Centrale dagplanningen, dagelijkse doelstellingen en werkverdeling tussen ontwikkelaar en AI-agents.',
-            color: '#10b981',
-            tags: ['planning', 'daily-log', 'focus']
-          });
-        }
-
-        const projectBlocks = this.getAllBlocks().filter(b => b.projectId === project.id && !b.isTrash);
-        let block = projectBlocks.find(b =>
-          (b.tags || []).includes(`date-${dateInfo.isoDate}`) ||
-          b.title.toLowerCase() === dateInfo.title.toLowerCase() ||
-          b.title.toLowerCase().includes(dateInfo.isoDate) ||
-          b.title.toLowerCase().includes(dateInfo.humanDate.toLowerCase())
-        );
-
-        if (!block) {
-          const openTasks = [];
-          if (includeOpenTasks) {
-            const activeProjects = this.getAllProjects().filter(p => !p.isTrash && p.id !== project.id);
-            const projectMap = new Map(activeProjects.map(p => [p.id, p.title]));
-            const allOtherBlocks = this.getAllBlocks().filter(b => !b.isTrash);
-
-            for (const b of allOtherBlocks) {
-              if (b.projectId === project.id) continue;
-              const projectTitle = projectMap.get(b.projectId);
-              if (!projectTitle) continue;
-              const depStatus = getBlockDependencyStatus(b, allOtherBlocks);
-              const statusLabel = depStatus.isBlocked
-                ? `[GEBLOKKEERD door: ${depStatus.pendingDependencies.map(d => d.title).join(', ')}]`
-                : '[READY]';
-
-              const todos = todosFromBlock(b).filter(t => !t.completed);
-              if (todos.length > 0) {
-                for (const todo of todos) openTasks.push({ projectTitle, blockTitle: b.title, text: `${statusLabel} ${todo.text}` });
-              } else if ((b.kind === 'task' && b.task?.status !== 'done') || (b.tags || []).includes('todo') || (b.tags || []).includes('agent-ready')) {
-                openTasks.push({ projectTitle, blockTitle: b.title, text: `${statusLabel} ${b.title}` });
-              }
-            }
-          }
-
-          const content = formatDailyPlanContent(focus, openTasks);
-          block = await this.handleRequest('create_block', {
-            projectId: project.id,
-            title: dateInfo.title,
-            content,
-            tags: ['planning', 'daily-log', 'agent-ready', `date-${dateInfo.isoDate}`]
-          });
-        }
-
-        const allBlocks = this.getAllBlocks().filter(b => b.projectId === project.id);
-        const byId = new Map(allBlocks.map(b => [b.id, b]));
-        const breadcrumbPath = [];
-        let current = block;
-        while (current) {
-          breadcrumbPath.unshift({ id: current.id, title: current.title });
-          current = current.parentId ? byId.get(current.parentId) : undefined;
-        }
-        const attachments = this.getAllAttachments()
-          .filter(a => a.blockId === block.id)
-          .sort((a, b) => a.createdAt - b.createdAt);
-        return {
-          ...block,
-          path: breadcrumbPath,
-          attachments: attachments.map(a => this.attachmentMetadata(a)),
-          todos: todosFromBlock(block)
-        };
+        throw new Error('Agents cannot create task plans.');
       }
 
       case 'list_activities': {

@@ -1,8 +1,8 @@
-import type { Block, ClaimantAgentTarget, TaskAgentTarget, TaskClaim, TaskCompletionPolicy, TaskMetadata, TaskStatus } from '../types';
+import type { Block, ClaimantAgentTarget, Project, TaskAgentTarget, TaskClaim, TaskMetadata, TaskStatus } from '../types';
 
 export const TASK_AGENT_TARGETS: TaskAgentTarget[] = ['none', 'openai', 'claude', 'gemini', 'custom', 'any'];
-export const TASK_STATUSES: TaskStatus[] = ['draft', 'ready', 'claimed', 'blocked', 'review', 'done'];
-export const TASK_COMPLETION_POLICIES: TaskCompletionPolicy[] = ['review-required', 'auto-complete'];
+export const TASK_STATUSES: TaskStatus[] = ['inbox', 'ready', 'in-progress', 'blocked', 'review', 'done'];
+export const TASK_INBOX_PROJECT_ID = 'proj-system-task-inbox';
 
 export const TASK_AGENT_LABELS: Record<TaskAgentTarget, string> = {
   none: 'None',
@@ -14,18 +14,55 @@ export const TASK_AGENT_LABELS: Record<TaskAgentTarget, string> = {
 };
 
 export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
-  draft: 'Draft',
+  inbox: 'Inbox',
   ready: 'Ready',
-  claimed: 'Claimed',
+  'in-progress': 'In progress',
   blocked: 'Blocked',
   review: 'Review',
   done: 'Done'
 };
 
-export const TASK_TEMPLATE_HTML = '<h2>Goal</h2><p></p><h2>Context</h2><p></p><h2>Acceptance Criteria</h2><ul><li><p></p></li></ul>';
+export function createTaskMetadata(position = Date.now()): TaskMetadata {
+  return { status: 'inbox', agentTarget: 'none', position };
+}
 
-export function createTaskMetadata(completionPolicy: TaskCompletionPolicy = 'review-required'): TaskMetadata {
-  return { status: 'draft', agentTarget: 'none', completionPolicy };
+export function createTaskInboxProject(now = Date.now()): Project {
+  return {
+    id: TASK_INBOX_PROJECT_ID,
+    title: 'Workspace Inbox',
+    description: 'Internal workspace container for unassigned tasks.',
+    color: '#A78BFA',
+    order: Number.MAX_SAFE_INTEGER,
+    tags: [],
+    isTrash: false,
+    systemKind: 'task-inbox',
+    createdAt: now,
+    updatedAt: now
+  };
+}
+
+export function isTaskInboxProject(project: Pick<Project, 'id' | 'systemKind'>): boolean {
+  return project.id === TASK_INBOX_PROJECT_ID || project.systemKind === 'task-inbox';
+}
+
+export function normalizeTaskMetadata(value: unknown, fallbackPosition = Date.now()): TaskMetadata {
+  const raw = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+  const legacyStatus = typeof raw.status === 'string' ? raw.status : 'draft';
+  const status: TaskStatus = legacyStatus === 'draft' ? 'inbox'
+    : legacyStatus === 'claimed' ? 'in-progress'
+      : TASK_STATUSES.includes(legacyStatus as TaskStatus) ? legacyStatus as TaskStatus : 'inbox';
+  const rawTarget = typeof raw.agentTarget === 'string' ? raw.agentTarget : 'none';
+  const agentTarget = TASK_AGENT_TARGETS.includes(rawTarget as TaskAgentTarget) ? rawTarget as TaskAgentTarget : 'none';
+  const position = typeof raw.position === 'number' && Number.isFinite(raw.position) ? raw.position : fallbackPosition;
+  return {
+    status,
+    agentTarget,
+    position,
+    ...(agentTarget === 'custom' && typeof raw.customAgentName === 'string' && raw.customAgentName.trim() ? { customAgentName: raw.customAgentName.trim() } : {}),
+    ...(typeof raw.readyAt === 'number' && Number.isFinite(raw.readyAt) ? { readyAt: raw.readyAt } : {}),
+    ...(typeof raw.claimAttempt === 'number' && Number.isFinite(raw.claimAttempt) ? { claimAttempt: Math.max(0, Math.floor(raw.claimAttempt)) } : {}),
+    ...(raw.claim && typeof raw.claim === 'object' ? { claim: raw.claim as TaskClaim } : {})
+  };
 }
 
 export function isTaskBlock(block: Pick<Block, 'kind' | 'task'>): boolean {
@@ -68,7 +105,7 @@ export function isTaskClaimCandidate(
   now: number
 ): boolean {
   if (block.isTrash || block.kind !== 'task' || !block.task || !taskTargetMatches(block.task, agentTarget, customAgentName)) return false;
-  const available = block.task.status === 'ready' || (block.task.status === 'claimed' && Boolean(block.task.claim && block.task.claim.expiresAt <= now));
+  const available = block.task.status === 'ready' || (block.task.status === 'in-progress' && Boolean(block.task.claim && block.task.claim.expiresAt <= now));
   if (!available) return false;
   const byId = new Map(allBlocks.map(candidate => [candidate.id, candidate]));
   return (block.dependsOn ?? []).every(id => {
@@ -107,7 +144,7 @@ export function redactTaskClaim<T extends Block>(block: T): T {
 }
 
 export function taskWithoutActiveClaim(task: TaskMetadata, fallbackStatus: TaskStatus = 'ready', now = Date.now()): TaskMetadata {
-  if (!task.claim && task.status !== 'claimed') return { ...task };
+  if (!task.claim && task.status !== 'in-progress') return { ...task };
   return {
     ...task,
     status: fallbackStatus,
@@ -120,58 +157,14 @@ export function validateTaskMetadata(task: TaskMetadata): string[] {
   const errors: string[] = [];
   if (!TASK_STATUSES.includes(task.status)) errors.push('The task status is invalid.');
   if (!TASK_AGENT_TARGETS.includes(task.agentTarget)) errors.push('The agent target is invalid.');
-  if (!TASK_COMPLETION_POLICIES.includes(task.completionPolicy)) errors.push('The completion policy is invalid.');
+  if (!Number.isFinite(task.position)) errors.push('The task position is invalid.');
   if (task.agentTarget === 'custom' && !task.customAgentName?.trim()) errors.push('Enter a name for the other agent.');
   return errors;
 }
 
-function sectionText(document: Document, acceptedHeadings: string[]): { text: string; itemCount: number } {
-  const headingNodes = [...document.body.querySelectorAll('h1,h2,h3,h4,h5,h6')];
-  const normalizedHeadings = acceptedHeadings.map(heading => heading.toLocaleLowerCase('en-US'));
-  const start = headingNodes.find(node => normalizedHeadings.includes(node.textContent?.trim().toLocaleLowerCase('en-US') ?? ''));
-  if (!start) return { text: '', itemCount: 0 };
-  const text: string[] = [];
-  let itemCount = 0;
-  let node = start.nextElementSibling;
-  while (node && !/^H[1-6]$/.test(node.tagName)) {
-    const value = node.textContent?.replace(/\s+/g, ' ').trim();
-    if (value) text.push(value);
-    itemCount += [...node.querySelectorAll('li')].filter(item => Boolean(item.textContent?.trim())).length;
-    if (node.tagName === 'LI' && value) itemCount += 1;
-    node = node.nextElementSibling;
-  }
-  return { text: text.join(' ').trim(), itemCount };
-}
-
-export function validateTaskReady(title: string, content: string, task: TaskMetadata): string[] {
+export function validateTaskReady(title: string, _content: string, task: TaskMetadata): string[] {
   const errors = validateTaskMetadata(task);
   if (!title.trim()) errors.push('Enter a title.');
-  let goal: { text: string; itemCount: number };
-  let context: { text: string; itemCount: number };
-  let criteria: { text: string; itemCount: number };
-  if (typeof DOMParser !== 'undefined') {
-    const document = new DOMParser().parseFromString(content || '', 'text/html');
-    goal = sectionText(document, ['goal', 'doel']);
-    context = sectionText(document, ['context']);
-    criteria = sectionText(document, ['acceptance criteria', 'acceptatiecriteria']);
-  } else {
-    const read = (name: string) => {
-      const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const html = content.match(new RegExp(`<h[1-6][^>]*>\\s*${escaped}\\s*</h[1-6]>([\\s\\S]*?)(?=<h[1-6][^>]*>|$)`, 'i'))?.[1] ?? '';
-      return {
-        text: html.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/\s+/g, ' ').trim(),
-        itemCount: (html.match(/<li\b/gi) ?? []).length
-      };
-    };
-    goal = read('Goal');
-    if (!goal.text) goal = read('Doel');
-    context = read('Context');
-    criteria = read('Acceptance Criteria');
-    if (!criteria.text) criteria = read('Acceptatiecriteria');
-  }
-  if (!goal.text) errors.push('Enter a Goal.');
-  if (!context.text) errors.push('Enter Context.');
-  if (!criteria.text || criteria.itemCount < 1) errors.push('Add at least one acceptance criterion.');
   return errors;
 }
 
@@ -183,19 +176,18 @@ export function taskContentFromParts(goal: string, context: string, acceptanceCr
 }
 
 export function convertContentToTask(content: string): string {
-  const context = content.trim() && content.trim() !== '<p></p>' ? content : '<p></p>';
-  return `<h2>Goal</h2><p></p><h2>Context</h2>${context}<h2>Acceptance Criteria</h2><ul><li><p></p></li></ul>`;
+  return content.trim() ? content : '<p></p>';
 }
 
 export function canTransitionTask(from: TaskStatus, to: TaskStatus): boolean {
   if (from === to) return true;
   const transitions: Record<TaskStatus, TaskStatus[]> = {
-    draft: ['ready', 'done'],
-    ready: ['draft', 'claimed', 'blocked', 'done'],
-    claimed: ['ready', 'blocked', 'review', 'done'],
-    blocked: ['draft', 'ready', 'claimed'],
-    review: ['draft', 'ready', 'done'],
-    done: ['draft', 'ready']
+    inbox: ['ready', 'in-progress', 'blocked', 'review', 'done'],
+    ready: ['inbox', 'in-progress', 'blocked', 'review', 'done'],
+    'in-progress': ['inbox', 'ready', 'blocked', 'review', 'done'],
+    blocked: ['inbox', 'ready', 'in-progress', 'review', 'done'],
+    review: ['inbox', 'ready', 'in-progress', 'blocked', 'done'],
+    done: ['inbox', 'ready', 'in-progress', 'blocked', 'review']
   };
   return transitions[from].includes(to);
 }
