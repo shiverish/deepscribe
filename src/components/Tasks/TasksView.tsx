@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Bot, Columns3, List, Plus, Search, Trash2 } from 'lucide-react';
 import type { Block, Project, TaskAgentTarget, TaskStatus } from '../../types';
-import { TASK_AGENT_LABELS, TASK_AGENT_TARGETS, TASK_STATUSES, TASK_STATUS_LABELS, TASK_INBOX_PROJECT_ID } from '../../utils/taskBlocks';
+import { taskCreatorLabel, TASK_AGENT_LABELS, TASK_AGENT_TARGETS, TASK_STATUSES, TASK_STATUS_LABELS, TASK_INBOX_PROJECT_ID } from '../../utils/taskBlocks';
 import { createUserTask, relocateUserTask, updateUserTaskAgent, updateUserTaskStatus } from '../../utils/taskManagement';
 import './Tasks.css';
 
@@ -69,6 +69,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
       <button className="task-card-open" onClick={() => onOpenTask(task.id)}>
         <strong>{task.title}</strong>
         <span>{projectLabel(task)}{contextLabel(task) ? ` · ${contextLabel(task)}` : ''}</span>
+        {taskCreatorLabel(task.task) && <span className="task-creator"><Bot size={11} /> Created by {taskCreatorLabel(task.task)}</span>}
       </button>
       <div className="task-card-meta">
         <select
@@ -144,7 +145,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
             if (source.task?.claim && !window.confirm('This task has an active claim. Move it and release the claim?')) return;
             void updateUserTaskStatus(source, task.task.status, task.task.position - 0.5).catch(cause => setError(cause.message));
           }}>
-            <button onClick={() => onOpenTask(task.id)}><strong>{task.title}</strong><span>{projectLabel(task)}{contextLabel(task) ? ` · ${contextLabel(task)}` : ''}</span></button>
+            <button onClick={() => onOpenTask(task.id)}><strong>{task.title}</strong><span>{projectLabel(task)}{contextLabel(task) ? ` · ${contextLabel(task)}` : ''}</span>{taskCreatorLabel(task.task) && <span className="task-creator"><Bot size={11} /> Created by {taskCreatorLabel(task.task)}</span>}</button>
             <select value={task.task?.status} onChange={event => void moveTask(task, event.target.value as TaskStatus)}>{TASK_STATUSES.map(status => <option key={status} value={status}>{TASK_STATUS_LABELS[status]}</option>)}</select>
             <select value={task.projectId === TASK_INBOX_PROJECT_ID ? '' : task.projectId} disabled={Boolean(task.task?.claim)} onChange={event => void relocateUserTask(task, event.target.value || null, null).catch(cause => setError(cause.message))}>
               <option value="">Workspace Inbox</option>{projects.map(project => <option key={project.id} value={project.id}>{project.title}</option>)}

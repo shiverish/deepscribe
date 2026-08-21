@@ -25,14 +25,16 @@ Use the connected DeepScribe tools as the only interface to the user's stored wo
 - Prefer targeted searches and reads over loading entire projects.
 - Preserve relevant project, hierarchy, tag, relation, attachment, and task context.
 - Use `list_todos` with `completed: false` for open work.
-- Use `list_tasks` and `get_task` for user-managed tasks. Task bodies are read-only to agents.
+- Use `list_tasks` and `get_task` for user-managed tasks. After creation, task bodies are read-only to agents.
 - Distinguish facts stored in DeepScribe from conclusions or suggestions produced during the conversation.
 - Use `list_attachments` before `read_attachment`. Read only files relevant to the request and state when a binary format cannot be interpreted reliably.
 
 ## Write safely
 
 - Read the destination immediately before writing to it.
-- Never create a task, todo, work item, checklist action, or planning placeholder. Tasks are created and organized by the user in DeepScribe.
+- Use `create_task` only for concrete future work, risks or ideas worth preserving. Search existing tasks first and reuse a stable request ID so retries do not create duplicates.
+- Every agent-created task goes to Workspace Inbox as Inbox and Unassigned. Never attempt to choose its project, context, assignment or ordering.
+- Never create a task as an administrative prelude to a change you can perform directly. Inline todos, checklist actions and planning placeholders remain user-managed.
 - When the user asks you to write content, write it directly to the intended regular knowledge block. Do not create a task first.
 - Use `update_task_status` only when reporting progress on an existing task. Never change its title, body, tags, links, dependencies, ordering, assignment, or location.
 - Use `append_to_block` when adding information so existing content remains intact.

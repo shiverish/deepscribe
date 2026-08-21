@@ -20,7 +20,7 @@ afterAll(async () => { db.close(); await db.delete(); });
 describe('user-managed tasks', () => {
   it('creates free tasks in the workspace inbox and later links them without changing content', async () => {
     const task = await createUserTask({ title: 'Set up a new project' });
-    expect(task).toMatchObject({ projectId: TASK_INBOX_PROJECT_ID, parentId: null, content: '<p></p>', kind: 'task' });
+    expect(task).toMatchObject({ projectId: TASK_INBOX_PROJECT_ID, parentId: null, content: '<p></p>', kind: 'task', task: { creator: { type: 'user' } } });
     expect(task.task?.status).toBe('inbox');
 
     const parent: Block = { id: 'context', projectId: 'project-1', parentId: null, title: 'Context', content: '<p>Keep</p>', plainText: 'Keep', order: 0, childCount: 0, taskCount: 0, completedTaskCount: 0, attachmentCount: 0, tags: [], isTrash: false, createdAt: 1, updatedAt: 1 };

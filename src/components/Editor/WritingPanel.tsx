@@ -9,7 +9,7 @@ import { extractHashtags, mergeTags, parseTag, sanitizeTags } from '../../utils/
 import { initialTagComposerState, tagComposerReducer } from '../../utils/tagComposer';
 import { getBlockDependencyStatus, detectCircularDependency, sanitizeDependsOn, isBlockCompleted } from '../../utils/dependencyUtils';
 import { DEFAULT_BLOCK_PRINT_SETTINGS, normalizeBlockPrintSettings, type BlockPrintSettings } from '../../utils/printDocument';
-import { canTransitionTask, TASK_AGENT_LABELS, TASK_AGENT_TARGETS, TASK_STATUSES, TASK_STATUS_LABELS, validateTaskReady } from '../../utils/taskBlocks';
+import { canTransitionTask, taskCreatorLabel, TASK_AGENT_LABELS, TASK_AGENT_TARGETS, TASK_STATUSES, TASK_STATUS_LABELS, validateTaskReady } from '../../utils/taskBlocks';
 import { Check, Loader2, AlertCircle, FileText, Folder, FolderOpen, Paperclip, PanelRightClose, Edit3, Plus, Tag as TagIcon, Settings2, Trash2, Link2, ArrowUpRight, X, History, Lock, CheckCircle2, Clock, Bot, ClipboardCopy, Printer } from 'lucide-react';
 import './Editor.css';
 
@@ -683,6 +683,9 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                   )}
                 </div>
               </div>
+              {taskCreatorLabel(taskMetadata) && (
+                <div className="task-creator-details"><Bot size={13} /> Created by {taskCreatorLabel(taskMetadata)}</div>
+              )}
               {taskMetadata.claim && (
                 <div className="task-claim-details">
                   <strong>{taskMetadata.claim.ownerId}</strong>

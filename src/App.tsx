@@ -575,7 +575,7 @@ export function App() {
 
         const newId = createId('block');
         const duplicatedTask = srcBlock.task
-          ? { ...taskWithoutActiveClaim(srcBlock.task, 'inbox', now), status: 'inbox' as const, readyAt: undefined, claimAttempt: undefined, position: now }
+          ? { ...taskWithoutActiveClaim(srcBlock.task, 'inbox', now), status: 'inbox' as const, readyAt: undefined, claimAttempt: undefined, position: now, creator: { type: 'user' as const } }
           : undefined;
         await db.blocks.add({
           ...srcBlock,

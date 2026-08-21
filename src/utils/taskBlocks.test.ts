@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Block } from '../types';
-import { canTransitionTask, createTaskMetadata, isTaskAutoPickupEligible, taskContentFromParts, taskTargetMatches, taskWithoutActiveClaim, validateTaskReady } from './taskBlocks';
+import { canTransitionTask, createTaskMetadata, isTaskAutoPickupEligible, normalizeTaskMetadata, taskContentFromParts, taskCreatorLabel, taskTargetMatches, taskWithoutActiveClaim, validateTaskReady } from './taskBlocks';
 
 describe('task blocks', () => {
   it('allows free-form task content before ready', () => {
@@ -36,5 +36,14 @@ describe('task blocks', () => {
     }, 'inbox');
     expect(copied).toMatchObject({ status: 'inbox' });
     expect(copied.claim).toBeUndefined();
+  });
+
+  it('normalizes immutable creator provenance and labels only agent creators', () => {
+    expect(taskCreatorLabel(createTaskMetadata())).toBeNull();
+    const normalized = normalizeTaskMetadata({ status: 'inbox', agentTarget: 'none', position: 1, creator: { type: 'agent', agentTarget: 'openai', agentId: ' codex-1 ', requestId: ' request-1 ' } });
+    expect(normalized.creator).toEqual({ type: 'agent', agentTarget: 'openai', agentId: 'codex-1', requestId: 'request-1' });
+    expect(taskCreatorLabel(normalized)).toBe('Codex/ChatGPT');
+    expect(taskCreatorLabel(normalizeTaskMetadata({ status: 'inbox', agentTarget: 'none', position: 1, creator: { type: 'agent', agentTarget: 'custom', agentId: 'local', requestId: 'request', customAgentName: 'Local Agent' } }))).toBe('Local Agent');
+    expect(normalizeTaskMetadata({ status: 'inbox', agentTarget: 'none', position: 1, creator: { type: 'agent', agentTarget: 'custom', agentId: 'local', requestId: 'request' } }).creator).toBeUndefined();
   });
 });

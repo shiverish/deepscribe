@@ -179,7 +179,7 @@ describe('DirectWorkspaceStore offline MCP engine', () => {
     }
   });
 
-  it('keeps tasks and inline todos user-owned offline', async () => {
+  it('allows only create_task to create agent tasks offline', async () => {
     const wsPath = temporaryWorkspace();
     const store = new DirectWorkspaceStore({ workspacePath: wsPath });
     try {
@@ -189,6 +189,39 @@ describe('DirectWorkspaceStore offline MCP engine', () => {
       await expect(store.handleRequest('create_task_block', { projectId: project.id, title: 'No' })).rejects.toThrow(/cannot create tasks/i);
       await expect(store.handleRequest('add_todo', { blockId: regular.id, text: 'No' })).rejects.toThrow(/cannot create|Unknown/i);
       await expect(store.handleRequest('create_block', { projectId: project.id, title: 'No todo', content: '- [ ] Hidden task' })).rejects.toThrow(/inline todos/i);
+    } finally {
+      store.close();
+    }
+  });
+
+  it('creates attributed Inbox tasks idempotently in direct SQLite mode', async () => {
+    const store = new DirectWorkspaceStore({ workspacePath: temporaryWorkspace() });
+    try {
+      const providers = [
+        { agentTarget: 'openai', agentId: 'codex-1', requestId: 'same-request' },
+        { agentTarget: 'claude', agentId: 'claude-1', requestId: 'same-request' },
+        { agentTarget: 'gemini', agentId: 'gemini-1', requestId: 'same-request' },
+        { agentTarget: 'custom', customAgentName: 'Local Agent', agentId: 'local-1', requestId: 'same-request' }
+      ];
+      const created = [];
+      for (const [index, provider] of providers.entries()) {
+        const task = await store.handleRequest('create_task', { ...provider, title: `Offline agent task ${index + 1}`, content: index === 0 ? 'Free **notes**.' : undefined, projectId: 'ignored', status: 'ready' });
+        const stored = store.getBlock(task.id);
+        expect(task.projectId).toBeNull();
+        expect(stored).toMatchObject({ projectId: 'proj-system-task-inbox', parentId: null, kind: 'task', task: { status: 'inbox', agentTarget: 'none', position: index, creator: { type: 'agent', agentTarget: provider.agentTarget, agentId: provider.agentId, requestId: provider.requestId } } });
+        created.push(task);
+      }
+      const replay = await store.handleRequest('create_task', { ...providers[0], title: 'Changed retry title' });
+      expect(replay.id).toBe(created[0].id);
+      expect(store.getBlock(created[0].id).title).toBe('Offline agent task 1');
+      expect(store.getBlock(created[0].id).content).toContain('<strong>notes</strong>');
+      await expect(store.handleRequest('update_block', { blockId: created[0].id, content: 'No edit' })).rejects.toThrow(/only read task content/i);
+      const completed = await store.handleRequest('update_task_status', { blockId: created[0].id, status: 'done' });
+      expect(completed.task.creator).toMatchObject({ type: 'agent', agentTarget: 'openai', agentId: 'codex-1', requestId: 'same-request' });
+      expect((await store.handleRequest('list_projects', {})).some(project => project.id === 'proj-system-task-inbox')).toBe(false);
+      await expect(store.handleRequest('create_task', { agentTarget: 'custom', agentId: 'local', requestId: 'missing-name', title: 'No' })).rejects.toThrow(/customAgentName/);
+      await expect(store.handleRequest('create_task', { ...providers[0], requestId: 'inline', title: 'No checklist', content: '- [ ] hidden' })).rejects.toThrow(/inline todos/i);
+      await expect(store.handleRequest('create_block', { projectId: 'proj-system-task-inbox', title: 'No regular block' })).rejects.toThrow(/Workspace Inbox/i);
     } finally {
       store.close();
     }

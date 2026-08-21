@@ -94,6 +94,8 @@ export async function restoreBlockRevision(revisionId: string): Promise<Block> {
   const completedMatches = [...revision.content.matchAll(/<li\s+[^>]*data-type="taskItem"[^>]*data-checked="true"[^>]*>/gi)];
 
   const now = Date.now();
+  const restoredTask = revision.task ? taskWithoutActiveClaim(revision.task) : undefined;
+  if (restoredTask && currentBlock.task?.creator) restoredTask.creator = currentBlock.task.creator;
   const updatedBlock: Block = {
     ...currentBlock,
     title: revision.title,
@@ -103,7 +105,7 @@ export async function restoreBlockRevision(revisionId: string): Promise<Block> {
     completedTaskCount: completedMatches.length,
     tags: sanitizeTags(revision.tags),
     kind: revision.kind,
-    task: revision.task ? taskWithoutActiveClaim(revision.task) : undefined,
+    task: restoredTask,
     updatedAt: now
   };
 

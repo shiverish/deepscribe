@@ -19,6 +19,7 @@
 .task-card { border: 1px solid var(--border-subtle); border-radius: 8px; background: var(--bg-surface); padding: 9px; }
 .task-card-open, .task-list-row > button { width: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; border: 0; background: none; color: inherit; text-align: left; cursor: pointer; }
 .task-card-open span, .task-list-row span { color: var(--text-muted); font-size: .7rem; }
+.task-card-open .task-creator, .task-list-row .task-creator { display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); }
 .task-card-meta { margin-top: 8px; justify-content: space-between; }
 .task-card select { min-width: 0; max-width: 130px; padding: 4px; font-size: .68rem; }
 .task-card-delete { display: inline-flex; border: 0; background: transparent; color: var(--text-muted); cursor: pointer; padding: 4px; }

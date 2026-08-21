@@ -21,7 +21,7 @@ function parsed(result) {
 try {
   await client.connect(transport);
   const tools = await client.listTools();
-  const expectedTools = ['status', 'list_projects', 'get_block', 'list_tasks', 'get_task', 'update_task_status', 'list_attachments', 'read_attachment', 'search', 'create_block', 'move_block', 'list_claimable_work_items', 'claim_next_work_item', 'renew_work_item_claim', 'transition_work_item', 'list_todos'];
+  const expectedTools = ['status', 'list_projects', 'get_block', 'create_task', 'list_tasks', 'get_task', 'update_task_status', 'list_attachments', 'read_attachment', 'search', 'create_block', 'move_block', 'list_claimable_work_items', 'claim_next_work_item', 'renew_work_item_claim', 'transition_work_item', 'list_todos'];
   for (const name of expectedTools) {
     if (!tools.tools.some(tool => tool.name === name)) throw new Error(`MCP-tool ontbreekt: ${name}`);
   }
@@ -54,14 +54,19 @@ try {
     }));
     const block = parsed(await client.callTool({
       name: 'create_block',
-      arguments: { projectId: project.id, title: 'Agent concept', content: 'Eerste concept via MCP.', tags: ['concept', 'agent-ready'] }
+      arguments: { projectId: project.id, title: 'Agent concept', content: 'Eerste concept via MCP.', tags: ['concept'] }
     }));
     parsed(await client.callTool({ name: 'append_to_block', arguments: { blockId: block.id, text: 'Aanvullende context blijft behouden.' } }));
+    const task = parsed(await client.callTool({
+      name: 'create_task',
+      arguments: { title: 'MCP smoke follow-up', content: 'Concrete follow-up created by the MCP smoke test.', agentId: 'mcp-smoke', agentTarget: 'openai', requestId: `smoke-${project.id}` }
+    }));
     report.writeTest = {
       projectId: project.id,
       blockId: block.id,
       block: parsed(await client.callTool({ name: 'get_block', arguments: { blockId: block.id } })),
-      tasks: parsed(await client.callTool({ name: 'list_tasks', arguments: { projectId: project.id } }))
+      task,
+      tasks: parsed(await client.callTool({ name: 'list_tasks', arguments: { status: 'inbox' } }))
     };
   }
 

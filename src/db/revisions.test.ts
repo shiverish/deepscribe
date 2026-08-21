@@ -118,6 +118,7 @@ describe('block revisions', () => {
       kind: 'task',
       task: {
         status: 'in-progress', agentTarget: 'openai', position: 0,
+        creator: { type: 'agent', agentTarget: 'openai', agentId: 'codex-1', requestId: 'create-1' },
         claim: { ownerId: 'agent', agentTarget: 'openai', token: 'secret', requestId: 'request', claimedAt: 1, heartbeatAt: 1, expiresAt: 999, attempt: 1 }
       }
     };
@@ -128,6 +129,7 @@ describe('block revisions', () => {
     const restored = await restoreBlockRevision(revision!.id);
     expect(restored.task?.status).toBe('ready');
     expect(restored.task?.claim).toBeUndefined();
+    expect(restored.task?.creator).toEqual({ type: 'agent', agentTarget: 'openai', agentId: 'codex-1', requestId: 'create-1' });
   });
 
   it('prunes older revisions beyond maxKeep', async () => {

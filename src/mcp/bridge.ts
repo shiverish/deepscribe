@@ -6,7 +6,7 @@ import type { Attachment, Block, ClaimantAgentTarget, Project, ActivityEntry, Ac
 import { sanitizeTags } from '../utils/tagUtils';
 import { rankBlocksLocally } from '../utils/semanticSearch';
 import { isDescendantOrSelf, moveBlockInTree } from '../utils/dragAndDrop';
-import { canTransitionTask, createTaskClaim, createTaskMetadata, isTaskClaimCandidate, isTaskInboxProject, normalizeLeaseSeconds, redactTaskClaim, validateTaskMetadata, validateTaskReady } from '../utils/taskBlocks';
+import { canTransitionTask, createTaskClaim, createTaskInboxProject, createTaskMetadata, isTaskClaimCandidate, isTaskInboxProject, normalizeLeaseSeconds, redactTaskClaim, taskCreatorLabel, TASK_INBOX_PROJECT_ID, validateTaskMetadata, validateTaskReady } from '../utils/taskBlocks';
 
 type JsonObject = Record<string, unknown>;
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
@@ -307,6 +307,7 @@ async function getProjectContext(params: JsonObject) {
   const projectId = requiredString(params, 'projectId');
   const project = await db.projects.get(projectId);
   if (!project || project.isTrash) throw new Error('Project niet gevonden.');
+  if (isTaskInboxProject(project)) throw new Error('The Workspace Inbox only accepts tasks created through create_task.');
 
   const blocks = await db.blocks.where('projectId').equals(projectId).filter(b => !b.isTrash).toArray();
   const openTasks: Array<{ blockId: string; blockTitle: string; text: string; isBlocked?: boolean }> = [];
@@ -402,6 +403,7 @@ async function createBlock(params: JsonObject) {
   const projectId = requiredString(params, 'projectId');
   const project = await db.projects.get(projectId);
   if (!project || project.isTrash) throw new Error('Project niet gevonden.');
+  if (isTaskInboxProject(project)) throw new Error('The Workspace Inbox only accepts tasks created through create_task.');
 
   const parentId = typeof params.parentId === 'string' && params.parentId ? params.parentId : null;
   if (parentId) {
@@ -467,6 +469,59 @@ export async function createTaskBlock(params: JsonObject) {
   throw new Error('Agents cannot create tasks.');
 }
 
+async function createAgentTask(params: JsonObject) {
+  const { agentId, requestId, agentTarget, customAgentName } = claimantFromParams(params);
+  if (!requestId) throw new Error('requestId is required.');
+  const title = requiredString(params, 'title');
+  const rawContent = optionalString(params, 'content') || '';
+  if (containsMarkdownTask(rawContent)) throw new Error('Agents cannot create inline todos inside tasks.');
+  const now = Date.now();
+  const result = await db.transaction('rw', [db.projects, db.blocks], async () => {
+    const replay = await db.blocks.filter(block => block.kind === 'task'
+      && block.task?.creator?.type === 'agent'
+      && block.task.creator.agentId === agentId
+      && block.task.creator.requestId === requestId).first();
+    if (replay) return { block: replay, created: false };
+    if (!await db.projects.get(TASK_INBOX_PROJECT_ID)) await db.projects.add(createTaskInboxProject(now));
+    const inboxTasks = await db.blocks.filter(block => !block.isTrash && block.projectId === TASK_INBOX_PROJECT_ID && block.kind === 'task' && block.task?.status === 'inbox').toArray();
+    const position = inboxTasks.reduce((highest, block) => Math.max(highest, block.task?.position ?? -1), -1) + 1;
+    const order = await db.blocks.filter(block => !block.isTrash && block.projectId === TASK_INBOX_PROJECT_ID && block.parentId === null).count();
+    const block: Block = {
+      id: `block-${crypto.randomUUID()}`,
+      projectId: TASK_INBOX_PROJECT_ID,
+      parentId: null,
+      title,
+      ...contentStats(markdownToHtml(rawContent)),
+      order,
+      childCount: 0,
+      attachmentCount: 0,
+      tags: [],
+      kind: 'task',
+      task: createTaskMetadata(position, {
+        type: 'agent', agentTarget, agentId, requestId,
+        ...(agentTarget === 'custom' ? { customAgentName } : {})
+      }),
+      lastAgentEditAt: now,
+      isTrash: false,
+      createdAt: now,
+      updatedAt: now
+    };
+    await db.blocks.add(block);
+    return { block, created: true };
+  });
+  if (result.created) {
+    await recordBlockRevision(result.block, 'agent', 'Initial task creation by agent');
+    await recordActivity({
+      projectId: TASK_INBOX_PROJECT_ID,
+      blockId: result.block.id,
+      source: 'agent',
+      action: 'task-created',
+      summary: `${taskCreatorLabel(result.block.task) ?? 'Agent'} created task “${title}” in Workspace Inbox`
+    });
+  }
+  return { ...result.block, projectId: null };
+}
+
 async function updateTaskBlock(params: JsonObject) {
   const blockId = requiredString(params, 'blockId');
   const block = await db.blocks.get(blockId);
@@ -494,10 +549,10 @@ function claimantFromParams(params: JsonObject) {
   const agentId = requiredString(params, 'agentId');
   const requestId = optionalString(params, 'requestId')?.trim();
   const rawTarget = requiredString(params, 'agentTarget');
-  if (!['openai', 'claude', 'gemini', 'custom'].includes(rawTarget)) throw new Error('agentTarget is ongeldig voor een claimant.');
+  if (!['openai', 'claude', 'gemini', 'custom'].includes(rawTarget)) throw new Error('agentTarget is invalid for an agent.');
   const agentTarget = rawTarget as ClaimantAgentTarget;
   const customAgentName = optionalString(params, 'customAgentName')?.trim();
-  if (agentTarget === 'custom' && !customAgentName) throw new Error('customAgentName is verplicht voor een custom claimant.');
+  if (agentTarget === 'custom' && !customAgentName) throw new Error('customAgentName is required for a custom agent.');
   return { agentId, requestId, agentTarget, customAgentName };
 }
 
@@ -1077,6 +1132,8 @@ export async function handleMcpBridgeRequest(method: string, rawParams: unknown)
       return await createProject(params);
     case 'create_block':
       return await createBlock(params);
+    case 'create_task':
+      return await createAgentTask(params);
     case 'move_block':
       return await moveBlock(params);
     case 'create_work_item':

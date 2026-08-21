@@ -47,20 +47,20 @@ describe('archive validation', () => {
     const source = validArchive();
     Object.assign(source.blocks[1], {
       kind: 'task',
-      task: { status: 'ready', agentTarget: 'openai', completionPolicy: 'review-required' }
+      task: { status: 'ready', agentTarget: 'openai', completionPolicy: 'review-required', creator: { type: 'agent', agentTarget: 'openai', agentId: 'codex-1', requestId: 'create-1' } }
     });
     Object.assign(source, {
       revisions: [{
         id: 'revision-1', blockId: 'child', projectId: 'project-1', title: 'Scène', content: '<p>Oud</p>',
         plainText: 'Oud', tags: [], kind: 'task',
-        task: { status: 'draft', agentTarget: 'none', completionPolicy: 'auto-complete' },
+        task: { status: 'draft', agentTarget: 'none', completionPolicy: 'auto-complete', creator: { type: 'agent', agentTarget: 'custom', agentId: 'local-1', requestId: 'create-2', customAgentName: 'Local Agent' } },
         source: 'user', createdAt: 3
       }]
     });
 
     const archive = parseProjectArchive(source);
-    expect(archive.blocks[1].task).toMatchObject({ status: 'ready', agentTarget: 'openai' });
-    expect(archive.revisions?.[0].task).toMatchObject({ status: 'inbox', agentTarget: 'none' });
+    expect(archive.blocks[1].task).toMatchObject({ status: 'ready', agentTarget: 'openai', creator: { type: 'agent', agentTarget: 'openai', agentId: 'codex-1', requestId: 'create-1' } });
+    expect(archive.revisions?.[0].task).toMatchObject({ status: 'inbox', agentTarget: 'none', creator: { type: 'agent', agentTarget: 'custom', customAgentName: 'Local Agent' } });
   });
 
   it('keeps legacy blocks untyped and rejects invalid task metadata', () => {

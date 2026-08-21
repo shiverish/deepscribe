@@ -3,7 +3,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../db/db';
 import type { Block, Project } from '../types';
 import { formatDailyPlanContent, formatWorkItemContent, handleMcpBridgeRequest, markdownToHtml } from './bridge';
-import { createTaskMetadata } from '../utils/taskBlocks';
+import { createTaskMetadata, taskCreatorLabel, TASK_INBOX_PROJECT_ID } from '../utils/taskBlocks';
 
 async function insertUserTask(projectId: string, parentId: string | null, title: string, task: Block['task'], dependsOn?: string[]) {
   const now = Date.now();
@@ -78,7 +78,44 @@ describe('DeepScribe MCP work items', () => {
 });
 
 describe('DeepScribe MCP task blocks', () => {
-  it('keeps task creation and content user-owned while allowing reads and status updates', async () => {
+  it('creates attributed tasks idempotently at the bottom of Workspace Inbox', async () => {
+    const project = await handleMcpBridgeRequest('create_project', { title: 'Ignored destination' }) as Project;
+    const providers = [
+      { agentTarget: 'openai', agentId: 'codex-1', requestId: 'create-1', label: 'Codex/ChatGPT' },
+      { agentTarget: 'claude', agentId: 'claude-1', requestId: 'create-1', label: 'Claude' },
+      { agentTarget: 'gemini', agentId: 'gemini-1', requestId: 'create-1', label: 'Gemini' },
+      { agentTarget: 'custom', customAgentName: 'Local Agent', agentId: 'local-1', requestId: 'create-1', label: 'Local Agent' }
+    ] as const;
+    const created: Block[] = [];
+    for (const [index, provider] of providers.entries()) {
+      const task = await handleMcpBridgeRequest('create_task', {
+        ...provider,
+        title: `Agent task ${index + 1}`,
+        content: index === 0 ? 'Free **task** notes.' : undefined,
+        projectId: project.id,
+        parentId: 'ignored',
+        status: 'ready',
+        assignment: 'any'
+      }) as Block;
+      const stored = await db.blocks.get(task.id);
+      expect(task.projectId).toBeNull();
+      expect(stored).toMatchObject({ projectId: TASK_INBOX_PROJECT_ID, parentId: null, kind: 'task', task: { status: 'inbox', agentTarget: 'none', position: index, creator: { type: 'agent', agentTarget: provider.agentTarget, agentId: provider.agentId, requestId: provider.requestId } } });
+      expect(taskCreatorLabel(stored?.task)).toBe(provider.label);
+      created.push(task);
+    }
+    expect((await db.blocks.get(created[0].id))?.content).toContain('<strong>task</strong>');
+    const replay = await handleMcpBridgeRequest('create_task', { ...providers[0], title: 'Changed retry title' }) as Block;
+    expect(replay.id).toBe(created[0].id);
+    expect((await db.blocks.get(created[0].id))?.title).toBe('Agent task 1');
+    await expect(handleMcpBridgeRequest('update_block', { blockId: created[0].id, content: 'No edit' })).rejects.toThrow(/only read task content/i);
+    const completed = await handleMcpBridgeRequest('update_task_status', { blockId: created[0].id, status: 'done' }) as Block;
+    expect(completed.task?.creator).toMatchObject({ type: 'agent', agentTarget: 'openai', agentId: 'codex-1', requestId: 'create-1' });
+    expect(await db.activities.where('action').equals('task-created').count()).toBe(4);
+    await expect(handleMcpBridgeRequest('create_task', { ...providers[0], requestId: 'inline', title: 'No checklist', content: '- [ ] hidden todo' })).rejects.toThrow(/inline todos/i);
+    await expect(handleMcpBridgeRequest('create_block', { projectId: TASK_INBOX_PROJECT_ID, title: 'No regular block' })).rejects.toThrow(/Workspace Inbox/i);
+  });
+
+  it('keeps task content user-owned after creation while allowing reads and status updates', async () => {
     const project = await handleMcpBridgeRequest('create_project', { title: 'Taken' }) as Project;
     const parent = await handleMcpBridgeRequest('create_block', { projectId: project.id, title: 'Planning' }) as Block;
     await expect(handleMcpBridgeRequest('create_task_block', { projectId: project.id, parentId: parent.id, title: 'No' })).rejects.toThrow(/cannot create or edit tasks/i);

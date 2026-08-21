@@ -205,6 +205,8 @@ export function sanitizeTags(tags = []) {
 const TASK_AGENT_TARGETS = ['none', 'openai', 'claude', 'gemini', 'custom', 'any'];
 const TASK_STATUSES = ['inbox', 'ready', 'in-progress', 'blocked', 'review', 'done'];
 const CLAIMANT_AGENT_TARGETS = ['openai', 'claude', 'gemini', 'custom'];
+const TASK_INBOX_PROJECT_ID = 'proj-system-task-inbox';
+const TASK_CREATOR_LABELS = { openai: 'Codex/ChatGPT', claude: 'Claude', gemini: 'Gemini', custom: 'Other' };
 const CLAIM_RECEIPTS_KEY = 'task_claim_receipts';
 const DEFAULT_LEASE_SECONDS = 15 * 60;
 
@@ -212,8 +214,25 @@ function containsMarkdownTask(value) {
   return /^\s*[-*+]\s+\[[ xX]\]\s+/m.test(String(value || ''));
 }
 
-function createTaskMetadata(position = Date.now()) {
-  return { status: 'inbox', agentTarget: 'none', position };
+function createTaskMetadata(position = Date.now(), creator = { type: 'user' }) {
+  return { status: 'inbox', agentTarget: 'none', position, creator };
+}
+
+function normalizeTaskCreator(value) {
+  if (!value || typeof value !== 'object') return undefined;
+  if (value.type === 'user') return { type: 'user' };
+  const agentId = typeof value.agentId === 'string' ? value.agentId.trim() : '';
+  const requestId = typeof value.requestId === 'string' ? value.requestId.trim() : '';
+  const agentTarget = value.agentTarget;
+  const customAgentName = typeof value.customAgentName === 'string' ? value.customAgentName.trim() : '';
+  if (value.type !== 'agent' || !agentId || !requestId || !CLAIMANT_AGENT_TARGETS.includes(agentTarget) || (agentTarget === 'custom' && !customAgentName)) return undefined;
+  return { type: 'agent', agentTarget, agentId, requestId, ...(agentTarget === 'custom' ? { customAgentName } : {}) };
+}
+
+function taskCreatorLabel(task) {
+  const creator = task?.creator;
+  if (!creator || creator.type !== 'agent') return null;
+  return creator.agentTarget === 'custom' ? creator.customAgentName || TASK_CREATOR_LABELS.custom : TASK_CREATOR_LABELS[creator.agentTarget];
 }
 
 function normalizeStoredTask(block) {
@@ -226,7 +245,11 @@ function normalizeStoredTask(block) {
   const sourceTask = block.task || { status: legacyTag === 'agent-ready' ? 'ready' : legacyTag === 'agent-claimed' ? 'in-progress' : legacyTag === 'agent-blocked' ? 'blocked' : legacyTag === 'agent-review' ? 'review' : legacyTag === 'agent-done' ? 'done' : 'inbox', agentTarget: legacyTag === 'agent-ready' ? 'any' : 'none' };
   const legacyStatus = sourceTask.status;
   const status = legacyStatus === 'draft' ? 'inbox' : legacyStatus === 'claimed' ? 'in-progress' : legacyStatus;
-  return { ...block, kind: 'task', tags: tags.filter(tag => !tag.startsWith('agent-')), task: { ...sourceTask, status, position: Number.isFinite(sourceTask.position) ? sourceTask.position : (block.order ?? block.createdAt ?? Date.now()) } };
+  const creator = normalizeTaskCreator(sourceTask.creator);
+  const task = { ...sourceTask, status, position: Number.isFinite(sourceTask.position) ? sourceTask.position : (block.order ?? block.createdAt ?? Date.now()) };
+  if (creator) task.creator = creator;
+  else delete task.creator;
+  return { ...block, kind: 'task', tags: tags.filter(tag => !tag.startsWith('agent-')), task };
 }
 
 function validateTaskMetadata(task) {
@@ -1044,6 +1067,7 @@ export class DirectWorkspaceStore {
         const projectId = requireString('projectId');
         const project = this.getProject(projectId);
         if (!project || project.isTrash) throw new Error('Project niet gevonden.');
+        if (project.systemKind === 'task-inbox' || project.id === TASK_INBOX_PROJECT_ID) throw new Error('The Workspace Inbox only accepts tasks created through create_task.');
 
         const parentId = typeof params.parentId === 'string' && params.parentId ? params.parentId : null;
         if (parentId) {
@@ -1093,6 +1117,50 @@ export class DirectWorkspaceStore {
           summary: `Agent created ${block.kind === 'task' ? 'task' : 'block'} “${block.title}”`
         });
         return block;
+      }
+
+      case 'create_task': {
+        const agentId = requireString('agentId');
+        const requestId = requireString('requestId');
+        const agentTarget = requireString('agentTarget');
+        if (!CLAIMANT_AGENT_TARGETS.includes(agentTarget)) throw new Error('agentTarget is invalid for a task creator.');
+        const customAgentName = optionalStr('customAgentName')?.trim();
+        if (agentTarget === 'custom' && !customAgentName) throw new Error('customAgentName is required for a custom task creator.');
+        const replay = this.getAllBlocks().find(block => block.kind === 'task'
+          && block.task?.creator?.type === 'agent'
+          && block.task.creator.agentId === agentId
+          && block.task.creator.requestId === requestId);
+        if (replay) return { ...replay, projectId: null };
+        const rawContent = optionalStr('content') || '';
+        if (containsMarkdownTask(rawContent)) throw new Error('Agents cannot create inline todos inside tasks.');
+        const now = Date.now();
+        if (!this.getProject(TASK_INBOX_PROJECT_ID)) {
+          this.saveProject({ id: TASK_INBOX_PROJECT_ID, title: 'Workspace Inbox', description: 'Internal workspace container for unassigned tasks.', color: '#A78BFA', order: Number.MAX_SAFE_INTEGER, tags: [], systemKind: 'task-inbox', isTrash: false, createdAt: now, updatedAt: now });
+        }
+        const inboxTasks = this.getAllBlocks().filter(block => !block.isTrash && block.projectId === TASK_INBOX_PROJECT_ID && block.kind === 'task' && block.task?.status === 'inbox');
+        const position = inboxTasks.reduce((highest, block) => Math.max(highest, block.task?.position ?? -1), -1) + 1;
+        const order = this.getAllBlocks().filter(block => !block.isTrash && block.projectId === TASK_INBOX_PROJECT_ID && block.parentId === null).length;
+        const block = {
+          id: `block-${crypto.randomUUID()}`,
+          projectId: TASK_INBOX_PROJECT_ID,
+          parentId: null,
+          title: requireString('title'),
+          ...contentStats(markdownToHtml(rawContent)),
+          order,
+          childCount: 0,
+          attachmentCount: 0,
+          tags: [],
+          kind: 'task',
+          task: createTaskMetadata(position, { type: 'agent', agentTarget, agentId, requestId, ...(agentTarget === 'custom' ? { customAgentName } : {}) }),
+          lastAgentEditAt: now,
+          isTrash: false,
+          createdAt: now,
+          updatedAt: now
+        };
+        this.saveBlock(block);
+        this.recordBlockRevision(block, 'agent', 'Initial task creation by agent');
+        this.recordActivity({ projectId: TASK_INBOX_PROJECT_ID, blockId: block.id, source: 'agent', action: 'task-created', summary: `${taskCreatorLabel(block.task) || 'Agent'} created task “${block.title}” in Workspace Inbox` });
+        return { ...block, projectId: null };
       }
 
       case 'move_block': {

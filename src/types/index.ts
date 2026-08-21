@@ -49,11 +49,22 @@ export interface TaskClaim {
   attempt: number;
 }
 
+export type TaskCreator =
+  | { type: 'user' }
+  | {
+      type: 'agent';
+      agentTarget: ClaimantAgentTarget;
+      agentId: string;
+      requestId: string;
+      customAgentName?: string;
+    };
+
 export interface TaskMetadata {
   status: TaskStatus;
   agentTarget: TaskAgentTarget;
   customAgentName?: string;
   position: number;
+  creator?: TaskCreator;
   readyAt?: number;
   claimAttempt?: number;
   claim?: TaskClaim;

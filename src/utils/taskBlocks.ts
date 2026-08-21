@@ -1,4 +1,4 @@
-import type { Block, ClaimantAgentTarget, Project, TaskAgentTarget, TaskClaim, TaskMetadata, TaskStatus } from '../types';
+import type { Block, ClaimantAgentTarget, Project, TaskAgentTarget, TaskClaim, TaskCreator, TaskMetadata, TaskStatus } from '../types';
 
 export const TASK_AGENT_TARGETS: TaskAgentTarget[] = ['none', 'openai', 'claude', 'gemini', 'custom', 'any'];
 export const TASK_STATUSES: TaskStatus[] = ['inbox', 'ready', 'in-progress', 'blocked', 'review', 'done'];
@@ -22,8 +22,32 @@ export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
   done: 'Done'
 };
 
-export function createTaskMetadata(position = Date.now()): TaskMetadata {
-  return { status: 'inbox', agentTarget: 'none', position };
+export function createTaskMetadata(position = Date.now(), creator: TaskCreator = { type: 'user' }): TaskMetadata {
+  return { status: 'inbox', agentTarget: 'none', position, creator };
+}
+
+export function normalizeTaskCreator(value: unknown): TaskCreator | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const raw = value as Record<string, unknown>;
+  if (raw.type === 'user') return { type: 'user' };
+  if (raw.type !== 'agent' || typeof raw.agentId !== 'string' || !raw.agentId.trim() || typeof raw.requestId !== 'string' || !raw.requestId.trim()) return undefined;
+  const agentTarget = raw.agentTarget as ClaimantAgentTarget;
+  if (!['openai', 'claude', 'gemini', 'custom'].includes(agentTarget)) return undefined;
+  const customAgentName = typeof raw.customAgentName === 'string' ? raw.customAgentName.trim() : '';
+  if (agentTarget === 'custom' && !customAgentName) return undefined;
+  return {
+    type: 'agent',
+    agentTarget,
+    agentId: raw.agentId.trim(),
+    requestId: raw.requestId.trim(),
+    ...(agentTarget === 'custom' ? { customAgentName } : {})
+  };
+}
+
+export function taskCreatorLabel(task: Pick<TaskMetadata, 'creator'> | undefined): string | null {
+  const creator = task?.creator;
+  if (!creator || creator.type !== 'agent') return null;
+  return creator.agentTarget === 'custom' ? creator.customAgentName ?? TASK_AGENT_LABELS.custom : TASK_AGENT_LABELS[creator.agentTarget];
 }
 
 export function createTaskInboxProject(now = Date.now()): Project {
@@ -54,10 +78,12 @@ export function normalizeTaskMetadata(value: unknown, fallbackPosition = Date.no
   const rawTarget = typeof raw.agentTarget === 'string' ? raw.agentTarget : 'none';
   const agentTarget = TASK_AGENT_TARGETS.includes(rawTarget as TaskAgentTarget) ? rawTarget as TaskAgentTarget : 'none';
   const position = typeof raw.position === 'number' && Number.isFinite(raw.position) ? raw.position : fallbackPosition;
+  const creator = normalizeTaskCreator(raw.creator);
   return {
     status,
     agentTarget,
     position,
+    ...(creator ? { creator } : {}),
     ...(agentTarget === 'custom' && typeof raw.customAgentName === 'string' && raw.customAgentName.trim() ? { customAgentName: raw.customAgentName.trim() } : {}),
     ...(typeof raw.readyAt === 'number' && Number.isFinite(raw.readyAt) ? { readyAt: raw.readyAt } : {}),
     ...(typeof raw.claimAttempt === 'number' && Number.isFinite(raw.claimAttempt) ? { claimAttempt: Math.max(0, Math.floor(raw.claimAttempt)) } : {}),
