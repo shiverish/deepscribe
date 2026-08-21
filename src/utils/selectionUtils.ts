@@ -36,9 +36,14 @@ export function getDeleteFallbackTarget(
   }
 
   const deletedIndexInPath = currentPath.indexOf(deletedBlock.id);
-  const parentPath = deletedIndexInPath !== -1
-    ? currentPath.slice(0, deletedIndexInPath)
-    : (currentPath.length > 0 ? currentPath.slice(0, currentPath.length - 1) : []);
+  if (deletedIndexInPath === -1) {
+    return {
+      newPath: currentPath,
+      focusedId: currentPath.length > 0 ? currentPath[currentPath.length - 1] : null,
+      focusedLevel: currentPath.length
+    };
+  }
+  const parentPath = currentPath.slice(0, deletedIndexInPath);
 
   if (targetBlock) {
     const newPath = [...parentPath, targetBlock.id];

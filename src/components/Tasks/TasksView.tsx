@@ -3,16 +3,16 @@ import { Bot, Columns3, List, Plus, Search, Trash2 } from 'lucide-react';
 import type { Block, Project, TaskAgentTarget, TaskStatus } from '../../types';
 import { TASK_AGENT_LABELS, TASK_AGENT_TARGETS, TASK_STATUSES, TASK_STATUS_LABELS, TASK_INBOX_PROJECT_ID } from '../../utils/taskBlocks';
 import { createUserTask, relocateUserTask, updateUserTaskAgent, updateUserTaskStatus } from '../../utils/taskManagement';
-import { trashBlock } from '../../db/operations';
 import './Tasks.css';
 
 interface TasksViewProps {
   projects: Project[];
   blocks: Block[];
   onOpenTask: (blockId: string) => void;
+  onDeleteTask: (task: Block) => Promise<void>;
 }
 
-export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTask }) => {
+export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTask, onDeleteTask }) => {
   const [mode, setMode] = useState<'board' | 'list'>('board');
   const [query, setQuery] = useState('');
   const [projectFilter, setProjectFilter] = useState('all');
@@ -47,7 +47,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
   };
   const deleteTask = async (task: Block) => {
     if (!window.confirm(`Move task “${task.title}” to Trash?`)) return;
-    try { await trashBlock(task.id); setError(null); }
+    try { await onDeleteTask(task); setError(null); }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not delete the task.'); }
   };
 

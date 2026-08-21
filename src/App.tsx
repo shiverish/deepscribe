@@ -611,12 +611,17 @@ export function App() {
       }
     } else {
       const block = item as Block;
+      const wasSelected = selectedBlockPath.includes(block.id);
       const fallback = getDeleteFallbackTarget(block, allBlocks, selectedBlockPath);
       await trashBlock(block.id);
       await recordActivity({ projectId: block.projectId, blockId: block.id, action: 'block-trashed', summary: `Block “${block.title}” moved to trash` });
       setSelectedBlockPath(fallback.newPath);
       if (fallback.focusedId) setFocusedCardId(fallback.focusedId);
       setFocusedLevel(fallback.focusedLevel);
+      if (wasSelected && block.projectId === TASK_INBOX_PROJECT_ID && fallback.newPath.length === 0) {
+        setActiveProjectId(null);
+        setFocusedCardId(null);
+      }
     }
   };
 
@@ -873,7 +878,12 @@ export function App() {
         )}
 
         {activeView === 'tasks' && (
-          <TasksView projects={projects} blocks={allBlocks} onOpenTask={openBlockById} />
+          <TasksView
+            projects={projects}
+            blocks={allBlocks}
+            onOpenTask={openBlockById}
+            onDeleteTask={task => handleDeleteToTrash(task, 'block')}
+          />
         )}
 
         {activeView === 'graph' && (

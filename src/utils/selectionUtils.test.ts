@@ -61,4 +61,11 @@ describe('getDeleteFallbackTarget', () => {
     expect(res.focusedId).toBe('parent-1');
     expect(res.focusedLevel).toBe(1);
   });
+
+  it('preserves the active path when a different block is deleted', () => {
+    const res = getDeleteFallbackTarget(blockA, allBlocks, ['block-C']);
+    expect(res.newPath).toEqual(['block-C']);
+    expect(res.focusedId).toBe('block-C');
+    expect(res.focusedLevel).toBe(1);
+  });
 });
