@@ -66,7 +66,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       } else {
         setIsCheckingUpdate(false);
       }
-      if (state.status === 'not-available') {
+      if (state.status === 'available') {
+        setUpdateFeedback(`Update v${state.availableVersion || ''} found. Downloading...`);
+      } else if (state.status === 'downloading') {
+        const percent = state.progress?.percent != null ? ` (${state.progress.percent}%)` : '';
+        setUpdateFeedback(`Downloading update v${state.availableVersion || ''}${percent}...`);
+      } else if (state.status === 'not-available') {
         setUpdateFeedback('You are already using the latest version.');
       } else if (state.status === 'downloaded') {
         setUpdateFeedback(`Version ${state.availableVersion || ''} is ready to install.`);
@@ -763,16 +768,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {/* System Tray & Background Setting */}
               <div className="setting-item">
                 <div className="setting-info">
-                  <label>Minimize to System Tray</label>
-                  <span className="setting-description">Keep DeepScribe running silently in the Windows system tray so global shortcuts like Ctrl+Alt+S remain active</span>
+                  <label>Minimize and Close to System Tray</label>
+                  <span className="setting-description">Keep DeepScribe running silently in the Windows system tray when closed or minimized so global shortcuts like Ctrl+Alt+S remain active</span>
                 </div>
                 <label className="toggle-switch">
                   <input
                     type="checkbox"
-                    defaultChecked={true}
+                    checked={settings.minimizeToTray ?? true}
                     onChange={e => {
+                      const enabled = e.target.checked;
+                      onUpdateSettings({ minimizeToTray: enabled });
                       if (window.electronAPI?.tray?.setTrayEnabled) {
-                        window.electronAPI.tray.setTrayEnabled(e.target.checked);
+                        window.electronAPI.tray.setTrayEnabled(enabled);
                       }
                     }}
                   />

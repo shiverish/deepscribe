@@ -87,6 +87,7 @@ export function mergeStoredSettings(value: Partial<UserSettings>): UserSettings 
   return {
     ...DEFAULT_USER_SETTINGS,
     ...value,
+    minimizeToTray: typeof value.minimizeToTray === 'boolean' ? value.minimizeToTray : DEFAULT_USER_SETTINGS.minimizeToTray,
     savedThemes: Array.isArray(value.savedThemes) ? value.savedThemes : [],
     atmosphereColor: value.atmosphereColor || palette?.atmosphere || DEFAULT_USER_SETTINGS.atmosphereColor,
     selectedCardColor: value.selectedCardColor || palette?.selected || value.customBgColor || DEFAULT_USER_SETTINGS.selectedCardColor,
@@ -206,6 +207,13 @@ export function useSettings() {
   useEffect(() => {
     applySettingsToDOM(settings);
   }, [settings]);
+
+  // Synchronize tray setting with Electron main process
+  useEffect(() => {
+    if (window.electronAPI?.tray?.setTrayEnabled) {
+      window.electronAPI.tray.setTrayEnabled(settings.minimizeToTray ?? true).catch(() => {});
+    }
+  }, [settings.minimizeToTray]);
 
   const updateSettings = useCallback(async (partial: Partial<UserSettings>) => {
     setSettings(prev => {

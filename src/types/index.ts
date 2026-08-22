@@ -234,6 +234,7 @@ export interface UserSettings {
   columnWidth: number;
   spellcheck: boolean;
   allowOfflineAgentAccess: boolean;
+  minimizeToTray: boolean;
 }
 
 export const DEFAULT_USER_SETTINGS: UserSettings = {
@@ -254,5 +255,6 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
   contentWidth: 'standard',
   columnWidth: 320,
   spellcheck: true,
-  allowOfflineAgentAccess: true
+  allowOfflineAgentAccess: true,
+  minimizeToTray: true
 };

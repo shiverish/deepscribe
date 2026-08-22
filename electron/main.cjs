@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, shell, Tray, Menu, globalShortcut, desktopCapturer, screen } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, shell, Tray, Menu, globalShortcut, desktopCapturer, screen, nativeImage } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const crypto = require('crypto');
 const fs = require('fs');
@@ -222,6 +222,15 @@ function registerTrayIpc() {
 
   ipcMain.handle('deepscribe:tray:set-enabled', async (_event, enabled) => {
     isTrayEnabled = !!enabled;
+    if (isTrayEnabled) {
+      setupTray();
+    } else {
+      if (tray) {
+        try { tray.destroy(); } catch {}
+        tray = null;
+      }
+    }
+    return isTrayEnabled;
   });
 
   ipcMain.handle('deepscribe:tray:is-enabled', async () => {
@@ -565,31 +574,58 @@ async function captureScreenAndOpenOverlay() {
   }
 }
 
+function getAppIconPath() {
+  const iconCandidates = [
+    path.join(__dirname, '../dist/icon.png'),
+    path.join(__dirname, '../public/icon.png'),
+    path.join(__dirname, '../dist/favicon.png'),
+    path.join(__dirname, '../public/favicon.png'),
+    path.join(__dirname, '../mcp/extension/icon.png'),
+    path.join(__dirname, '../dist/favicon.svg'),
+    path.join(__dirname, '../public/favicon.svg')
+  ];
+  for (const candidate of iconCandidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return path.join(__dirname, '../public/favicon.svg');
+}
+
+function showMainWindow() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.setAlwaysOnTop(false);
+    mainWindow.focus();
+  }
+}
+
 function setupTray() {
   if (tray) return;
-  const iconPath = path.join(__dirname, '../public/favicon.svg');
+  const iconPath = getAppIconPath();
   try {
-    tray = new Tray(iconPath);
+    const iconImage = nativeImage.createFromPath(iconPath);
+    const trayIcon = !iconImage.isEmpty()
+      ? (process.platform === 'win32' ? iconImage.resize({ width: 16, height: 16 }) : iconImage)
+      : iconPath;
+
+    tray = new Tray(trayIcon);
     const contextMenu = Menu.buildFromTemplate([
       {
-        label: '📸 Scherm annoteren (Ctrl+Alt+S)',
+        label: '📸 Annotate Screen (Ctrl+Alt+S)',
         click: () => captureScreenAndOpenOverlay()
       },
       { type: 'separator' },
       {
-        label: '👁️ DeepScribe openen',
+        label: '👁️ Open DeepScribe',
         click: () => {
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            if (mainWindow.isMinimized()) mainWindow.restore();
-            mainWindow.show();
-            mainWindow.setAlwaysOnTop(false);
-            mainWindow.focus();
-          }
+          showMainWindow();
         }
       },
       { type: 'separator' },
       {
-        label: '❌ Afsluiten',
+        label: '❌ Quit',
         click: () => {
           isQuitting = true;
           app.quit();
@@ -599,17 +635,13 @@ function setupTray() {
 
     tray.setToolTip('DeepScribe');
     tray.setContextMenu(contextMenu);
+
+    tray.on('click', () => {
+      showMainWindow();
+    });
+
     tray.on('double-click', () => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        if (mainWindow.isVisible()) {
-          mainWindow.hide();
-        } else {
-          if (mainWindow.isMinimized()) mainWindow.restore();
-          mainWindow.show();
-          mainWindow.setAlwaysOnTop(false);
-          mainWindow.focus();
-        }
-      }
+      showMainWindow();
     });
   } catch (e) {
     console.warn('Tray setup warning:', e);
@@ -623,7 +655,7 @@ function createWindow() {
     minWidth: 800,
     minHeight: 600,
     title: 'DeepScribe',
-    icon: path.join(__dirname, '../public/favicon.svg'),
+    icon: getAppIconPath(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
@@ -642,7 +674,28 @@ function createWindow() {
   }
 
   mainWindow.on('close', event => {
-    if (!isQuitting && !workspaceQuitReady && isTrayEnabled) {
+    if (workspaceQuitReady) {
+      return;
+    }
+
+    if (!isQuitting && isTrayEnabled) {
+      event.preventDefault();
+      mainWindow.hide();
+      // Auto-flush workspace in background when hiding to tray
+      mainWindow.webContents.send('deepscribe-workspace-flush');
+      return;
+    }
+
+    if (!isQuitting) {
+      event.preventDefault();
+      isQuitting = true;
+      app.quit();
+      return;
+    }
+  });
+
+  mainWindow.on('minimize', event => {
+    if (isTrayEnabled) {
       event.preventDefault();
       mainWindow.hide();
     }

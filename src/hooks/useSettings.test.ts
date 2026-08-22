@@ -13,4 +13,14 @@ describe('settings compatibility', () => {
     const merged = mergeStoredSettings({ preset: 'dracula', agentAlertColor: '#ff5500' });
     expect(merged.agentAlertColor).toBe('#ff5500');
   });
+
+  it('defaults minimizeToTray to true when omitted', () => {
+    const merged = mergeStoredSettings({ preset: 'vanilla' });
+    expect(merged.minimizeToTray).toBe(true);
+  });
+
+  it('preserves an explicit minimizeToTray false setting', () => {
+    const merged = mergeStoredSettings({ preset: 'vanilla', minimizeToTray: false });
+    expect(merged.minimizeToTray).toBe(false);
+  });
 });
