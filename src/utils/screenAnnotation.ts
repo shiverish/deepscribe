@@ -17,16 +17,16 @@ export async function createAnnotationBlock(payload: CreateAnnotationPayload): P
   const projectId = payload.projectId || TASK_INBOX_PROJECT_ID;
   const blockId = createId('block');
   const now = Date.now();
-  const timestampStr = new Date(now).toLocaleString('nl-NL', {
-    day: '2-digit',
-    month: '2-digit',
+  const timestampStr = new Date(now).toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
     hour: '2-digit',
     minute: '2-digit'
   });
 
   const defaultTitle = payload.promptText
     ? (payload.promptText.length > 50 ? payload.promptText.substring(0, 47) + '...' : payload.promptText)
-    : `Schermannotatie ${timestampStr}`;
+    : `Screen Annotation (${timestampStr})`;
 
   const title = payload.title?.trim() || defaultTitle;
   const isTask = payload.kind === 'task';
@@ -56,7 +56,7 @@ export async function createAnnotationBlock(payload: CreateAnnotationPayload): P
       };
 
       await db.attachments.add(attachment);
-      imageHtml = `<p><em>Geannoteerde schermafbeelding:</em></p>`;
+      imageHtml = `<p><em>Annotated screenshot:</em></p>`;
     } catch (err) {
       console.warn('Failed to save screenshot attachment:', err);
     }
@@ -67,24 +67,24 @@ export async function createAnnotationBlock(payload: CreateAnnotationPayload): P
 
   if (isTask) {
     contentHtml = `
-      <h3>Doel</h3>
+      <h3>Goal</h3>
       <p>${payload.promptText || title}</p>
       ${imageHtml}
       <h3>Context</h3>
-      <p>Vastgelegd via DeepScribe Schermannotatie op ${new Date(now).toLocaleString('nl-NL')}.</p>
-      <h3>Actiepunten</h3>
+      <p>Captured via DeepScribe Screen Annotation on ${new Date(now).toLocaleString('en-US')}.</p>
+      <h3>Action items</h3>
       <ul data-type="taskList">
-        <li data-type="taskItem" data-checked="false"><p>Controleer en behandel het aangeduide onderdeel in de schermafbeelding.</p></li>
+        <li data-type="taskItem" data-checked="false"><p>Review and process the annotated items in the screenshot.</p></li>
       </ul>
     `.trim();
-    plainText = `Doel\n${payload.promptText || title}\n\nContext\nVastgelegd via DeepScribe Schermannotatie.\n\nActiepunten\n[ ] Controleer en behandel het aangeduide onderdeel.`;
+    plainText = `Goal\n${payload.promptText || title}\n\nContext\nCaptured via DeepScribe Screen Annotation.\n\nAction items\n[ ] Review and process the annotated items.`;
   } else {
     contentHtml = `
       <p><strong>${payload.promptText || title}</strong></p>
       ${imageHtml}
-      <p>Vastgelegd via DeepScribe Schermannotatie op ${new Date(now).toLocaleString('nl-NL')}.</p>
+      <p>Captured via DeepScribe Screen Annotation on ${new Date(now).toLocaleString('en-US')}.</p>
     `.trim();
-    plainText = `${payload.promptText || title}\n\nVastgelegd via DeepScribe Schermannotatie.`;
+    plainText = `${payload.promptText || title}\n\nCaptured via DeepScribe Screen Annotation.`;
   }
 
   const block: Block = {
@@ -124,7 +124,7 @@ export async function createAnnotationBlock(payload: CreateAnnotationPayload): P
       blockId,
       source: 'user',
       action: isTask ? 'create_task' : 'create_block',
-      summary: `Nieuwe ${isTask ? 'taak' : 'annotatie'} aangemaakt: “${title}”`,
+      summary: `Created new ${isTask ? 'task' : 'annotation'}: “${title}”`,
       createdAt: now
     });
   } catch {}

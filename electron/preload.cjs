@@ -14,10 +14,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   screenCapture: {
     triggerOverlay: () => ipcRenderer.invoke('deepscribe:screen:trigger-overlay'),
     closeOverlay: () => ipcRenderer.invoke('deepscribe:screen:close-overlay'),
+    saveAndClose: payload => ipcRenderer.invoke('deepscribe:screen:save-and-close', payload),
+    getOverlayData: () => ipcRenderer.invoke('deepscribe:screen:get-overlay-data'),
     onTriggerOverlay: handler => {
       const listener = (_event, data) => handler(data);
       ipcRenderer.on('deepscribe:screen:open-overlay', listener);
       return () => ipcRenderer.removeListener('deepscribe:screen:open-overlay', listener);
+    },
+    onBlockCreated: handler => {
+      const listener = (_event, block) => handler(block);
+      ipcRenderer.on('deepscribe:screen:block-created', listener);
+      return () => ipcRenderer.removeListener('deepscribe:screen:block-created', listener);
     }
   },
   tray: {

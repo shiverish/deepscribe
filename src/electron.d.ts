@@ -22,8 +22,11 @@ declare global {
       printBlockDocument: (payload: { html: string; jobName: string; pageSize: 'A4' | 'A5' }) => Promise<{ status: 'printed' | 'cancelled' }>;
       screenCapture?: {
         triggerOverlay: () => Promise<{ ok: boolean; screenshotDataUrl?: string }>;
-        closeOverlay: () => Promise<void>;
-        onTriggerOverlay: (handler: (data: { screenshotDataUrl: string; width: number; height: number }) => void) => () => void;
+        closeOverlay: () => Promise<{ ok: boolean }>;
+        saveAndClose: (payload: { block?: unknown }) => Promise<{ ok: boolean }>;
+        getOverlayData: () => Promise<{ screenshotDataUrl: string; width: number; height: number; scaleFactor?: number } | null>;
+        onTriggerOverlay: (handler: (data: { screenshotDataUrl: string; width: number; height: number; scaleFactor?: number }) => void) => () => void;
+        onBlockCreated: (handler: (block: unknown) => void) => () => void;
       };
       tray?: {
         minimizeToTray: () => Promise<void>;

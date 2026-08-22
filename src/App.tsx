@@ -35,7 +35,7 @@ import { relocateUserTask } from './utils/taskManagement';
 import './styles/theme.css';
 import './components/Navigation/Navigation.css';
 
-export function App() {
+function DeepScribeApp() {
   const { settings, updateSettings, resetSettings } = useSettings();
   const [activeView, setActiveView] = useState<ActiveView>('columns');
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
@@ -57,6 +57,18 @@ export function App() {
 
   const [saveStatus, setSaveStatus] = useState<SaveStatus>({ state: 'saved' });
   const [overlayData, setOverlayData] = useState<{ screenshotDataUrl: string } | null>(null);
+
+  useEffect(() => {
+    if (!window.electronAPI?.screenCapture?.onBlockCreated) return;
+    return window.electronAPI.screenCapture.onBlockCreated((createdBlock: unknown) => {
+      const block = createdBlock as Block;
+      if (block?.projectId && block?.id) {
+        setActiveProjectId(block.projectId);
+        setSelectedBlockPath([block.id]);
+        setIsWritingPanelOpen(true);
+      }
+    });
+  }, []);
 
   useEffect(() => {
     if (!window.electronAPI?.screenCapture?.onTriggerOverlay) return;
@@ -1034,6 +1046,25 @@ export function App() {
       )}
     </div>
   );
+}
+
+export function App() {
+  const isOverlayMode = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('overlay') === 'true';
+
+  if (isOverlayMode) {
+    return (
+      <ScreenAnnotationOverlay
+        isStandaloneOverlay={true}
+        onClose={() => {
+          if (window.electronAPI?.screenCapture?.closeOverlay) {
+            window.electronAPI.screenCapture.closeOverlay();
+          }
+        }}
+      />
+    );
+  }
+
+  return <DeepScribeApp />;
 }
 
 export default App;
