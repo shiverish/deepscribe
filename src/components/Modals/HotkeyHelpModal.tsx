@@ -33,6 +33,7 @@ export const HotkeyHelpModal: React.FC<HotkeyHelpModalProps> = ({ isOpen, onClos
     { key: 'Ctrl + K', desc: 'Open global search (title, content, and tags)' },
     { key: 'Ctrl + D', desc: 'Duplicate selected block and descendant branch' },
     { key: 'Ctrl + 1 / 2 / 3 / 4', desc: 'Switch view (Columns / Tasks / Graph / Stats)' },
+    { key: 'Ctrl + Alt + S', desc: 'Scherm annoteren & taak/blok aanmaken (werkt overal in Windows)' },
     { key: 'Ctrl + Shift + E', desc: 'Expand or collapse the fixed writing panel' },
     { key: 'Shift + ?', desc: 'Open this keyboard shortcut overview' },
   ];

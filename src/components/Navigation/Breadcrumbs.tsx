@@ -15,7 +15,8 @@ import {
   Columns3,
   CheckSquare,
   Network,
-  BarChart3
+  BarChart3,
+  Camera
 } from 'lucide-react';
 
 interface BreadcrumbsProps {
@@ -29,6 +30,7 @@ interface BreadcrumbsProps {
   onOpenHelp: () => void;
   onOpenSettings: () => void;
   onOpenWorkspace: () => void;
+  onTriggerScreenAnnotation?: () => void;
   isWritingPanelOpen: boolean;
   onToggleWritingPanel: () => void;
 }
@@ -44,6 +46,7 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
   onOpenHelp,
   onOpenSettings,
   onOpenWorkspace,
+  onTriggerScreenAnnotation,
   isWritingPanelOpen,
   onToggleWritingPanel
 }) => {
@@ -127,6 +130,30 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {onTriggerScreenAnnotation && (
+          <button
+            onClick={onTriggerScreenAnnotation}
+            style={{
+              background: 'rgba(59, 130, 246, 0.12)',
+              border: '1px solid rgba(59, 130, 246, 0.3)',
+              color: '#60A5FA',
+              padding: '5px 10px',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              fontSize: '0.78rem',
+              fontWeight: 500
+            }}
+            title="Scherm annoteren & taak maken (Ctrl + Alt + S)"
+          >
+            <Camera size={14} />
+            <span>Annoteren</span>
+            <kbd style={{ fontSize: '0.68rem', opacity: 0.8 }}>Ctrl+Alt+S</kbd>
+          </button>
+        )}
+
         <button
           onClick={onOpenSearch}
           style={{

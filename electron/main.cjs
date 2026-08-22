@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, shell, Tray, Menu, globalShortcut, desktopCapturer, screen } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const crypto = require('crypto');
 const fs = require('fs');
@@ -12,6 +12,9 @@ let bridgeServer;
 let bridgeInfoPath;
 let workspaceStore;
 let workspaceQuitReady = false;
+let tray = null;
+let isQuitting = false;
+let isTrayEnabled = true;
 const pendingBridgeRequests = new Map();
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 const MAX_PRINT_DOCUMENT_BYTES = 50 * 1024 * 1024;
@@ -197,6 +200,35 @@ function registerAttachmentIpc() {
   });
 }
 
+function registerScreenCaptureIpc() {
+  ipcMain.handle('deepscribe:screen:trigger-overlay', async () => {
+    await captureScreenAndOpenOverlay();
+    return { ok: true };
+  });
+
+  ipcMain.handle('deepscribe:screen:close-overlay', async () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('deepscribe:screen:close-overlay');
+    }
+  });
+}
+
+function registerTrayIpc() {
+  ipcMain.handle('deepscribe:tray:minimize', async () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.hide();
+    }
+  });
+
+  ipcMain.handle('deepscribe:tray:set-enabled', async (_event, enabled) => {
+    isTrayEnabled = !!enabled;
+  });
+
+  ipcMain.handle('deepscribe:tray:is-enabled', async () => {
+    return isTrayEnabled;
+  });
+}
+
 function registerWorkspaceIpc() {
   ipcMain.handle('deepscribe:workspace:status', () => getWorkspaceStore().status());
   ipcMain.handle('deepscribe:workspace:load', () => getWorkspaceStore().loadSnapshot());
@@ -219,16 +251,16 @@ function registerWorkspaceIpc() {
 function registerPrintIpc() {
   ipcMain.handle('deepscribe:print:block-document', async (event, payload) => {
     if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) {
-      throw new Error('De printopdracht kwam niet uit het actieve DeepScribe-venster.');
+      throw new Error('The print job did not originate from the active DeepScribe window.');
     }
     if (activePrintWindow && !activePrintWindow.isDestroyed()) {
       throw new Error('A print job is already active.');
     }
     if (!payload || typeof payload.html !== 'string' || !payload.html.trim()) {
-      throw new Error('Het printdocument is leeg.');
+      throw new Error('The print document is empty.');
     }
     if (Buffer.byteLength(payload.html, 'utf8') > MAX_PRINT_DOCUMENT_BYTES) {
-      throw new Error('Het printdocument is te groot om veilig te verwerken.');
+      throw new Error('The print document is too large to process safely.');
     }
 
     const rawJobName = typeof payload.jobName === 'string' ? payload.jobName : 'DeepScribe';
@@ -277,7 +309,7 @@ function registerPrintIpc() {
               resolve({ status: 'cancelled' });
               return;
             }
-            reject(new Error(failureReason || 'De printopdracht is mislukt.'));
+            reject(new Error(failureReason || 'The print job failed.'));
           });
         } catch (error) {
           reject(error);
@@ -499,6 +531,91 @@ ipcMain.on('deepscribe-workspace-flushed', () => {
   app.quit();
 });
 
+async function captureScreenAndOpenOverlay() {
+  try {
+    const cursorPoint = screen.getCursorScreenPoint();
+    const currentDisplay = screen.getDisplayNearestPoint(cursorPoint);
+    const { width, height } = currentDisplay.size;
+    const scale = currentDisplay.scaleFactor || 1;
+
+    const sources = await desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: { width: Math.round(width * scale), height: Math.round(height * scale) }
+    });
+
+    let source = sources.find(s => s.display_id === currentDisplay.id.toString()) || sources[0];
+    if (!source && sources.length > 0) source = sources[0];
+
+    if (source && source.thumbnail) {
+      const screenshotDataUrl = source.thumbnail.toDataURL();
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.show();
+        mainWindow.setAlwaysOnTop(true, 'screen-saver');
+        mainWindow.focus();
+        mainWindow.webContents.send('deepscribe:screen:open-overlay', {
+          screenshotDataUrl,
+          width,
+          height
+        });
+      }
+    }
+  } catch (err) {
+    console.error('Error capturing screen for DeepScribe overlay:', err);
+  }
+}
+
+function setupTray() {
+  if (tray) return;
+  const iconPath = path.join(__dirname, '../public/favicon.svg');
+  try {
+    tray = new Tray(iconPath);
+    const contextMenu = Menu.buildFromTemplate([
+      {
+        label: '📸 Scherm annoteren (Ctrl+Alt+S)',
+        click: () => captureScreenAndOpenOverlay()
+      },
+      { type: 'separator' },
+      {
+        label: '👁️ DeepScribe openen',
+        click: () => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            if (mainWindow.isMinimized()) mainWindow.restore();
+            mainWindow.show();
+            mainWindow.setAlwaysOnTop(false);
+            mainWindow.focus();
+          }
+        }
+      },
+      { type: 'separator' },
+      {
+        label: '❌ Afsluiten',
+        click: () => {
+          isQuitting = true;
+          app.quit();
+        }
+      }
+    ]);
+
+    tray.setToolTip('DeepScribe');
+    tray.setContextMenu(contextMenu);
+    tray.on('double-click', () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        if (mainWindow.isVisible()) {
+          mainWindow.hide();
+        } else {
+          if (mainWindow.isMinimized()) mainWindow.restore();
+          mainWindow.show();
+          mainWindow.setAlwaysOnTop(false);
+          mainWindow.focus();
+        }
+      }
+    });
+  } catch (e) {
+    console.warn('Tray setup warning:', e);
+  }
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -524,6 +641,13 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
 
+  mainWindow.on('close', event => {
+    if (!isQuitting && !workspaceQuitReady && isTrayEnabled) {
+      event.preventDefault();
+      mainWindow.hide();
+    }
+  });
+
   // Open external HTTP/HTTPS links in user's default browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('http:') || url.startsWith('https:')) {
@@ -543,17 +667,30 @@ if (!gotTheLock) {
   registerWorkspaceIpc();
   registerPrintIpc();
   registerUpdaterIpc();
+  registerScreenCaptureIpc();
+  registerTrayIpc();
   setupAutoUpdater();
 
   app.on('second-instance', () => {
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
       mainWindow.focus();
     }
   });
 
   app.whenReady().then(() => {
     createWindow();
+    setupTray();
+
+    // Register global hotkey for screen capture overlay
+    try {
+      globalShortcut.register('CommandOrControl+Alt+S', () => {
+        captureScreenAndOpenOverlay();
+      });
+    } catch (e) {
+      console.warn('Failed to register global hotkey CommandOrControl+Alt+S:', e);
+    }
 
     // In production, perform an initial background check for updates after 5s
     const isDev = process.env.NODE_ENV === 'development' || process.argv.includes('--dev');
@@ -574,12 +711,19 @@ if (!gotTheLock) {
 }
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
+  if (process.platform !== 'darwin' && !isTrayEnabled) {
     app.quit();
   }
 });
 
 app.on('before-quit', event => {
+  isQuitting = true;
+  globalShortcut.unregisterAll();
+  if (tray) {
+    try { tray.destroy(); } catch {}
+    tray = null;
+  }
+
   if (!workspaceQuitReady && mainWindow && !mainWindow.isDestroyed()) {
     event.preventDefault();
     mainWindow.webContents.send('deepscribe-workspace-flush');

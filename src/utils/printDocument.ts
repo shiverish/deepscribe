@@ -1,3 +1,4 @@
+import { db } from '../db/db';
 import type { Block, Project } from '../types';
 
 export interface BlockPrintDraft {
@@ -40,6 +41,9 @@ export const BLOCK_PRINT_PRESETS = {
   largeText: { ...DEFAULT_BLOCK_PRINT_SETTINGS, fontSize: 13, margin: 'compact' }
 } as const satisfies Record<string, BlockPrintSettings>;
 
+export const PRINT_SETTINGS_STORAGE_KEY = 'deepscribe_print_settings';
+export const PRINT_SETTINGS_DB_KEY = 'print_settings';
+
 export function normalizeBlockPrintSettings(value: unknown): BlockPrintSettings {
   if (!value || typeof value !== 'object') return DEFAULT_BLOCK_PRINT_SETTINGS;
   const candidate = value as Partial<BlockPrintSettings>;
@@ -57,6 +61,52 @@ export function normalizeBlockPrintSettings(value: unknown): BlockPrintSettings 
     headerAlignment: candidate.headerAlignment === 'center' ? 'center' : 'left',
     headerDivider: candidate.headerDivider === true
   };
+}
+
+export function getStoredPrintSettingsSync(): BlockPrintSettings {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return DEFAULT_BLOCK_PRINT_SETTINGS;
+  }
+  try {
+    const raw = window.localStorage.getItem(PRINT_SETTINGS_STORAGE_KEY);
+    if (!raw) return DEFAULT_BLOCK_PRINT_SETTINGS;
+    return normalizeBlockPrintSettings(JSON.parse(raw));
+  } catch {
+    return DEFAULT_BLOCK_PRINT_SETTINGS;
+  }
+}
+
+export async function loadStoredPrintSettings(): Promise<BlockPrintSettings> {
+  const syncSettings = getStoredPrintSettingsSync();
+  try {
+    const record = (await db.settings.get(PRINT_SETTINGS_DB_KEY))
+      ?? (await db.settings.get(PRINT_SETTINGS_STORAGE_KEY));
+    if (record?.value) {
+      const normalized = normalizeBlockPrintSettings(record.value);
+      try {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          window.localStorage.setItem(PRINT_SETTINGS_STORAGE_KEY, JSON.stringify(normalized));
+        }
+      } catch {}
+      return normalized;
+    }
+  } catch {
+    // If DB is unavailable or errors, fall back to sync / localStorage settings
+  }
+  return syncSettings;
+}
+
+export async function saveStoredPrintSettings(settings: BlockPrintSettings): Promise<BlockPrintSettings> {
+  const normalized = normalizeBlockPrintSettings(settings);
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem(PRINT_SETTINGS_STORAGE_KEY, JSON.stringify(normalized));
+    }
+  } catch {}
+  try {
+    await db.settings.put({ key: PRINT_SETTINGS_DB_KEY, value: normalized });
+  } catch {}
+  return normalized;
 }
 
 export interface BlockPrintDocument {

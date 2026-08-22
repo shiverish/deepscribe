@@ -759,6 +759,48 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <span className="toggle-slider"></span>
                 </label>
               </div>
+
+              {/* System Tray & Background Setting */}
+              <div className="setting-item">
+                <div className="setting-info">
+                  <label>Minimize to System Tray</label>
+                  <span className="setting-description">Keep DeepScribe running silently in the Windows system tray so global shortcuts like Ctrl+Alt+S remain active</span>
+                </div>
+                <label className="toggle-switch">
+                  <input
+                    type="checkbox"
+                    defaultChecked={true}
+                    onChange={e => {
+                      if (window.electronAPI?.tray?.setTrayEnabled) {
+                        window.electronAPI.tray.setTrayEnabled(e.target.checked);
+                      }
+                    }}
+                  />
+                  <span className="toggle-slider"></span>
+                </label>
+              </div>
+
+              {/* Screen Annotation Global Shortcut Info */}
+              <div className="setting-item">
+                <div className="setting-info">
+                  <label>Visual Screen Annotation (Global Hotkey)</label>
+                  <span className="setting-description">Freeze screen and draw arrows, boxes, and badges to create tasks or blocks in DeepScribe from anywhere in Windows</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <kbd style={{
+                    padding: '4px 10px',
+                    borderRadius: '6px',
+                    background: 'rgba(59, 130, 246, 0.15)',
+                    border: '1px solid rgba(59, 130, 246, 0.3)',
+                    color: '#60A5FA',
+                    fontSize: '0.82rem',
+                    fontWeight: 600,
+                    fontFamily: 'monospace'
+                  }}>
+                    Ctrl + Alt + S
+                  </kbd>
+                </div>
+              </div>
             </div>
           )}
 

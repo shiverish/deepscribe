@@ -20,6 +20,16 @@ declare global {
       importAttachment: (payload: { projectId: string; blockId: string; fileName: string; base64: string }) => Promise<{ localPath: string }>;
       migrateLegacyAttachment: (payload: { projectId: string; blockId: string; localPath: string }) => Promise<{ localPath: string }>;
       printBlockDocument: (payload: { html: string; jobName: string; pageSize: 'A4' | 'A5' }) => Promise<{ status: 'printed' | 'cancelled' }>;
+      screenCapture?: {
+        triggerOverlay: () => Promise<{ ok: boolean; screenshotDataUrl?: string }>;
+        closeOverlay: () => Promise<void>;
+        onTriggerOverlay: (handler: (data: { screenshotDataUrl: string; width: number; height: number }) => void) => () => void;
+      };
+      tray?: {
+        minimizeToTray: () => Promise<void>;
+        setTrayEnabled: (enabled: boolean) => Promise<void>;
+        isTrayEnabled: () => Promise<boolean>;
+      };
       workspace: {
         status: () => Promise<WorkspaceStatus>;
         load: () => Promise<WorkspaceSnapshot>;

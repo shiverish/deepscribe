@@ -16,6 +16,7 @@ import { HotkeyHelpModal } from './components/Modals/HotkeyHelpModal';
 import { SettingsModal } from './components/Modals/SettingsModal';
 import { ContextMenu } from './components/Modals/ContextMenu';
 import { WorkspaceModal } from './components/Modals/WorkspaceModal';
+import { ScreenAnnotationOverlay } from './components/Overlay/ScreenAnnotationOverlay';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useSettings } from './hooks/useSettings';
 import { getDropPosition, isDescendantOrSelf, moveBlockInTree, reorderProject } from './utils/dragAndDrop';
@@ -55,6 +56,27 @@ export function App() {
   const [dragTarget, setDragTarget] = useState<DragTarget | null>(null);
 
   const [saveStatus, setSaveStatus] = useState<SaveStatus>({ state: 'saved' });
+  const [overlayData, setOverlayData] = useState<{ screenshotDataUrl: string } | null>(null);
+
+  useEffect(() => {
+    if (!window.electronAPI?.screenCapture?.onTriggerOverlay) return;
+    return window.electronAPI.screenCapture.onTriggerOverlay(data => {
+      setOverlayData({ screenshotDataUrl: data.screenshotDataUrl });
+    });
+  }, []);
+
+  const handleTriggerScreenAnnotation = useCallback(() => {
+    if (window.electronAPI?.screenCapture?.triggerOverlay) {
+      window.electronAPI.screenCapture.triggerOverlay();
+    }
+  }, []);
+
+  const handleBlockCreatedFromOverlay = useCallback((newBlock: Block) => {
+    setActiveProjectId(newBlock.projectId);
+    setSelectedBlockPath([newBlock.id]);
+    setIsWritingPanelOpen(true);
+    setOverlayData(null);
+  }, []);
 
   useEffect(() => {
     void requestPersistentStorage();
@@ -178,7 +200,7 @@ export function App() {
 
   const handlePrintBlock = useCallback(async (blockId: string, draft: BlockPrintDraft, settings: BlockPrintSettings) => {
     if (!window.electronAPI?.printBlockDocument) {
-      throw new Error('Printen is alleen beschikbaar in de DeepScribe desktop-app.');
+      throw new Error('Printing is only available in the DeepScribe desktop app.');
     }
     const block = allBlocks.find(item => item.id === blockId);
     const project = block ? projects.find(item => item.id === block.projectId) : null;
@@ -848,6 +870,7 @@ export function App() {
         onOpenHelp={() => setIsHelpOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenWorkspace={() => setIsWorkspaceOpen(true)}
+        onTriggerScreenAnnotation={handleTriggerScreenAnnotation}
         isWritingPanelOpen={isWritingPanelOpen}
         onToggleWritingPanel={() => setIsWritingPanelOpen(prev => !prev)}
       />
@@ -1001,6 +1024,14 @@ export function App() {
         onOpenBlock={openBlockById}
         onApplyTemplate={handleApplyTemplate}
       />
+
+      {overlayData && (
+        <ScreenAnnotationOverlay
+          screenshotDataUrl={overlayData.screenshotDataUrl}
+          onClose={() => setOverlayData(null)}
+          onBlockCreated={handleBlockCreatedFromOverlay}
+        />
+      )}
     </div>
   );
 }

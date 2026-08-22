@@ -11,6 +11,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
   importAttachment: payload => ipcRenderer.invoke('deepscribe:attachments:import', payload),
   migrateLegacyAttachment: payload => ipcRenderer.invoke('deepscribe:attachments:migrate-legacy', payload),
   printBlockDocument: payload => ipcRenderer.invoke('deepscribe:print:block-document', payload),
+  screenCapture: {
+    triggerOverlay: () => ipcRenderer.invoke('deepscribe:screen:trigger-overlay'),
+    closeOverlay: () => ipcRenderer.invoke('deepscribe:screen:close-overlay'),
+    onTriggerOverlay: handler => {
+      const listener = (_event, data) => handler(data);
+      ipcRenderer.on('deepscribe:screen:open-overlay', listener);
+      return () => ipcRenderer.removeListener('deepscribe:screen:open-overlay', listener);
+    }
+  },
+  tray: {
+    minimizeToTray: () => ipcRenderer.invoke('deepscribe:tray:minimize'),
+    setTrayEnabled: enabled => ipcRenderer.invoke('deepscribe:tray:set-enabled', enabled),
+    isTrayEnabled: () => ipcRenderer.invoke('deepscribe:tray:is-enabled')
+  },
   workspace: {
     status: () => ipcRenderer.invoke('deepscribe:workspace:status'),
     load: () => ipcRenderer.invoke('deepscribe:workspace:load'),

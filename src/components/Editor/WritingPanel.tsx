@@ -8,7 +8,7 @@ import { PrintSettingsModal } from '../Modals/PrintSettingsModal';
 import { extractHashtags, mergeTags, parseTag, sanitizeTags } from '../../utils/tagUtils';
 import { initialTagComposerState, tagComposerReducer } from '../../utils/tagComposer';
 import { getBlockDependencyStatus, detectCircularDependency, sanitizeDependsOn, isBlockCompleted } from '../../utils/dependencyUtils';
-import { DEFAULT_BLOCK_PRINT_SETTINGS, normalizeBlockPrintSettings, type BlockPrintSettings } from '../../utils/printDocument';
+import { getStoredPrintSettingsSync, loadStoredPrintSettings, saveStoredPrintSettings, type BlockPrintSettings } from '../../utils/printDocument';
 import { canTransitionTask, taskCreatorLabel, TASK_AGENT_LABELS, TASK_AGENT_TARGETS, TASK_STATUSES, TASK_STATUS_LABELS, validateTaskReady } from '../../utils/taskBlocks';
 import { Check, Loader2, AlertCircle, FileText, Folder, FolderOpen, Paperclip, PanelRightClose, Edit3, Plus, Tag as TagIcon, Settings2, Trash2, Link2, ArrowUpRight, X, History, Lock, CheckCircle2, Clock, Bot, ClipboardCopy, Printer } from 'lucide-react';
 import './Editor.css';
@@ -98,14 +98,25 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
   const [isPrinting, setIsPrinting] = useState(false);
   const [printError, setPrintError] = useState<string | null>(null);
   const [isPrintSettingsOpen, setIsPrintSettingsOpen] = useState(false);
-  const [printSettings, setPrintSettings] = useState<BlockPrintSettings>(() => {
-    try {
-      const stored = localStorage.getItem('deepscribe_print_settings');
-      return stored ? normalizeBlockPrintSettings(JSON.parse(stored)) : DEFAULT_BLOCK_PRINT_SETTINGS;
-    } catch {
-      return DEFAULT_BLOCK_PRINT_SETTINGS;
-    }
-  });
+  const [printSettings, setPrintSettings] = useState<BlockPrintSettings>(getStoredPrintSettingsSync);
+
+  useEffect(() => {
+    let isMounted = true;
+    loadStoredPrintSettings().then(stored => {
+      if (isMounted) {
+        setPrintSettings(stored);
+      }
+    }).catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handlePrintSettingsChange = useCallback((newSettings: BlockPrintSettings) => {
+    setPrintSettings(newSettings);
+    void saveStoredPrintSettings(newSettings);
+  }, []);
+
   const titleInputRef = useRef<HTMLInputElement>(null);
   const tipTapEditorRef = useRef<TipTapEditorHandle>(null);
   const observedHashtagsRef = useRef<Set<string>>(new Set());
@@ -877,14 +888,14 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
               isOpen={isPrintSettingsOpen}
               isPrinting={isPrinting}
               settings={printSettings}
-              onChange={setPrintSettings}
+              onChange={handlePrintSettingsChange}
               onClose={() => setIsPrintSettingsOpen(false)}
               onPrint={async () => {
                 if (isPrinting) return;
                 setIsPrinting(true);
                 setPrintError(null);
                 try {
-                  localStorage.setItem('deepscribe_print_settings', JSON.stringify(printSettings));
+                  await saveStoredPrintSettings(printSettings);
                   await onPrintBlock(activeItem.id, {
                     title: draftRef.current.title,
                     content: draftRef.current.htmlContent
