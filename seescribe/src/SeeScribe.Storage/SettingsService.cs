@@ -19,10 +19,15 @@ public class SettingsService : ISettingsService
 
     public AppSettings Current => _currentSettings;
 
-    public SettingsService()
+    /// <param name="settingsDirectory">
+    /// Laat leeg voor de gebruikelijke plek in de applicatiegegevens. Tests geven hier
+    /// een eigen map mee, zodat ze niet in de echte instellingen van de gebruiker schrijven.
+    /// </param>
+    public SettingsService(string? settingsDirectory = null)
     {
-        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        var dir = Path.Combine(appData, "SeeScribe");
+        var dir = settingsDirectory ?? Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "SeeScribe");
+
         Directory.CreateDirectory(dir);
         _settingsFilePath = Path.Combine(dir, "settings.json");
         _currentSettings = LoadSettings();
@@ -32,8 +37,10 @@ public class SettingsService : ISettingsService
     {
         if (!File.Exists(_settingsFilePath))
         {
+            // Bewust niet meteen wegschrijven. Een niet-afgewachte schrijfactie vanuit de
+            // constructor botst met een tweede instantie die hetzelfde bestand opent.
+            // Het bestand ontstaat vanzelf zodra er echt iets wordt opgeslagen.
             _currentSettings = new AppSettings();
-            _ = SaveSettingsAsync(_currentSettings);
             return _currentSettings;
         }
 
