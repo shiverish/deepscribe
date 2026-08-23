@@ -1062,6 +1062,141 @@ export async function getOrCreateDailyPlan(params: JsonObject) {
   };
 }
 
+/**
+ * Maakt een taak vanuit een schermvastlegging: direct oppakbaar, en optioneel in een project.
+ *
+ * Dit is bewust een eigen methode en geen verruiming van create_task. Daar geldt dat een agent
+ * geen eigen werk mag aanmaken en dat elke taak in de Workspace Inbox belandt met doel 'none'.
+ * Die regel blijft ongewijzigd. Een vastlegging is iets anders: er zit altijd een mens achter
+ * die op dat moment de sneltoets indrukt, en die bedoelt het werk juist wél weg te zetten.
+ */
+async function createCapture(params: JsonObject) {
+  const { agentId, requestId, agentTarget: claimantTarget, customAgentName } = claimantFromParams(params);
+  if (!requestId) throw new Error('requestId is required.');
+
+  const title = requiredString(params, 'title');
+  const rawContent = optionalString(params, 'content') || '';
+  if (containsMarkdownTask(rawContent)) throw new Error('Agents cannot create inline todos inside tasks.');
+
+  // Zonder project belandt de vastlegging in de inbox; dat blijft de snelste route.
+  const requestedProjectId = optionalString(params, 'projectId');
+  const projectId = requestedProjectId || TASK_INBOX_PROJECT_ID;
+  if (requestedProjectId && requestedProjectId !== TASK_INBOX_PROJECT_ID) {
+    const project = await db.projects.get(requestedProjectId);
+    if (!project || project.isTrash) throw new Error('Project niet gevonden.');
+  }
+
+  // Let op: 'agentTarget' is hierboven al de identiteit van de aanleverende partij.
+  // Aan wie het werk toevalt is iets anders en heet daarom 'assignTo'.
+  const assignTo = optionalString(params, 'assignTo') || 'any';
+  const now = Date.now();
+
+  const result = await db.transaction('rw', [db.projects, db.blocks], async () => {
+    const replay = await db.blocks.filter(block => block.kind === 'task'
+      && block.task?.creator?.type === 'agent'
+      && block.task.creator.agentId === agentId
+      && block.task.creator.requestId === requestId).first();
+    if (replay) return { block: replay, created: false };
+
+    if (projectId === TASK_INBOX_PROJECT_ID && !await db.projects.get(TASK_INBOX_PROJECT_ID)) {
+      await db.projects.add(createTaskInboxProject(now));
+    }
+
+    const siblings = await db.blocks.filter(block => !block.isTrash && block.projectId === projectId && block.kind === 'task').toArray();
+    const position = siblings.reduce((highest, block) => Math.max(highest, block.task?.position ?? -1), -1) + 1;
+    const order = await db.blocks.filter(block => !block.isTrash && block.projectId === projectId && block.parentId === null).count();
+
+    const task = createTaskMetadata(position, {
+      type: 'agent', agentTarget: claimantTarget, agentId, requestId,
+      ...(claimantTarget === 'custom' ? { customAgentName } : {})
+    });
+    task.status = 'ready';
+    task.readyAt = now;
+    task.agentTarget = assignTo as TaskMetadata['agentTarget'];
+
+    const errors = validateTaskReady(title, rawContent, task);
+    if (errors.length) throw new Error(errors.join(' '));
+
+    const block: Block = {
+      id: `block-${crypto.randomUUID()}`,
+      projectId,
+      parentId: null,
+      title,
+      ...contentStats(markdownToHtml(rawContent)),
+      order,
+      childCount: 0,
+      attachmentCount: 0,
+      tags: sanitizeTags(Array.isArray(params.tags) ? params.tags.filter((tag): tag is string => typeof tag === 'string') : []),
+      kind: 'task',
+      task,
+      lastAgentEditAt: now,
+      isTrash: false,
+      createdAt: now,
+      updatedAt: now
+    };
+    await db.blocks.add(block);
+    return { block, created: true };
+  });
+
+  if (result.created) {
+    await recordBlockRevision(result.block, 'agent', 'Screen capture created by SeeScribe');
+    await recordActivity({
+      projectId: result.block.projectId,
+      blockId: result.block.id,
+      source: 'agent',
+      action: 'task-readiness-changed',
+      summary: `Screen capture “${result.block.title}” is ready for any agent`
+    });
+  }
+
+  return result.block;
+}
+
+/**
+ * Slaat een binaire bijlage op bij een bestaand blok. Gebruikt door SeeScribe om
+ * de geannoteerde schermafbeelding en de bijbehorende annotatiegegevens mee te sturen.
+ */
+async function createAttachment(params: JsonObject) {
+  const blockId = requiredString(params, 'blockId');
+  const fileName = requiredString(params, 'fileName');
+  const base64 = requiredString(params, 'base64');
+  const fileType = optionalString(params, 'fileType') || 'application/octet-stream';
+
+  const block = await db.blocks.get(blockId);
+  if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
+  const project = await db.projects.get(block.projectId);
+  if (!project || project.isTrash) throw new Error('Project niet gevonden.');
+
+  const fileSize = Math.round((base64.length * 3) / 4);
+  if (fileSize > MAX_ATTACHMENT_BYTES) throw new Error('Deze bijlage is groter dan 25 MB.');
+
+  if (!window.electronAPI?.importAttachment) {
+    throw new Error('Bijlagen opslaan is alleen beschikbaar in de desktop-app.');
+  }
+
+  const stored = await window.electronAPI.importAttachment({
+    projectId: block.projectId,
+    blockId,
+    fileName,
+    base64
+  });
+
+  const attachment: Attachment = {
+    id: `attachment-${crypto.randomUUID()}`,
+    blockId,
+    fileName,
+    fileType,
+    fileSize,
+    localPath: stored.localPath,
+    createdAt: Date.now()
+  };
+
+  await db.attachments.add(attachment);
+  await db.blocks.update(blockId, { attachmentCount: (block.attachmentCount || 0) + 1 });
+
+  return attachmentMetadata(attachment);
+}
+
 export async function handleMcpBridgeRequest(method: string, rawParams: unknown): Promise<unknown> {
   const params = asObject(rawParams);
 
@@ -1145,6 +1280,10 @@ export async function handleMcpBridgeRequest(method: string, rawParams: unknown)
       }
       return visible.slice(0, clampLimit(params.limit, 100)).map(attachmentMetadata);
     }
+    case 'create_capture':
+      return await createCapture(params);
+    case 'create_attachment':
+      return await createAttachment(params);
     case 'read_attachment': {
       const attachment = await getActiveAttachment(requiredString(params, 'attachmentId'));
       return { ...attachmentMetadata(attachment), dataBase64: await readAttachmentBase64(attachment) };

@@ -28,3 +28,7 @@ dist-skills
 *.njsproj
 *.sln
 *.sw?
+
+# SeeScribe (.NET) build-artefacten
+seescribe/**/bin/
+seescribe/**/obj/

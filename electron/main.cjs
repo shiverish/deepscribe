@@ -3,6 +3,8 @@ const { autoUpdater } = require('electron-updater');
 const crypto = require('crypto');
 const fs = require('fs');
 const http = require('http');
+const { spawn } = require('child_process');
+const net = require('net');
 const path = require('path');
 const { WorkspaceStore } = require('./workspace.cjs');
 
@@ -19,6 +21,10 @@ let overlayWindow = null;
 let pendingOverlayData = null;
 const pendingBridgeRequests = new Map();
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+// Een bijlage reist als base64 door de bridge en groeit daarbij met ongeveer een derde.
+// De grens moet daarom ruimer zijn dan de bijlagegrens zelf, anders wordt een toegestane
+// bijlage alsnog onderweg afgekapt.
+const MAX_BRIDGE_REQUEST_BYTES = 36 * 1024 * 1024;
 const MAX_PRINT_DOCUMENT_BYTES = 50 * 1024 * 1024;
 
 let updateState = {
@@ -203,6 +209,22 @@ function registerAttachmentIpc() {
 }
 
 function registerScreenCaptureIpc() {
+  ipcMain.handle('deepscribe:seescribe:capture', async (_event, command) => {
+    return launchSeeScribe(typeof command === 'string' ? command : 'capture');
+  });
+
+  ipcMain.handle('deepscribe:seescribe:status', async () => {
+    return { executablePath: resolveSeeScribePath() };
+  });
+
+  ipcMain.handle('deepscribe:seescribe:set-path', async (_event, executablePath) => {
+    if (typeof executablePath !== 'string' || !fs.existsSync(executablePath)) {
+      throw new Error('Dit pad bestaat niet.');
+    }
+    setSeeScribePath(executablePath);
+    return { executablePath };
+  });
+
   ipcMain.handle('deepscribe:screen:trigger-overlay', async () => {
     await captureScreenAndOpenOverlay();
     return { ok: true };
@@ -517,12 +539,22 @@ function startMcpBridge() {
     }
 
     let body = '';
+    let aborted = false;
     request.setEncoding('utf8');
     request.on('data', chunk => {
+      if (aborted) return;
       body += chunk;
-      if (body.length > 1024 * 1024) request.destroy();
+      if (body.length > MAX_BRIDGE_REQUEST_BYTES) {
+        // Antwoord met een leesbare fout in plaats van de verbinding te verbreken.
+        // Een verbroken verbinding is aan de andere kant niet te onderscheiden van
+        // een afgesloten DeepScribe, wat tot misleidende meldingen leidt.
+        aborted = true;
+        sendJson(response, 413, { ok: false, error: 'Dit verzoek is te groot voor de DeepScribe-bridge.' });
+        request.destroy();
+      }
     });
     request.on('end', async () => {
+      if (aborted) return;
       try {
         const payload = JSON.parse(body);
         if (!payload || typeof payload.method !== 'string') throw new Error('Ongeldig bridge-verzoek.');
@@ -568,6 +600,94 @@ ipcMain.on('deepscribe-workspace-flushed', () => {
   workspaceQuitReady = true;
   app.quit();
 });
+
+const SEESCRIBE_CONFIG_FILE = 'seescribe.json';
+
+/**
+ * Zoekt het uitvoerbare bestand van SeeScribe. Een expliciet ingesteld pad gaat voor;
+ * daarna worden de plaatsen geprobeerd waar een lokale build terechtkomt.
+ */
+function resolveSeeScribePath() {
+  const configPath = path.join(app.getPath('userData'), SEESCRIBE_CONFIG_FILE);
+  try {
+    const configured = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    if (typeof configured.executablePath === 'string' && fs.existsSync(configured.executablePath)) {
+      return configured.executablePath;
+    }
+  } catch {
+    // Geen instelling; val terug op de conventionele locaties.
+  }
+
+  // Geïnstalleerd reist SeeScribe mee als extra bron naast de app.
+  // In ontwikkeling staat het naast de repository, gebouwd vanuit seescribe/.
+  const repoRoot = app.isPackaged ? null : app.getAppPath();
+  const candidates = [
+    path.join(process.resourcesPath || '', 'seescribe', 'SeeScribe.App.exe'),
+    repoRoot && path.join(repoRoot, 'seescribe', 'src', 'SeeScribe.App', 'bin', 'Release', 'net8.0-windows', 'SeeScribe.App.exe'),
+    repoRoot && path.join(repoRoot, 'seescribe', 'src', 'SeeScribe.App', 'bin', 'Debug', 'net8.0-windows', 'SeeScribe.App.exe'),
+    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'SeeScribe', 'SeeScribe.App.exe')
+  ];
+
+  return candidates.find(candidate => candidate && fs.existsSync(candidate)) || null;
+}
+
+function setSeeScribePath(executablePath) {
+  const configPath = path.join(app.getPath('userData'), SEESCRIBE_CONFIG_FILE);
+  fs.writeFileSync(configPath, JSON.stringify({ executablePath }), { encoding: 'utf8' });
+}
+
+/**
+ * Start SeeScribe met een opdracht. SeeScribe laat maar één instantie toe: draait hij al,
+ * dan geeft deze aanroep de opdracht door aan de draaiende instantie en sluit zichzelf.
+ * Daardoor is starten en aansturen dezelfde handeling.
+ */
+function launchSeeScribe(command = 'capture') {
+  const executablePath = resolveSeeScribePath();
+  if (!executablePath) {
+    return { ok: false, error: 'SeeScribe is niet gevonden. Stel het pad in bij de instellingen.' };
+  }
+
+  try {
+    const child = spawn(executablePath, ['--' + command], { detached: true, stdio: 'ignore' });
+    child.unref();
+    return { ok: true, executablePath };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'SeeScribe kon niet worden gestart.' };
+  }
+}
+
+/**
+ * Vraagt een draaiende SeeScribe zichzelf af te sluiten. SeeScribe kan zonder DeepScribe
+ * niets bewaren, dus achterblijven als los systeemvakicoon heeft geen zin.
+ *
+ * Er wordt rechtstreeks naar de named pipe van SeeScribe geschreven in plaats van een
+ * proces te starten of af te breken: SeeScribe sluit dan zelf netjes af, en een
+ * openstaande annotatie mag eerst worden afgemaakt.
+ */
+function askSeeScribeToQuit() {
+  return new Promise(resolve => {
+    let settled = false;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+
+    try {
+      const client = net.connect({ path: '\\\\.\\pipe\\SeeScribe.Command' }, () => {
+        client.end('quit', done);
+      });
+      // Draait SeeScribe niet, dan bestaat de pipe niet. Dat is geen fout.
+      client.on('error', done);
+      client.setTimeout(1500, () => {
+        client.destroy();
+        done();
+      });
+    } catch {
+      done();
+    }
+  });
+}
 
 async function captureScreenAndOpenOverlay() {
   try {
@@ -678,6 +798,26 @@ function showMainWindow() {
   }
 }
 
+/**
+ * Start een vastlegging. SeeScribe heeft de voorkeur zodra het beschikbaar is;
+ * de ingebouwde overlay blijft achter de hand tot SeeScribe die rol volledig overneemt.
+ */
+function startScreenAnnotation() {
+  if (!resolveSeeScribePath()) {
+    // SeeScribe is niet geïnstalleerd; de ingebouwde overlay blijft dan de terugval.
+    captureScreenAndOpenOverlay();
+    return;
+  }
+
+  const result = launchSeeScribe('capture');
+  if (result.ok) return;
+
+  // SeeScribe is er wel maar start niet. Dat moet zichtbaar zijn in plaats van
+  // stilzwijgend de oude overlay openen, anders blijft de storing onopgemerkt.
+  console.error('SeeScribe kon niet worden gestart:', result.error);
+  dialog.showErrorBox('SeeScribe kon niet worden gestart', result.error);
+}
+
 function setupTray() {
   if (tray) return;
   const iconPath = getAppIconPath();
@@ -690,8 +830,8 @@ function setupTray() {
     tray = new Tray(trayIcon);
     const contextMenu = Menu.buildFromTemplate([
       {
-        label: '📸 Annotate Screen (Ctrl+Alt+S)',
-        click: () => captureScreenAndOpenOverlay()
+        label: '📸 Scherm annoteren (Ctrl+Alt+S)',
+        click: () => startScreenAnnotation()
       },
       { type: 'separator' },
       {
@@ -813,11 +953,16 @@ if (!gotTheLock) {
     createWindow();
     setupTray();
 
-    // Register global hotkey for screen capture overlay
+    // DeepScribe claimt Ctrl+Alt+S en stuurt hem door naar SeeScribe. Daardoor werkt de
+    // sneltoets ook wanneer SeeScribe nog niet draait: dezelfde aanroep start hem.
+    // Lukt registratie niet, dan heeft SeeScribe hem zelf al; ook dan komt de vastlegging goed terecht.
     try {
-      globalShortcut.register('CommandOrControl+Alt+S', () => {
-        captureScreenAndOpenOverlay();
+      const registered = globalShortcut.register('CommandOrControl+Alt+S', () => {
+        startScreenAnnotation();
       });
+      if (!registered) {
+        console.info('Ctrl+Alt+S is al geclaimd, waarschijnlijk door SeeScribe zelf.');
+      }
     } catch (e) {
       console.warn('Failed to register global hotkey CommandOrControl+Alt+S:', e);
     }
@@ -849,6 +994,7 @@ app.on('window-all-closed', () => {
 app.on('before-quit', event => {
   isQuitting = true;
   globalShortcut.unregisterAll();
+  askSeeScribeToQuit();
   if (overlayWindow && !overlayWindow.isDestroyed()) {
     try { overlayWindow.destroy(); } catch {}
     overlayWindow = null;

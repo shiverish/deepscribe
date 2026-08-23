@@ -9,6 +9,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   removeAttachment: filePath => ipcRenderer.invoke('deepscribe:attachments:remove', filePath),
   readAttachment: filePath => ipcRenderer.invoke('deepscribe:attachments:read', filePath),
   importAttachment: payload => ipcRenderer.invoke('deepscribe:attachments:import', payload),
+  seeScribe: {
+    capture: command => ipcRenderer.invoke('deepscribe:seescribe:capture', command),
+    status: () => ipcRenderer.invoke('deepscribe:seescribe:status'),
+    setPath: executablePath => ipcRenderer.invoke('deepscribe:seescribe:set-path', executablePath)
+  },
   migrateLegacyAttachment: payload => ipcRenderer.invoke('deepscribe:attachments:migrate-legacy', payload),
   printBlockDocument: payload => ipcRenderer.invoke('deepscribe:print:block-document', payload),
   screenCapture: {

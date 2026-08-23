@@ -1,0 +1,10 @@
+<Application x:Class="SeeScribe.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ShutdownMode="OnExplicitShutdown">
+    <Application.Resources>
+        <ResourceDictionary>
+            <FontFamily x:Key="AppFont">Segoe UI, Segoe UI Variable, Arial</FontFamily>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

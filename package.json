@@ -11,8 +11,8 @@
     "build": "tsc -b && vite build",
     "app:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
     "app:start": "cross-env NODE_ENV=production electron .",
-    "app:build": "npm run build && electron-builder --publish never",
-    "app:release": "npm run build && electron-builder --publish always",
+    "app:build": "npm run build && npm run seescribe:build && electron-builder --publish never",
+    "app:release": "npm run build && npm run seescribe:build && electron-builder --publish always",
     "mcp:start": "node mcp/server.mjs",
     "mcp:test": "node mcp/smoke-test.mjs",
     "mcpb:build": "node mcp/build-mcpb.mjs",
@@ -20,7 +20,9 @@
     "lint": "oxlint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "seescribe:build": "dotnet build seescribe/src/SeeScribe.App/SeeScribe.App.csproj -c Release",
+    "seescribe:test": "dotnet test seescribe/SeeScribe.slnx"
   },
   "build": {
     "appId": "com.deepscribe.app",
@@ -59,7 +61,16 @@
       "shortcutName": "DeepScribe",
       "artifactName": "${productName}-Setup.${ext}",
       "differentialPackage": true
-    }
+    },
+    "extraResources": [
+      {
+        "from": "seescribe/src/SeeScribe.App/bin/Release/net8.0-windows",
+        "to": "seescribe",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ]
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",

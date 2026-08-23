@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SeeScribe.App/SeeScribe.App.csproj" />
+    <Project Path="src/SeeScribe.Core/SeeScribe.Core.csproj" />
+    <Project Path="src/SeeScribe.DeepScribe/SeeScribe.DeepScribe.csproj" />
+    <Project Path="src/SeeScribe.Storage/SeeScribe.Storage.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SeeScribe.Tests/SeeScribe.Tests.csproj" />
+  </Folder>
+</Solution>
