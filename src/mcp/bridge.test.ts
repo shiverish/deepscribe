@@ -155,6 +155,28 @@ describe('DeepScribe MCP task blocks', () => {
     expect(done.task?.claim).toBeUndefined();
   });
 
+  it('claims a selected available task without allowing manual in-progress status changes', async () => {
+    const project = await handleMcpBridgeRequest('create_project', { title: 'Selected claim' }) as Project;
+    const parent = await handleMcpBridgeRequest('create_block', { projectId: project.id, title: 'Planning' }) as Block;
+    const first = await insertUserTask(project.id, parent.id, 'First task', { ...createTaskMetadata(), status: 'ready', agentTarget: 'openai', readyAt: Date.now() });
+    const selected = await insertUserTask(project.id, parent.id, 'Selected task', { ...createTaskMetadata(), status: 'ready', agentTarget: 'openai', readyAt: Date.now() + 1 });
+
+    await expect(handleMcpBridgeRequest('update_task_status', { blockId: selected.id, status: 'in-progress' })).rejects.toThrow(/claim_work_item/i);
+    const claim = await handleMcpBridgeRequest('claim_work_item', {
+      blockId: selected.id, agentId: 'codex-1', agentTarget: 'openai', requestId: 'selected-claim', leaseSeconds: 60
+    }) as { block: Block; claimToken: string; replayed: boolean };
+    expect(claim).toMatchObject({ block: { id: selected.id, task: { status: 'in-progress', claim: { token: '[redacted]' } } }, replayed: false });
+    expect((await db.blocks.get(first.id))?.task?.status).toBe('ready');
+
+    const replay = await handleMcpBridgeRequest('claim_work_item', {
+      blockId: selected.id, agentId: 'codex-1', agentTarget: 'openai', requestId: 'selected-claim'
+    }) as { claimToken: string; replayed: boolean };
+    expect(replay).toMatchObject({ claimToken: claim.claimToken, replayed: true });
+    await expect(handleMcpBridgeRequest('claim_work_item', {
+      blockId: first.id, agentId: 'codex-1', agentTarget: 'openai', requestId: 'selected-claim'
+    })).rejects.toThrow(/different task/i);
+  });
+
   it('rechecks dependencies, has one concurrent winner and takes over expired leases', async () => {
     const project = await handleMcpBridgeRequest('create_project', { title: 'Concurrent pickup' }) as Project;
     const parent = await handleMcpBridgeRequest('create_block', { projectId: project.id, title: 'Planning' }) as Block;

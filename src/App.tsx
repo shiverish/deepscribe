@@ -257,7 +257,7 @@ function DeepScribeApp() {
     if (!activeProjectId) return cols;
 
     const rootBlocks = allBlocks
-      .filter(b => b.projectId === activeProjectId && b.parentId === null)
+      .filter(b => b.projectId === activeProjectId && b.parentId === null && b.kind !== 'task')
       .sort((a, b) => a.order - b.order);
 
     const selectedLevel1Id = selectedBlockPath[0] || null;
@@ -277,7 +277,7 @@ function DeepScribeApp() {
       if (!parentBlock) break;
 
       const children = allBlocks
-        .filter(b => b.parentId === parentId)
+        .filter(b => b.parentId === parentId && b.kind !== 'task')
         .sort((a, b) => a.order - b.order);
 
       const nextLevelSelectedId = selectedBlockPath[i + 1] || null;

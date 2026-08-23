@@ -1255,7 +1255,7 @@ export class DirectWorkspaceStore {
         const block = this.getBlock(blockId);
         if (!block || block.isTrash || block.kind !== 'task' || !block.task) throw new Error('Taakblok niet gevonden.');
         const task = taskMetadataFromParams(params, block.task);
-        if (task.status === 'in-progress' && block.task.status !== 'in-progress') throw new Error('Use claim_next_work_item to claim a task.');
+        if (task.status === 'in-progress' && block.task.status !== 'in-progress') throw new Error('Use claim_work_item or claim_next_work_item to claim a task.');
         if (block.task.claim && task.status !== block.task.status) {
           throw new Error('Een actief geclaimde taak kan alleen via transition_work_item worden gewijzigd.');
         }
@@ -1340,6 +1340,50 @@ export class DirectWorkspaceStore {
           if (!candidate?.task) {
             this.database.exec('COMMIT');
             return null;
+          }
+          const attempt = (candidate.task.claimAttempt ?? candidate.task.claim?.attempt ?? 0) + 1;
+          const token = crypto.randomUUID();
+          const claim = { ownerId: agentId, agentTarget, ...(customAgentName ? { customAgentName } : {}), token, requestId, claimedAt: now, heartbeatAt: now, expiresAt: now + leaseSeconds * 1000, attempt };
+          const updated = { ...candidate, task: { ...candidate.task, status: 'in-progress', claimAttempt: attempt, claim }, updatedAt: now, lastAgentEditAt: now };
+          this.saveBlock(updated);
+          const nextReceipts = [...receipts.filter(receipt => receipt.createdAt >= now - 7 * 86400000), { agentId, requestId, blockId: updated.id, token, createdAt: now }].slice(-500);
+          this.saveSetting({ key: CLAIM_RECEIPTS_KEY, value: nextReceipts });
+          this.recordActivity({ projectId: updated.projectId, blockId: updated.id, action: candidate.task.status === 'in-progress' ? 'task-claim-taken-over' : 'task-claimed', summary: `${agentId} claimed task “${updated.title}”` });
+          this.database.exec('COMMIT');
+          return { block: redactTaskClaim(updated), claimToken: token, expiresAt: claim.expiresAt, replayed: false };
+        } catch (error) {
+          this.database.exec('ROLLBACK');
+          throw error;
+        }
+      }
+
+      case 'claim_work_item': {
+        this.open();
+        const blockId = requireString('blockId');
+        const agentId = requireString('agentId');
+        const requestId = requireString('requestId');
+        const agentTarget = requireString('agentTarget');
+        if (!CLAIMANT_AGENT_TARGETS.includes(agentTarget)) throw new Error('agentTarget is invalid for a claimant.');
+        const customAgentName = optionalStr('customAgentName')?.trim();
+        if (agentTarget === 'custom' && !customAgentName) throw new Error('customAgentName is required for a custom claimant.');
+        const leaseSeconds = normalizeLeaseSeconds(params.leaseSeconds);
+        const now = Date.now();
+        this.database.exec('BEGIN IMMEDIATE');
+        try {
+          const receiptRecord = this.getSetting(CLAIM_RECEIPTS_KEY);
+          const receipts = Array.isArray(receiptRecord?.value) ? receiptRecord.value : [];
+          const replay = receipts.find(receipt => receipt.agentId === agentId && receipt.requestId === requestId);
+          if (replay) {
+            if (replay.blockId !== blockId) throw new Error('requestId has already been used to claim a different task.');
+            const replayBlock = this.getBlock(replay.blockId);
+            this.database.exec('COMMIT');
+            return replayBlock ? { block: redactTaskClaim(replayBlock), claimToken: replay.token, replayed: true } : null;
+          }
+          const candidate = this.getBlock(blockId);
+          const projects = new Set(this.getAllProjects().filter(project => !project.isTrash).map(project => project.id));
+          const allBlocks = this.getAllBlocks().filter(block => !block.isTrash);
+          if (!candidate || !projects.has(candidate.projectId) || !isTaskClaimCandidate(candidate, allBlocks, agentTarget, customAgentName, now)) {
+            throw new Error('This task is not available for a claim by this agent.');
           }
           const attempt = (candidate.task.claimAttempt ?? candidate.task.claim?.attempt ?? 0) + 1;
           const token = crypto.randomUUID();

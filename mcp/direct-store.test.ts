@@ -72,6 +72,30 @@ describe('DirectWorkspaceStore offline MCP engine', () => {
     }
   });
 
+  it('claims a selected task without claiming an earlier task', async () => {
+    const store = new DirectWorkspaceStore({ workspacePath: temporaryWorkspace() });
+    try {
+      const project = await store.handleRequest('create_project', { title: 'Selected offline claim' });
+      const parent = await store.handleRequest('create_block', { projectId: project.id, title: 'Planning' });
+      const first = insertUserTask(store, project.id, parent.id, 'First task', { status: 'ready', agentTarget: 'openai' });
+      const selected = insertUserTask(store, project.id, parent.id, 'Selected task', { status: 'ready', agentTarget: 'openai' });
+      const claim = await store.handleRequest('claim_work_item', {
+        blockId: selected.id, agentId: 'codex-1', agentTarget: 'openai', requestId: 'selected-offline', leaseSeconds: 60
+      });
+      expect(claim).toMatchObject({ block: { id: selected.id, task: { status: 'in-progress', claim: { token: '[redacted]' } } }, replayed: false });
+      expect(store.getBlock(first.id).task.status).toBe('ready');
+      const replay = await store.handleRequest('claim_work_item', {
+        blockId: selected.id, agentId: 'codex-1', agentTarget: 'openai', requestId: 'selected-offline'
+      });
+      expect(replay).toMatchObject({ claimToken: claim.claimToken, replayed: true });
+      await expect(store.handleRequest('claim_work_item', {
+        blockId: first.id, agentId: 'codex-1', agentTarget: 'openai', requestId: 'selected-offline'
+      })).rejects.toThrow(/different task/i);
+    } finally {
+      store.close();
+    }
+  });
+
   it('handles status and returns direct-sqlite mode', async () => {
     const wsPath = temporaryWorkspace();
     const store = new DirectWorkspaceStore({ workspacePath: wsPath });

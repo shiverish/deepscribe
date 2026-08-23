@@ -388,6 +388,13 @@ registerTool('claim_next_work_item', {
   annotations: write
 });
 
+registerTool('claim_work_item', {
+  title: 'Claim a specific task atomically',
+  description: 'Claim a specific available task with a lease. Use this after identifying the task to work on; it is the only way to set that task to In progress. requestId makes retries safe and returns the same claim token.',
+  inputSchema: { blockId: z.string().min(1), ...claimantSchema, requestId: z.string().min(1), leaseSeconds: z.number().int().min(60).max(3600).optional() },
+  annotations: write
+});
+
 registerTool('renew_work_item_claim', {
   title: 'Taakclaim verlengen',
   description: 'Verleng een nog geldige taakclaim met eigenaar en geheime claimtoken.',

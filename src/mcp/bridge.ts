@@ -527,7 +527,7 @@ async function updateTaskBlock(params: JsonObject) {
   const block = await db.blocks.get(blockId);
   if (!block || block.isTrash || block.kind !== 'task' || !block.task) throw new Error('Taakblok niet gevonden.');
   const task = taskMetadataFromParams(params, block.task);
-  if (task.status === 'in-progress' && block.task.status !== 'in-progress') throw new Error('Use claim_next_work_item to claim a task.');
+  if (task.status === 'in-progress' && block.task.status !== 'in-progress') throw new Error('Use claim_work_item or claim_next_work_item to claim a task.');
   if (block.task.claim && task.status !== block.task.status) {
     throw new Error('Een actief geclaimde taak kan alleen via transition_work_item worden gewijzigd.');
   }
@@ -597,6 +597,39 @@ async function claimNextWorkItem(params: JsonObject) {
     const nextReceipts = [...receipts.filter(receipt => receipt.createdAt >= now - 7 * 86400000), { agentId, requestId, blockId: updated.id, token, createdAt: now }].slice(-500);
     await db.settings.put({ key: CLAIM_RECEIPTS_KEY, value: nextReceipts });
     await db.activities.add({ id: `activity-${crypto.randomUUID()}`, projectId: updated.projectId, blockId: updated.id, source: 'agent', action: candidate.task.status === 'in-progress' ? 'task-claim-taken-over' : 'task-claimed', summary: `${agentId} claimed task “${updated.title}”`, createdAt: now });
+    return { block: redactTaskClaim(updated), claimToken: token, expiresAt: claim.expiresAt, replayed: false };
+  });
+}
+
+async function claimWorkItem(params: JsonObject) {
+  const blockId = requiredString(params, 'blockId');
+  const { agentId, requestId, agentTarget, customAgentName } = claimantFromParams(params);
+  if (!requestId) throw new Error('requestId is required.');
+  const leaseSeconds = normalizeLeaseSeconds(params.leaseSeconds);
+  const now = Date.now();
+  return await db.transaction('rw', [db.projects, db.blocks, db.settings, db.activities], async () => {
+    const receiptRecord = await db.settings.get(CLAIM_RECEIPTS_KEY);
+    const receipts = Array.isArray(receiptRecord?.value) ? receiptRecord.value as ClaimReceipt[] : [];
+    const replay = receipts.find(receipt => receipt.agentId === agentId && receipt.requestId === requestId);
+    if (replay) {
+      if (replay.blockId !== blockId) throw new Error('requestId has already been used to claim a different task.');
+      const replayBlock = await db.blocks.get(replay.blockId);
+      return replayBlock ? { block: redactTaskClaim(replayBlock), claimToken: replay.token, replayed: true } : null;
+    }
+    const candidate = await db.blocks.get(blockId);
+    const projects = new Set((await db.projects.filter(project => !project.isTrash).toArray()).map(project => project.id));
+    const allBlocks = await db.blocks.filter(block => !block.isTrash).toArray();
+    if (!candidate || !isTaskClaimCandidate(candidate, allBlocks, agentTarget, customAgentName, now) || !projects.has(candidate.projectId)) {
+      throw new Error('This task is not available for a claim by this agent.');
+    }
+    const attempt = (candidate.task!.claimAttempt ?? candidate.task!.claim?.attempt ?? 0) + 1;
+    const token = crypto.randomUUID();
+    const claim = createTaskClaim({ ownerId: agentId, agentTarget, customAgentName, requestId, token, now, leaseSeconds, attempt });
+    const updated: Block = { ...candidate, task: { ...candidate.task!, status: 'in-progress', claimAttempt: attempt, claim }, updatedAt: now, lastAgentEditAt: now };
+    await db.blocks.put(updated);
+    const nextReceipts = [...receipts.filter(receipt => receipt.createdAt >= now - 7 * 86400000), { agentId, requestId, blockId: updated.id, token, createdAt: now }].slice(-500);
+    await db.settings.put({ key: CLAIM_RECEIPTS_KEY, value: nextReceipts });
+    await db.activities.add({ id: `activity-${crypto.randomUUID()}`, projectId: updated.projectId, blockId: updated.id, source: 'agent', action: candidate.task!.status === 'in-progress' ? 'task-claim-taken-over' : 'task-claimed', summary: `${agentId} claimed task “${updated.title}”`, createdAt: now });
     return { block: redactTaskClaim(updated), claimToken: token, expiresAt: claim.expiresAt, replayed: false };
   });
 }
@@ -1169,6 +1202,8 @@ export async function handleMcpBridgeRequest(method: string, rawParams: unknown)
       return await claimableWorkItems(params);
     case 'claim_next_work_item':
       return await claimNextWorkItem(params);
+    case 'claim_work_item':
+      return await claimWorkItem(params);
     case 'renew_work_item_claim':
       return await renewWorkItemClaim(params);
     case 'transition_work_item':
