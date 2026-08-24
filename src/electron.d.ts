@@ -20,6 +20,7 @@ declare global {
       importAttachment: (payload: { projectId: string; blockId: string; fileName: string; base64: string }) => Promise<{ localPath: string }>;
       migrateLegacyAttachment: (payload: { projectId: string; blockId: string; localPath: string }) => Promise<{ localPath: string }>;
       printBlockDocument: (payload: { html: string; jobName: string; pageSize: 'A4' | 'A5' }) => Promise<{ status: 'printed' | 'cancelled' }>;
+      exportBlockDocumentPdf: (payload: { html: string; jobName: string; pageSize: 'A4' | 'A5' }) => Promise<{ status: 'exported' | 'cancelled'; filePath?: string }>;
       seeScribe?: {
         capture: (command?: 'capture' | 'record' | 'show') => Promise<{ ok: boolean; executablePath?: string; error?: string }>;
         status: () => Promise<{ executablePath: string | null }>;

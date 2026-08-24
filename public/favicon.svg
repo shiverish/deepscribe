@@ -1,10 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="DeepScribe">
   <defs>
-    <linearGradient id="background" x2="1" y2="1"><stop stop-color="#0E1930"/><stop offset="1" stop-color="#06060F"/></linearGradient>
     <linearGradient id="letter-d" x2="1" y2="1"><stop stop-color="#4AEAF5"/><stop offset="1" stop-color="#007CA9"/></linearGradient>
     <linearGradient id="letter-s" x2="1" y2="1"><stop stop-color="#FFE27A"/><stop offset="1" stop-color="#E98913"/></linearGradient>
   </defs>
-  <rect width="512" height="512" rx="112" fill="url(#background)"/>
   <!-- Orbital frame: DeepScribe connects separate ideas into a knowledge system. -->
   <ellipse cx="256" cy="258" rx="193" ry="93" fill="none" stroke="#50EDF6" stroke-opacity=".5" stroke-width="5" transform="rotate(-28 256 258)"/>
   <ellipse cx="256" cy="258" rx="193" ry="93" fill="none" stroke="#FFD25B" stroke-opacity=".5" stroke-width="5" transform="rotate(32 256 258)"/>

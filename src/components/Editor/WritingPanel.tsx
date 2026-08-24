@@ -50,6 +50,7 @@ interface WritingPanelProps {
   onOpenReferencedBlock?: (blockId: string) => void;
   onUploadImage?: (file: File) => Promise<string>;
   onPrintBlock?: (blockId: string, draft: { title: string; content: string }, settings: BlockPrintSettings) => Promise<{ status: 'printed' | 'cancelled' }>;
+  onExportBlockPdf?: (blockId: string, draft: { title: string; content: string }, settings: BlockPrintSettings) => Promise<{ status: 'exported' | 'cancelled'; filePath?: string }>;
   onClose: () => void;
 }
 
@@ -77,6 +78,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
   onOpenReferencedBlock,
   onUploadImage,
   onPrintBlock,
+  onExportBlockPdf,
   onClose
 }) => {
   const [title, setTitle] = useState('');
@@ -903,6 +905,24 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                   setIsPrintSettingsOpen(false);
                 } catch (error) {
                   setPrintError(error instanceof Error ? error.message : 'Printing failed.');
+                  setIsPrintSettingsOpen(false);
+                } finally {
+                  setIsPrinting(false);
+                }
+              }}
+              onExportPdf={async () => {
+                if (isPrinting || !onExportBlockPdf) return;
+                setIsPrinting(true);
+                setPrintError(null);
+                try {
+                  await saveStoredPrintSettings(printSettings);
+                  await onExportBlockPdf(activeItem.id, {
+                    title: draftRef.current.title,
+                    content: draftRef.current.htmlContent
+                  }, printSettings);
+                  setIsPrintSettingsOpen(false);
+                } catch (error) {
+                  setPrintError(error instanceof Error ? error.message : 'PDF export failed.');
                   setIsPrintSettingsOpen(false);
                 } finally {
                   setIsPrinting(false);

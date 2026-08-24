@@ -51,6 +51,7 @@ describe('buildBlockPrintDocument', () => {
     expect(result.blockIds).toEqual(['root', 'first', 'grandchild', 'later']);
     expect(result.html.match(/class="print-block"/g)).toHaveLength(4);
     expect(result.html).toContain('.print-block:not(:first-child) { break-before: page; page-break-before: always; }');
+    expect(result.html).toContain('.page-number::after { content: "Page " counter(page); }');
   });
 
   it('excludes trashed descendants and blocks from other projects', () => {
@@ -115,7 +116,7 @@ describe('buildBlockPrintDocument', () => {
       rootBlockId: root.id,
       blocks: [root, child],
       settings: {
-        pageSize: 'A4', font: 'sans', fontSize: 14, margin: 'wide', pageBreakPerBlock: false,
+        pageSize: 'A4', font: 'sans', fontSize: 14, margin: 'wide', pageBreakPerBlock: false, pageNumbers: false,
         headerStyle: 'full', headerAlignment: 'left', headerDivider: false
       }
     });
@@ -124,20 +125,21 @@ describe('buildBlockPrintDocument', () => {
     expect(result.html).toContain('font-size: 14pt;');
     expect(result.html).toContain('.block-content { font-family: "Segoe UI", Arial, sans-serif;');
     expect(result.html).not.toContain('.print-block:not(:first-child)');
+    expect(result.html).not.toContain('.page-number');
   });
 
   it('normalizes persisted print settings defensively', () => {
     expect(normalizeBlockPrintSettings({
-      pageSize: 'A5', font: 'sans', fontSize: 13, margin: 'wide', pageBreakPerBlock: false,
+      pageSize: 'A5', font: 'sans', fontSize: 13, margin: 'wide', pageBreakPerBlock: false, pageNumbers: false,
       headerStyle: 'compact', headerAlignment: 'center', headerDivider: true
     })).toEqual({
-      pageSize: 'A5', font: 'sans', fontSize: 13, margin: 'wide', pageBreakPerBlock: false,
+      pageSize: 'A5', font: 'sans', fontSize: 13, margin: 'wide', pageBreakPerBlock: false, pageNumbers: false,
       headerStyle: 'compact', headerAlignment: 'center', headerDivider: true
     });
 
     expect(normalizeBlockPrintSettings({ pageSize: 'Letter', fontSize: 99 }))
       .toEqual({
-        pageSize: 'A4', font: 'serif', fontSize: 11, margin: 'normal', pageBreakPerBlock: true,
+        pageSize: 'A4', font: 'serif', fontSize: 11, margin: 'normal', pageBreakPerBlock: true, pageNumbers: true,
         headerStyle: 'full', headerAlignment: 'left', headerDivider: false
       });
   });

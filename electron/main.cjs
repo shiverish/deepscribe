@@ -382,6 +382,72 @@ function registerPrintIpc() {
       try { await fs.promises.rmdir(tempDirectory); } catch { /* Tijdelijke map wordt later door het OS opgeruimd. */ }
     }
   });
+
+  ipcMain.handle('deepscribe:export:block-document-pdf', async (event, payload) => {
+    if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) {
+      throw new Error('The PDF export did not originate from the active DeepScribe window.');
+    }
+    if (activePrintWindow && !activePrintWindow.isDestroyed()) {
+      throw new Error('A print or PDF export job is already active.');
+    }
+    if (!payload || typeof payload.html !== 'string' || !payload.html.trim()) {
+      throw new Error('The PDF document is empty.');
+    }
+    if (Buffer.byteLength(payload.html, 'utf8') > MAX_PRINT_DOCUMENT_BYTES) {
+      throw new Error('The PDF document is too large to process safely.');
+    }
+
+    const rawJobName = typeof payload.jobName === 'string' ? payload.jobName : 'DeepScribe';
+    const pageSize = payload.pageSize === 'A5' ? 'A5' : 'A4';
+    const jobName = Array.from(rawJobName, character => {
+      const code = character.charCodeAt(0);
+      return code < 32 || code === 127 ? ' ' : character;
+    }).join('').trim().slice(0, 200) || 'DeepScribe';
+    const defaultFileName = `${jobName.replace(/[\\/:*?"<>|]/g, '-').trim() || 'DeepScribe'}.pdf`;
+    const saveResult = await dialog.showSaveDialog(mainWindow, {
+      title: 'Export PDF',
+      defaultPath: path.join(app.getPath('downloads'), defaultFileName),
+      filters: [{ name: 'PDF files', extensions: ['pdf'] }]
+    });
+    if (saveResult.canceled || !saveResult.filePath) return { status: 'cancelled' };
+
+    const tempDirectory = await fs.promises.mkdtemp(path.join(app.getPath('temp'), 'deepscribe-pdf-'));
+    const tempFile = path.join(tempDirectory, 'document.html');
+    let printWindow;
+
+    try {
+      await fs.promises.writeFile(tempFile, payload.html, 'utf8');
+      printWindow = new BrowserWindow({
+        show: false,
+        parent: mainWindow,
+        title: jobName,
+        backgroundColor: '#ffffff',
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true,
+          sandbox: true,
+          javascript: false
+        }
+      });
+      activePrintWindow = printWindow;
+      printWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+      printWindow.webContents.on('will-navigate', navigationEvent => navigationEvent.preventDefault());
+      await printWindow.loadFile(tempFile);
+      const pdf = await printWindow.webContents.printToPDF({
+        pageSize,
+        printBackground: true,
+        landscape: false,
+        margins: { marginType: 'default' }
+      });
+      await fs.promises.writeFile(saveResult.filePath, pdf);
+      return { status: 'exported', filePath: saveResult.filePath };
+    } finally {
+      if (activePrintWindow === printWindow) activePrintWindow = undefined;
+      if (printWindow && !printWindow.isDestroyed()) printWindow.destroy();
+      try { await fs.promises.unlink(tempFile); } catch { /* Temp file was not created or already removed. */ }
+      try { await fs.promises.rmdir(tempDirectory); } catch { /* The OS will clear the temporary directory later. */ }
+    }
+  });
 }
 
 function setupAutoUpdater() {

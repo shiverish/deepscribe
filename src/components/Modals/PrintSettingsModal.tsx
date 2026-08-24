@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Printer, X } from 'lucide-react';
+import { FileDown, Printer, X } from 'lucide-react';
 import {
   BLOCK_PRINT_PRESETS,
   type BlockPrintSettings,
@@ -18,6 +18,7 @@ interface PrintSettingsModalProps {
   onChange: (settings: BlockPrintSettings) => void;
   onClose: () => void;
   onPrint: () => void;
+  onExportPdf: () => void;
 }
 
 const PRESETS = [
@@ -32,7 +33,8 @@ export const PrintSettingsModal: React.FC<PrintSettingsModalProps> = ({
   settings,
   onChange,
   onClose,
-  onPrint
+  onPrint,
+  onExportPdf
 }) => {
   useEffect(() => {
     if (!isOpen) return;
@@ -127,6 +129,18 @@ export const PrintSettingsModal: React.FC<PrintSettingsModalProps> = ({
             </span>
           </label>
 
+          <label className="print-page-break-control">
+            <input
+              type="checkbox"
+              checked={settings.pageNumbers}
+              onChange={event => update('pageNumbers', event.target.checked)}
+            />
+            <span>
+              <strong>Show page numbers</strong>
+              <small>Adds page numbers to the bottom of each printed page.</small>
+            </span>
+          </label>
+
           <section>
             <span className="print-settings-label">Block Header</span>
             <div className="print-control-grid">
@@ -166,12 +180,16 @@ export const PrintSettingsModal: React.FC<PrintSettingsModalProps> = ({
           </section>
 
           <div className="print-settings-summary">
-            {settings.pageSize} · {settings.fontSize} pt · {settings.margin === 'compact' ? '10' : settings.margin === 'normal' ? '16' : '22'} mm · {settings.font === 'serif' ? 'Georgia' : 'sans-serif'} · {settings.headerStyle === 'full' ? 'full header' : settings.headerStyle === 'compact' ? 'compact header' : settings.headerStyle === 'title' ? 'title only' : 'no header'}
+            {settings.pageSize} · {settings.fontSize} pt · {settings.margin === 'compact' ? '10' : settings.margin === 'normal' ? '16' : '22'} mm · {settings.font === 'serif' ? 'Georgia' : 'sans-serif'} · {settings.pageNumbers ? 'page numbers' : 'no page numbers'} · {settings.headerStyle === 'full' ? 'full header' : settings.headerStyle === 'compact' ? 'compact header' : settings.headerStyle === 'title' ? 'title only' : 'no header'}
           </div>
         </div>
 
         <div className="modal-footer print-settings-footer">
           <button className="secondary-button" type="button" onClick={onClose} disabled={isPrinting}>Cancel</button>
+          <button className="secondary-button" type="button" onClick={onExportPdf} disabled={isPrinting}>
+            <FileDown size={14} />
+            {isPrinting ? 'Exporting PDF…' : 'Export PDF'}
+          </button>
           <button className="primary-button print-settings-submit" type="button" onClick={onPrint} disabled={isPrinting}>
             <Printer size={14} />
             {isPrinting ? 'Opening print dialog…' : 'Print'}

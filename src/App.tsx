@@ -222,6 +222,18 @@ function DeepScribeApp() {
     return window.electronAPI.printBlockDocument({ html: document.html, jobName: document.jobName, pageSize: settings.pageSize });
   }, [allBlocks, projects]);
 
+  const handleExportBlockPdf = useCallback(async (blockId: string, draft: BlockPrintDraft, settings: BlockPrintSettings) => {
+    if (!window.electronAPI?.exportBlockDocumentPdf) {
+      throw new Error('PDF export is only available in the DeepScribe desktop app.');
+    }
+    const block = allBlocks.find(item => item.id === blockId);
+    const project = block ? projects.find(item => item.id === block.projectId) : null;
+    if (!block || !project) throw new Error('The block to export is unavailable.');
+
+    const document = buildBlockPrintDocument({ project, rootBlockId: blockId, blocks: allBlocks, draft, settings });
+    return window.electronAPI.exportBlockDocumentPdf({ html: document.html, jobName: document.jobName, pageSize: settings.pageSize });
+  }, [allBlocks, projects]);
+
   const blockTagSuggestions = useMemo(() => {
     if (!activeProjectId) return [];
     const counts = new Map<string, number>();
@@ -976,6 +988,7 @@ function DeepScribeApp() {
           references={blockReferences}
           onOpenReferencedBlock={openBlockById}
           onPrintBlock={window.electronAPI?.printBlockDocument ? handlePrintBlock : undefined}
+          onExportBlockPdf={window.electronAPI?.exportBlockDocumentPdf ? handleExportBlockPdf : undefined}
           onClose={() => setIsWritingPanelOpen(false)}
         />
       </div>
