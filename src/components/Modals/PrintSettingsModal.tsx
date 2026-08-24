@@ -8,6 +8,8 @@ import {
   type PrintHeaderAlignment,
   type PrintHeaderStyle,
   type PrintMargin,
+  type PrintPageNumberAlignment,
+  type PrintPageNumberPlacement,
   type PrintPageSize
 } from '../../utils/printDocument';
 
@@ -137,9 +139,35 @@ export const PrintSettingsModal: React.FC<PrintSettingsModalProps> = ({
             />
             <span>
               <strong>Show page numbers</strong>
-              <small>Adds page numbers to the bottom of each printed page.</small>
+              <small>Adds sequential page numbers at the selected position.</small>
             </span>
           </label>
+
+          <section className="print-control-grid">
+            <label>
+              <span className="print-settings-label">Page Number Placement</span>
+              <select
+                value={settings.pageNumberPlacement}
+                disabled={!settings.pageNumbers}
+                onChange={event => update('pageNumberPlacement', event.target.value as PrintPageNumberPlacement)}
+              >
+                <option value="bottom">Bottom</option>
+                <option value="top">Top</option>
+              </select>
+            </label>
+            <label>
+              <span className="print-settings-label">Page Number Alignment</span>
+              <select
+                value={settings.pageNumberAlignment}
+                disabled={!settings.pageNumbers}
+                onChange={event => update('pageNumberAlignment', event.target.value as PrintPageNumberAlignment)}
+              >
+                <option value="left">Left</option>
+                <option value="center">Center</option>
+                <option value="right">Right</option>
+              </select>
+            </label>
+          </section>
 
           <section>
             <span className="print-settings-label">Block Header</span>
@@ -180,7 +208,7 @@ export const PrintSettingsModal: React.FC<PrintSettingsModalProps> = ({
           </section>
 
           <div className="print-settings-summary">
-            {settings.pageSize} · {settings.fontSize} pt · {settings.margin === 'compact' ? '10' : settings.margin === 'normal' ? '16' : '22'} mm · {settings.font === 'serif' ? 'Georgia' : 'sans-serif'} · {settings.pageNumbers ? 'page numbers' : 'no page numbers'} · {settings.headerStyle === 'full' ? 'full header' : settings.headerStyle === 'compact' ? 'compact header' : settings.headerStyle === 'title' ? 'title only' : 'no header'}
+            {settings.pageSize} · {settings.fontSize} pt · {settings.margin === 'compact' ? '10' : settings.margin === 'normal' ? '16' : '22'} mm · {settings.font === 'serif' ? 'Georgia' : 'sans-serif'} · {settings.pageNumbers ? `${settings.pageNumberPlacement} ${settings.pageNumberAlignment} page numbers` : 'no page numbers'} · {settings.headerStyle === 'full' ? 'full header' : settings.headerStyle === 'compact' ? 'compact header' : settings.headerStyle === 'title' ? 'title only' : 'no header'}
           </div>
         </div>
 

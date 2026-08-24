@@ -437,7 +437,7 @@ function registerPrintIpc() {
         pageSize,
         printBackground: true,
         landscape: false,
-        margins: { marginType: 'default' }
+        preferCSSPageSize: true
       });
       await fs.promises.writeFile(saveResult.filePath, pdf);
       return { status: 'exported', filePath: saveResult.filePath };

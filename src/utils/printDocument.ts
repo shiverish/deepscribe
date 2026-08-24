@@ -12,6 +12,8 @@ export type PrintMargin = 'compact' | 'normal' | 'wide';
 export type PrintFontSize = 10 | 11 | 12 | 13 | 14;
 export type PrintHeaderStyle = 'full' | 'compact' | 'title' | 'none';
 export type PrintHeaderAlignment = 'left' | 'center';
+export type PrintPageNumberPlacement = 'top' | 'bottom';
+export type PrintPageNumberAlignment = 'left' | 'center' | 'right';
 
 export interface BlockPrintSettings {
   pageSize: PrintPageSize;
@@ -20,6 +22,8 @@ export interface BlockPrintSettings {
   margin: PrintMargin;
   pageBreakPerBlock: boolean;
   pageNumbers: boolean;
+  pageNumberPlacement: PrintPageNumberPlacement;
+  pageNumberAlignment: PrintPageNumberAlignment;
   headerStyle: PrintHeaderStyle;
   headerAlignment: PrintHeaderAlignment;
   headerDivider: boolean;
@@ -32,6 +36,8 @@ export const DEFAULT_BLOCK_PRINT_SETTINGS: BlockPrintSettings = {
   margin: 'normal',
   pageBreakPerBlock: true,
   pageNumbers: true,
+  pageNumberPlacement: 'bottom',
+  pageNumberAlignment: 'center',
   headerStyle: 'full',
   headerAlignment: 'left',
   headerDivider: false
@@ -58,6 +64,10 @@ export function normalizeBlockPrintSettings(value: unknown): BlockPrintSettings 
     margin: candidate.margin === 'compact' || candidate.margin === 'wide' ? candidate.margin : 'normal',
     pageBreakPerBlock: candidate.pageBreakPerBlock !== false,
     pageNumbers: candidate.pageNumbers !== false,
+    pageNumberPlacement: candidate.pageNumberPlacement === 'top' ? 'top' : 'bottom',
+    pageNumberAlignment: candidate.pageNumberAlignment === 'left' || candidate.pageNumberAlignment === 'right'
+      ? candidate.pageNumberAlignment
+      : 'center',
     headerStyle: candidate.headerStyle === 'compact' || candidate.headerStyle === 'title' || candidate.headerStyle === 'none'
       ? candidate.headerStyle
       : 'full',
@@ -231,12 +241,20 @@ export function buildBlockPrintDocument({
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(documentTitle)}</title>
   <style>
-    @page { size: ${settings.pageSize} portrait; margin: ${MARGIN_MM[settings.margin]}mm; }
+    @page {
+      size: ${settings.pageSize} portrait;
+      margin: ${MARGIN_MM[settings.margin]}mm;
+      ${settings.pageNumbers ? `@${settings.pageNumberPlacement}-${settings.pageNumberAlignment} {
+        content: counter(page);
+        color: #737373;
+        font-family: "Segoe UI", Arial, sans-serif;
+        font-size: 8pt;
+      }` : ''}
+    }
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; background: #fff; color: #171717; }
     body { font-family: "Segoe UI", Arial, sans-serif; font-size: ${settings.fontSize}pt; line-height: 1.55; }
     ${settings.pageBreakPerBlock ? '.print-block:not(:first-child) { break-before: page; page-break-before: always; }' : ''}
-    ${settings.pageNumbers ? '.page-number { position: fixed; right: 0; bottom: -10mm; color: #737373; font-family: "Segoe UI", Arial, sans-serif; font-size: 8pt; } .page-number::after { content: "Page " counter(page); }' : ''}
     .block-header.align-center { text-align: center; }
     .block-header.with-divider { margin-bottom: 5mm; padding-bottom: 4mm; border-bottom: .3mm solid #d4d4d4; }
     .project-name { color: #525252; font-size: 9pt; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
@@ -273,13 +291,13 @@ export function buildBlockPrintDocument({
     pre, blockquote, table, img { break-inside: avoid; page-break-inside: avoid; }
   </style>
 </head>
-<body>${printableBlocks.map(block => renderBlockSection(block, project, blocksById, settings)).join('')}${settings.pageNumbers ? '<div class="page-number" aria-hidden="true"></div>' : ''}
+<body>${printableBlocks.map(block => renderBlockSection(block, project, blocksById, settings)).join('')}
 </body>
 </html>`;
 
   return {
     html,
-    jobName: `DeepScribe - ${root.title || 'Untitled block'}`,
+    jobName: root.title || 'Untitled block',
     blockIds: printableBlocks.map(block => block.id)
   };
 }

@@ -78,6 +78,8 @@ describe('printSettings persistence', () => {
       margin: 'compact',
       pageBreakPerBlock: false,
       pageNumbers: true,
+      pageNumberPlacement: 'bottom',
+      pageNumberAlignment: 'center',
       headerStyle: 'none',
       headerAlignment: 'left',
       headerDivider: false
@@ -98,6 +100,8 @@ describe('printSettings persistence', () => {
       margin: 'wide',
       pageBreakPerBlock: false,
       pageNumbers: false,
+      pageNumberPlacement: 'top',
+      pageNumberAlignment: 'right',
       headerStyle: 'compact',
       headerAlignment: 'center',
       headerDivider: true
@@ -122,6 +126,8 @@ describe('printSettings persistence', () => {
       margin: 'compact',
       pageBreakPerBlock: true,
       pageNumbers: true,
+      pageNumberPlacement: 'bottom',
+      pageNumberAlignment: 'left',
       headerStyle: 'title',
       headerAlignment: 'left',
       headerDivider: false
@@ -147,6 +153,8 @@ describe('printSettings persistence', () => {
       margin: 'normal',
       pageBreakPerBlock: false,
       pageNumbers: false,
+      pageNumberPlacement: 'top',
+      pageNumberAlignment: 'center',
       headerStyle: 'full',
       headerAlignment: 'center',
       headerDivider: true

@@ -34,6 +34,7 @@ describe('buildBlockPrintDocument', () => {
 
     expect(result.blockIds).toEqual(['leaf']);
     expect(result.html).toContain('<h1>Los blok</h1>');
+    expect(result.jobName).toBe('Los blok');
   });
 
   it('prints a parent subtree depth-first with ordered siblings', () => {
@@ -51,7 +52,9 @@ describe('buildBlockPrintDocument', () => {
     expect(result.blockIds).toEqual(['root', 'first', 'grandchild', 'later']);
     expect(result.html.match(/class="print-block"/g)).toHaveLength(4);
     expect(result.html).toContain('.print-block:not(:first-child) { break-before: page; page-break-before: always; }');
-    expect(result.html).toContain('.page-number::after { content: "Page " counter(page); }');
+    expect(result.html).toContain('@bottom-center {');
+    expect(result.html).toContain('content: counter(page);');
+    expect(result.html).not.toContain('content: "Page "');
   });
 
   it('excludes trashed descendants and blocks from other projects', () => {
@@ -82,6 +85,7 @@ describe('buildBlockPrintDocument', () => {
     expect(result.html).toContain('<p>Actueel concept</p>');
     expect(result.html).not.toContain('<h1>Oude titel</h1>');
     expect(result.html).toContain('Nieuwe &lt;titel&gt;<span class="path-separator"');
+    expect(result.jobName).toBe('Nieuwe <titel>');
   });
 
   it('escapes metadata and locks the document to inline styles and data images', () => {
@@ -91,7 +95,7 @@ describe('buildBlockPrintDocument', () => {
     expect(result.html).toContain('Project &lt;Alpha&gt;');
     expect(result.html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
     expect(result.html).toContain("default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:");
-    expect(result.html).toContain('@page { size: A4 portrait;');
+    expect(result.html).toContain('size: A4 portrait;');
     expect(result.html).toContain('font-family: Georgia, "Times New Roman", serif;');
   });
 
@@ -104,7 +108,8 @@ describe('buildBlockPrintDocument', () => {
       settings: BLOCK_PRINT_PRESETS.a5Book
     });
 
-    expect(result.html).toContain('@page { size: A5 portrait; margin: 10mm; }');
+    expect(result.html).toContain('size: A5 portrait;');
+    expect(result.html).toContain('margin: 10mm;');
     expect(result.html).toContain('font-size: 11pt;');
   });
 
@@ -117,31 +122,50 @@ describe('buildBlockPrintDocument', () => {
       blocks: [root, child],
       settings: {
         pageSize: 'A4', font: 'sans', fontSize: 14, margin: 'wide', pageBreakPerBlock: false, pageNumbers: false,
+        pageNumberPlacement: 'top', pageNumberAlignment: 'right',
         headerStyle: 'full', headerAlignment: 'left', headerDivider: false
       }
     });
 
-    expect(result.html).toContain('@page { size: A4 portrait; margin: 22mm; }');
+    expect(result.html).toContain('size: A4 portrait;');
+    expect(result.html).toContain('margin: 22mm;');
     expect(result.html).toContain('font-size: 14pt;');
     expect(result.html).toContain('.block-content { font-family: "Segoe UI", Arial, sans-serif;');
     expect(result.html).not.toContain('.print-block:not(:first-child)');
-    expect(result.html).not.toContain('.page-number');
+    expect(result.html).not.toContain('content: counter(page);');
   });
 
   it('normalizes persisted print settings defensively', () => {
     expect(normalizeBlockPrintSettings({
       pageSize: 'A5', font: 'sans', fontSize: 13, margin: 'wide', pageBreakPerBlock: false, pageNumbers: false,
+      pageNumberPlacement: 'top', pageNumberAlignment: 'right',
       headerStyle: 'compact', headerAlignment: 'center', headerDivider: true
     })).toEqual({
       pageSize: 'A5', font: 'sans', fontSize: 13, margin: 'wide', pageBreakPerBlock: false, pageNumbers: false,
+      pageNumberPlacement: 'top', pageNumberAlignment: 'right',
       headerStyle: 'compact', headerAlignment: 'center', headerDivider: true
     });
 
     expect(normalizeBlockPrintSettings({ pageSize: 'Letter', fontSize: 99 }))
       .toEqual({
         pageSize: 'A4', font: 'serif', fontSize: 11, margin: 'normal', pageBreakPerBlock: true, pageNumbers: true,
+        pageNumberPlacement: 'bottom', pageNumberAlignment: 'center',
         headerStyle: 'full', headerAlignment: 'left', headerDivider: false
       });
+  });
+
+  it('places page numbers in the selected page margin box', () => {
+    const leaf = block({ id: 'leaf', title: 'Positioned pages' });
+    const result = buildBlockPrintDocument({
+      project,
+      rootBlockId: leaf.id,
+      blocks: [leaf],
+      settings: { ...BLOCK_PRINT_PRESETS.a4Document, pageNumberPlacement: 'top', pageNumberAlignment: 'left' }
+    });
+
+    expect(result.html).toContain('@top-left {');
+    expect(result.html).toContain('content: counter(page);');
+    expect(result.html).not.toContain('@bottom-center {');
   });
 
   it('supports compact, title-only and hidden block headers', () => {
