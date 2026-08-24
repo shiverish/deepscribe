@@ -1,72 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="DeepScribe">
   <defs>
-    <!-- Background -->
-    <linearGradient id="v3Bg" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#161224" />
-      <stop offset="100%" stop-color="#08060E" />
-    </linearGradient>
-
-    <!-- Column Gradients -->
-    <linearGradient id="v3CyanGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#00F0FF" />
-      <stop offset="100%" stop-color="#0369A1" />
-    </linearGradient>
-    <linearGradient id="v3GoldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#FDE68A" />
-      <stop offset="100%" stop-color="#D97706" />
-    </linearGradient>
+    <linearGradient id="background" x2="1" y2="1"><stop stop-color="#0E1930"/><stop offset="1" stop-color="#06060F"/></linearGradient>
+    <linearGradient id="letter-d" x2="1" y2="1"><stop stop-color="#4AEAF5"/><stop offset="1" stop-color="#007CA9"/></linearGradient>
+    <linearGradient id="letter-s" x2="1" y2="1"><stop stop-color="#FFE27A"/><stop offset="1" stop-color="#E98913"/></linearGradient>
   </defs>
-
-  <!-- Squircle Canvas -->
-  <rect width="512" height="512" rx="116" fill="url(#v3Bg)" />
-  <rect width="506" height="506" x="3" y="3" rx="113" fill="none" stroke="rgba(235, 222, 195, 0.18)" stroke-width="2" />
-
-  <!-- ==================== 3-STEP MILLER COLUMN VOXEL 'D' ==================== -->
-  <g id="v3D">
-    <!-- Step 1: Tall Main Column (Left) -->
-    <!-- Top Face -->
-    <polygon points="100,160 156,128 212,160 156,192" fill="#00F0FF" stroke="#E0F2FE" stroke-width="2" />
-    <!-- Left Face -->
-    <polygon points="100,160 156,192 156,368 100,336" fill="#0284C7" stroke="#00F0FF" stroke-width="1.8" />
-    <!-- Right Face -->
-    <polygon points="156,192 212,160 212,336 156,368" fill="#003D66" stroke="#00F0FF" stroke-width="1.8" />
-
-    <!-- Step 2: Medium Arch Column -->
-    <polygon points="212,160 268,128 308,150 252,182" fill="#38BDF8" stroke="#E0F2FE" stroke-width="2" />
-    <polygon points="252,182 308,150 308,210 252,242" fill="#0369A1" stroke="#00F0FF" stroke-width="1.8" />
-
-    <!-- Step 3: Bottom Return Column -->
-    <polygon points="252,284 308,252 308,296 252,328" fill="#003D66" stroke="#00F0FF" stroke-width="1.8" />
-    <polygon points="196,316 252,284 252,328 196,360" fill="#0284C7" stroke="#00F0FF" stroke-width="1.8" />
-
-    <!-- D Data Circuit -->
-    <line x1="128" y1="176" x2="128" y2="352" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" />
-    <circle cx="128" cy="176" r="3.5" fill="#FFFFFF" />
-    <circle cx="128" cy="352" r="3.5" fill="#FFFFFF" />
-  </g>
-
-  <!-- ==================== 3-STEP MILLER COLUMN VOXEL 'S' ==================== -->
-  <g id="v3S">
-    <!-- Step 1: Top S-Tier -->
-    <polygon points="320,136 376,104 432,136 376,168" fill="#FDE68A" stroke="#FFFFFF" stroke-width="2" />
-    <polygon points="320,136 376,168 376,218 320,186" fill="#D97706" stroke="#FBBF24" stroke-width="1.8" />
-    <polygon points="376,168 432,136 432,186 376,218" fill="#78350F" stroke="#FBBF24" stroke-width="1.8" />
-
-    <!-- Step 2: Middle S-Tier -->
-    <polygon points="264,204 320,172 376,204 320,236" fill="#FDE68A" stroke="#FFFFFF" stroke-width="2" />
-    <polygon points="264,204 320,236 320,286 264,254" fill="#D97706" stroke="#FBBF24" stroke-width="1.8" />
-    <polygon points="320,236 376,204 376,254 320,286" fill="#78350F" stroke="#FBBF24" stroke-width="1.8" />
-
-    <!-- Step 3: Bottom S-Tier -->
-    <polygon points="304,272 360,240 416,272 360,304" fill="#FDE68A" stroke="#FFFFFF" stroke-width="2" />
-    <polygon points="304,272 360,304 360,354 304,322" fill="#D97706" stroke="#FBBF24" stroke-width="1.8" />
-    <polygon points="360,304 416,272 416,322 360,354" fill="#78350F" stroke="#FBBF24" stroke-width="1.8" />
-
-    <!-- S Data Circuit -->
-    <polyline points="404,120 404,152 348,184 348,252 388,276 388,338" 
-              fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
-    <circle cx="404" cy="120" r="3.5" fill="#FFFFFF" />
-    <circle cx="348" cy="218" r="3" fill="#FFFFFF" />
-    <circle cx="388" cy="338" r="3.5" fill="#FFFFFF" />
-  </g>
+  <rect width="512" height="512" rx="112" fill="url(#background)"/>
+  <!-- Orbital frame: DeepScribe connects separate ideas into a knowledge system. -->
+  <ellipse cx="256" cy="258" rx="193" ry="93" fill="none" stroke="#50EDF6" stroke-opacity=".5" stroke-width="5" transform="rotate(-28 256 258)"/>
+  <ellipse cx="256" cy="258" rx="193" ry="93" fill="none" stroke="#FFD25B" stroke-opacity=".5" stroke-width="5" transform="rotate(32 256 258)"/>
+  <circle cx="119" cy="157" r="11" fill="#62F6FF"/>
+  <circle cx="407" cy="349" r="11" fill="#FFE078"/>
+  <path fill="url(#letter-d)" d="M104 157h89c61 0 97 39 97 99s-36 99-97 99h-89Zm56 49v100h29c30 0 45-17 45-50s-15-50-45-50Z"/>
+  <path fill="url(#letter-s)" d="M421 170c-22-20-48-30-75-30-46 0-77 28-77 68 0 36 24 55 72 67 29 7 39 15 39 31 0 15-13 24-33 24-24 0-46-12-65-33l-29 45c26 29 58 43 94 43 49 0 82-29 82-71 0-39-25-57-73-69-28-7-38-14-38-29 0-13 11-21 28-21 20 0 39 9 56 25Z"/>
 </svg>
