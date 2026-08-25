@@ -478,6 +478,22 @@ async function createAgentTask(params: JsonObject) {
   const title = requiredString(params, 'title');
   const rawContent = optionalString(params, 'content') || '';
   if (containsMarkdownTask(rawContent)) throw new Error('Agents cannot create inline todos inside tasks.');
+
+  const requestedProjectId = optionalString(params, 'projectId');
+  const parentId = typeof params.parentId === 'string' && params.parentId ? params.parentId : null;
+  const projectId = requestedProjectId || TASK_INBOX_PROJECT_ID;
+
+  if (requestedProjectId && requestedProjectId !== TASK_INBOX_PROJECT_ID) {
+    const project = await db.projects.get(requestedProjectId);
+    if (!project || project.isTrash) throw new Error('Project niet gevonden.');
+    if (parentId) {
+      const parent = await db.blocks.get(parentId);
+      if (!parent || parent.projectId !== requestedProjectId || parent.isTrash) throw new Error('Bovenliggend blok niet gevonden.');
+    }
+  } else if (parentId) {
+    throw new Error('Workspace Inbox tasks cannot have a parent block.');
+  }
+
   const now = Date.now();
   const result = await db.transaction('rw', [db.projects, db.blocks], async () => {
     const replay = await db.blocks.filter(block => block.kind === 'task'
@@ -485,14 +501,19 @@ async function createAgentTask(params: JsonObject) {
       && block.task.creator.agentId === agentId
       && block.task.creator.requestId === requestId).first();
     if (replay) return { block: replay, created: false };
-    if (!await db.projects.get(TASK_INBOX_PROJECT_ID)) await db.projects.add(createTaskInboxProject(now));
-    const inboxTasks = await db.blocks.filter(block => !block.isTrash && block.projectId === TASK_INBOX_PROJECT_ID && block.kind === 'task' && block.task?.status === 'inbox').toArray();
-    const position = inboxTasks.reduce((highest, block) => Math.max(highest, block.task?.position ?? -1), -1) + 1;
-    const order = await db.blocks.filter(block => !block.isTrash && block.projectId === TASK_INBOX_PROJECT_ID && block.parentId === null).count();
+
+    if (projectId === TASK_INBOX_PROJECT_ID && !await db.projects.get(TASK_INBOX_PROJECT_ID)) {
+      await db.projects.add(createTaskInboxProject(now));
+    }
+
+    const siblingTasks = await db.blocks.filter(block => !block.isTrash && block.projectId === projectId && block.kind === 'task' && block.task?.status === 'inbox').toArray();
+    const position = siblingTasks.reduce((highest, block) => Math.max(highest, block.task?.position ?? -1), -1) + 1;
+    const order = await db.blocks.filter(block => !block.isTrash && block.projectId === projectId && block.parentId === parentId).count();
+
     const block: Block = {
       id: `block-${crypto.randomUUID()}`,
-      projectId: TASK_INBOX_PROJECT_ID,
-      parentId: null,
+      projectId,
+      parentId,
       title,
       ...contentStats(markdownToHtml(rawContent)),
       order,
@@ -509,20 +530,37 @@ async function createAgentTask(params: JsonObject) {
       createdAt: now,
       updatedAt: now
     };
+
     await db.blocks.add(block);
+    if (parentId) {
+      await db.blocks.update(parentId, {
+        childCount: await db.blocks.filter(item => item.parentId === parentId && !item.isTrash).count(),
+        updatedAt: now
+      });
+    }
     return { block, created: true };
   });
+
   if (result.created) {
     await recordBlockRevision(result.block, 'agent', 'Initial task creation by agent');
+    let projectTitle = 'Workspace Inbox';
+    if (projectId !== TASK_INBOX_PROJECT_ID) {
+      const project = await db.projects.get(projectId);
+      if (project?.title) projectTitle = `“${project.title}”`;
+    }
     await recordActivity({
-      projectId: TASK_INBOX_PROJECT_ID,
+      projectId,
       blockId: result.block.id,
       source: 'agent',
       action: 'task-created',
-      summary: `${taskCreatorLabel(result.block.task) ?? 'Agent'} created task “${title}” in Workspace Inbox`
+      summary: `${taskCreatorLabel(result.block.task) ?? 'Agent'} created task “${title}” in ${projectTitle}`
     });
   }
-  return { ...result.block, projectId: null };
+
+  return {
+    ...result.block,
+    projectId: result.block.projectId === TASK_INBOX_PROJECT_ID ? null : result.block.projectId
+  };
 }
 
 async function updateTaskBlock(params: JsonObject) {

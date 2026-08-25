@@ -12,7 +12,7 @@ describe('task blocks', () => {
 
   it('requires a custom agent name and separates assignment from readiness', () => {
     const base = { id: 'task', projectId: 'project', parentId: 'parent', title: 'Taak', content: '', plainText: '', order: 0, childCount: 0, taskCount: 0, completedTaskCount: 0, attachmentCount: 0, tags: [], isTrash: false, createdAt: 1, updatedAt: 1, kind: 'task' as const };
-    const manual = { ...base, task: { ...createTaskMetadata(), status: 'ready' as const } } satisfies Block;
+    const manual = { ...base, task: { ...createTaskMetadata(), status: 'ready' as const, agentTarget: 'none' as const } } satisfies Block;
     const automatic = { ...base, task: { ...createTaskMetadata(), status: 'ready' as const, agentTarget: 'any' as const } } satisfies Block;
     expect(isTaskAutoPickupEligible(manual)).toBe(false);
     expect(isTaskAutoPickupEligible(automatic)).toBe(true);

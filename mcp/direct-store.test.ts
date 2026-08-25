@@ -221,6 +221,8 @@ describe('DirectWorkspaceStore offline MCP engine', () => {
   it('creates attributed Inbox tasks idempotently in direct SQLite mode', async () => {
     const store = new DirectWorkspaceStore({ workspacePath: temporaryWorkspace() });
     try {
+      const project = await store.handleRequest('create_project', { title: 'Direct Target' });
+      const parent = await store.handleRequest('create_block', { projectId: project.id, title: 'Parent' });
       const providers = [
         { agentTarget: 'openai', agentId: 'codex-1', requestId: 'same-request' },
         { agentTarget: 'claude', agentId: 'claude-1', requestId: 'same-request' },
@@ -229,10 +231,10 @@ describe('DirectWorkspaceStore offline MCP engine', () => {
       ];
       const created = [];
       for (const [index, provider] of providers.entries()) {
-        const task = await store.handleRequest('create_task', { ...provider, title: `Offline agent task ${index + 1}`, content: index === 0 ? 'Free **notes**.' : undefined, projectId: 'ignored', status: 'ready' });
+        const task = await store.handleRequest('create_task', { ...provider, title: `Offline agent task ${index + 1}`, content: index === 0 ? 'Free **notes**.' : undefined });
         const stored = store.getBlock(task.id);
         expect(task.projectId).toBeNull();
-        expect(stored).toMatchObject({ projectId: 'proj-system-task-inbox', parentId: null, kind: 'task', task: { status: 'inbox', agentTarget: 'none', position: index, creator: { type: 'agent', agentTarget: provider.agentTarget, agentId: provider.agentId, requestId: provider.requestId } } });
+        expect(stored).toMatchObject({ projectId: 'proj-system-task-inbox', parentId: null, kind: 'task', task: { status: 'inbox', agentTarget: 'any', position: index, creator: { type: 'agent', agentTarget: provider.agentTarget, agentId: provider.agentId, requestId: provider.requestId } } });
         created.push(task);
       }
       const replay = await store.handleRequest('create_task', { ...providers[0], title: 'Changed retry title' });
@@ -246,6 +248,42 @@ describe('DirectWorkspaceStore offline MCP engine', () => {
       await expect(store.handleRequest('create_task', { agentTarget: 'custom', agentId: 'local', requestId: 'missing-name', title: 'No' })).rejects.toThrow(/customAgentName/);
       await expect(store.handleRequest('create_task', { ...providers[0], requestId: 'inline', title: 'No checklist', content: '- [ ] hidden' })).rejects.toThrow(/inline todos/i);
       await expect(store.handleRequest('create_block', { projectId: 'proj-system-task-inbox', title: 'No regular block' })).rejects.toThrow(/Workspace Inbox/i);
+
+      // Direct project task creation
+      const projectTask = await store.handleRequest('create_task', {
+        agentTarget: 'openai',
+        agentId: 'codex-1',
+        requestId: 'project-req-1',
+        projectId: project.id,
+        parentId: parent.id,
+        title: 'Project Offline Task'
+      });
+      expect(projectTask.projectId).toBe(project.id);
+      expect(projectTask.parentId).toBe(parent.id);
+      expect(store.getBlock(projectTask.id)).toMatchObject({
+        projectId: project.id,
+        parentId: parent.id,
+        kind: 'task',
+        task: { status: 'inbox', agentTarget: 'any' }
+      });
+
+      // Error checks
+      await expect(store.handleRequest('create_task', {
+        agentTarget: 'openai',
+        agentId: 'codex-1',
+        requestId: 'invalid-proj-req',
+        projectId: 'non-existent-proj',
+        title: 'Task'
+      })).rejects.toThrow(/Project niet gevonden/i);
+
+      await expect(store.handleRequest('create_task', {
+        agentTarget: 'openai',
+        agentId: 'codex-1',
+        requestId: 'invalid-parent-req',
+        projectId: project.id,
+        parentId: 'non-existent-parent',
+        title: 'Task'
+      })).rejects.toThrow(/Bovenliggend blok niet gevonden/i);
     } finally {
       store.close();
     }

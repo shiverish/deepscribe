@@ -962,7 +962,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <div className="setting-info">
                   <label style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>💡 Recommended AI Tags &amp; Workflows</label>
                   <span className="setting-description" style={{ fontSize: '11px', lineHeight: '1.5' }}>
-                    You organize tasks in the Tasks view. Agents may create concrete follow-ups in Workspace Inbox and update task progress, but cannot edit or organize a task after creating it. Use tags such as <code style={{ color: 'var(--accent-color)' }}>#concept</code> to keep regular knowledge blocks discoverable.
+                    You organize tasks in the Tasks view. Agents may create concrete follow-ups in projects or Workspace Inbox and update task progress, but cannot edit or organize a task after creating it. Use tags such as <code style={{ color: 'var(--accent-color)' }}>#concept</code> to keep regular knowledge blocks discoverable.
                   </span>
                 </div>
               </div>

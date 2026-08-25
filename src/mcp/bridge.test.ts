@@ -78,8 +78,9 @@ describe('DeepScribe MCP work items', () => {
 });
 
 describe('DeepScribe MCP task blocks', () => {
-  it('creates attributed tasks idempotently at the bottom of Workspace Inbox', async () => {
-    const project = await handleMcpBridgeRequest('create_project', { title: 'Ignored destination' }) as Project;
+  it('creates attributed tasks idempotently in Workspace Inbox or in specified project', async () => {
+    const project = await handleMcpBridgeRequest('create_project', { title: 'Target Project' }) as Project;
+    const parent = await handleMcpBridgeRequest('create_block', { projectId: project.id, title: 'Parent Block' }) as Block;
     const providers = [
       { agentTarget: 'openai', agentId: 'codex-1', requestId: 'create-1', label: 'Codex/ChatGPT' },
       { agentTarget: 'claude', agentId: 'claude-1', requestId: 'create-1', label: 'Claude' },
@@ -91,15 +92,11 @@ describe('DeepScribe MCP task blocks', () => {
       const task = await handleMcpBridgeRequest('create_task', {
         ...provider,
         title: `Agent task ${index + 1}`,
-        content: index === 0 ? 'Free **task** notes.' : undefined,
-        projectId: project.id,
-        parentId: 'ignored',
-        status: 'ready',
-        assignment: 'any'
+        content: index === 0 ? 'Free **task** notes.' : undefined
       }) as Block;
       const stored = await db.blocks.get(task.id);
       expect(task.projectId).toBeNull();
-      expect(stored).toMatchObject({ projectId: TASK_INBOX_PROJECT_ID, parentId: null, kind: 'task', task: { status: 'inbox', agentTarget: 'none', position: index, creator: { type: 'agent', agentTarget: provider.agentTarget, agentId: provider.agentId, requestId: provider.requestId } } });
+      expect(stored).toMatchObject({ projectId: TASK_INBOX_PROJECT_ID, parentId: null, kind: 'task', task: { status: 'inbox', agentTarget: 'any', position: index, creator: { type: 'agent', agentTarget: provider.agentTarget, agentId: provider.agentId, requestId: provider.requestId } } });
       expect(taskCreatorLabel(stored?.task)).toBe(provider.label);
       created.push(task);
     }
@@ -113,6 +110,43 @@ describe('DeepScribe MCP task blocks', () => {
     expect(await db.activities.where('action').equals('task-created').count()).toBe(4);
     await expect(handleMcpBridgeRequest('create_task', { ...providers[0], requestId: 'inline', title: 'No checklist', content: '- [ ] hidden todo' })).rejects.toThrow(/inline todos/i);
     await expect(handleMcpBridgeRequest('create_block', { projectId: TASK_INBOX_PROJECT_ID, title: 'No regular block' })).rejects.toThrow(/Workspace Inbox/i);
+
+    // Test creating task directly attached to a project and parent
+    const projectTask = await handleMcpBridgeRequest('create_task', {
+      agentTarget: 'openai',
+      agentId: 'codex-1',
+      requestId: 'project-task-1',
+      projectId: project.id,
+      parentId: parent.id,
+      title: 'Direct project task'
+    }) as Block;
+    expect(projectTask.projectId).toBe(project.id);
+    expect(projectTask.parentId).toBe(parent.id);
+    const storedProjectTask = await db.blocks.get(projectTask.id);
+    expect(storedProjectTask).toMatchObject({
+      projectId: project.id,
+      parentId: parent.id,
+      kind: 'task',
+      task: { status: 'inbox', agentTarget: 'any' }
+    });
+
+    // Test error when projectId or parentId is invalid
+    await expect(handleMcpBridgeRequest('create_task', {
+      agentTarget: 'openai',
+      agentId: 'codex-1',
+      requestId: 'invalid-proj-req',
+      projectId: 'non-existent-proj',
+      title: 'Task'
+    })).rejects.toThrow(/Project niet gevonden/i);
+
+    await expect(handleMcpBridgeRequest('create_task', {
+      agentTarget: 'openai',
+      agentId: 'codex-1',
+      requestId: 'invalid-parent-req',
+      projectId: project.id,
+      parentId: 'non-existent-parent',
+      title: 'Task'
+    })).rejects.toThrow(/Bovenliggend blok niet gevonden/i);
   });
 
   it('keeps task content user-owned after creation while allowing reads and status updates', async () => {

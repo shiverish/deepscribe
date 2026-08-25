@@ -10,9 +10,9 @@ import { handleDirectStoreRequest } from './direct-store.mjs';
 
 const server = new McpServer({
   name: 'deepscribe',
-  version: '0.2.6'
+  version: '0.2.7'
 }, {
-  instructions: 'DeepScribe stores projects, nested knowledge blocks and user-managed tasks. Read before writing and preserve existing content. Agents may use create_task to capture concrete future work, risks or ideas after checking for duplicates; every created task is forced into Workspace Inbox and becomes read-only except for status. Never create an administrative task before performing a directly requested change. Agents must not move, organize, assign, delete or restore tasks or create inline todos. Use list_tasks/get_task to read tasks and update_task_status only to report progress. Format block content as readable Markdown with blank lines between sections and one list item per line.'
+  instructions: 'DeepScribe stores projects, nested knowledge blocks and user-managed tasks. Read before writing and preserve existing content. Agents may use create_task to capture concrete future work, risks or ideas after checking for duplicates; tasks can be attached directly to a project via projectId or placed into Workspace Inbox when omitted, and start in Inbox status assigned to Any agent. Never create an administrative task before performing a directly requested change. Agents must not move, organize, assign, delete or restore tasks or create inline todos. Use list_tasks/get_task to read tasks and update_task_status only to report progress. Format block content as readable Markdown with blank lines between sections and one list item per line.'
 });
 
 function bridgeFileCandidates() {
@@ -314,9 +314,11 @@ registerTool('create_block', {
 });
 
 registerTool('create_task', {
-  title: 'Create task in Workspace Inbox',
-  description: 'Idempotently capture a concrete follow-up, risk or idea in Workspace Inbox. Check list_tasks for duplicates first. The task always starts as Inbox and Unassigned, and only the user can edit it after creation. Never use this as an administrative step before a directly requested change.',
+  title: 'Create task',
+  description: 'Idempotently capture a concrete follow-up, risk or idea directly in a project or in Workspace Inbox. Check list_tasks for duplicates first. If projectId is omitted, it is placed in Workspace Inbox. The task starts in Inbox status assigned to Any agent. Only the user can edit it after creation. Never use this as an administrative step before a directly requested change.',
   inputSchema: {
+    projectId: z.string().min(1).optional(),
+    parentId: z.string().nullable().optional(),
     title: z.string().min(1),
     content: z.string().optional(),
     agentId: z.string().min(1),

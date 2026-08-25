@@ -216,7 +216,7 @@ function containsMarkdownTask(value) {
 }
 
 function createTaskMetadata(position = Date.now(), creator = { type: 'user' }) {
-  return { status: 'inbox', agentTarget: 'none', position, creator };
+  return { status: 'inbox', agentTarget: 'any', position, creator };
 }
 
 function normalizeTaskCreator(value) {
@@ -1523,24 +1523,41 @@ export class DirectWorkspaceStore {
         if (!CLAIMANT_AGENT_TARGETS.includes(agentTarget)) throw new Error('agentTarget is invalid for a task creator.');
         const customAgentName = optionalStr('customAgentName')?.trim();
         if (agentTarget === 'custom' && !customAgentName) throw new Error('customAgentName is required for a custom task creator.');
+
+        const requestedProjectId = optionalStr('projectId');
+        const parentId = typeof params?.parentId === 'string' && params.parentId ? params.parentId : null;
+        const projectId = requestedProjectId || TASK_INBOX_PROJECT_ID;
+
+        let targetProject = null;
+        if (requestedProjectId && requestedProjectId !== TASK_INBOX_PROJECT_ID) {
+          targetProject = this.getProject(requestedProjectId);
+          if (!targetProject || targetProject.isTrash) throw new Error('Project niet gevonden.');
+          if (parentId) {
+            const parent = this.getBlock(parentId);
+            if (!parent || parent.projectId !== requestedProjectId || parent.isTrash) throw new Error('Bovenliggend blok niet gevonden.');
+          }
+        } else if (parentId) {
+          throw new Error('Workspace Inbox tasks cannot have a parent block.');
+        }
+
         const replay = this.getAllBlocks().find(block => block.kind === 'task'
           && block.task?.creator?.type === 'agent'
           && block.task.creator.agentId === agentId
           && block.task.creator.requestId === requestId);
-        if (replay) return { ...replay, projectId: null };
+        if (replay) return { ...replay, projectId: replay.projectId === TASK_INBOX_PROJECT_ID ? null : replay.projectId };
         const rawContent = optionalStr('content') || '';
         if (containsMarkdownTask(rawContent)) throw new Error('Agents cannot create inline todos inside tasks.');
         const now = Date.now();
-        if (!this.getProject(TASK_INBOX_PROJECT_ID)) {
+        if (projectId === TASK_INBOX_PROJECT_ID && !this.getProject(TASK_INBOX_PROJECT_ID)) {
           this.saveProject({ id: TASK_INBOX_PROJECT_ID, title: 'Workspace Inbox', description: 'Internal workspace container for unassigned tasks.', color: '#A78BFA', order: Number.MAX_SAFE_INTEGER, tags: [], systemKind: 'task-inbox', isTrash: false, createdAt: now, updatedAt: now });
         }
-        const inboxTasks = this.getAllBlocks().filter(block => !block.isTrash && block.projectId === TASK_INBOX_PROJECT_ID && block.kind === 'task' && block.task?.status === 'inbox');
-        const position = inboxTasks.reduce((highest, block) => Math.max(highest, block.task?.position ?? -1), -1) + 1;
-        const order = this.getAllBlocks().filter(block => !block.isTrash && block.projectId === TASK_INBOX_PROJECT_ID && block.parentId === null).length;
+        const siblingTasks = this.getAllBlocks().filter(block => !block.isTrash && block.projectId === projectId && block.kind === 'task' && block.task?.status === 'inbox');
+        const position = siblingTasks.reduce((highest, block) => Math.max(highest, block.task?.position ?? -1), -1) + 1;
+        const order = this.getAllBlocks().filter(block => !block.isTrash && block.projectId === projectId && block.parentId === parentId).length;
         const block = {
           id: `block-${crypto.randomUUID()}`,
-          projectId: TASK_INBOX_PROJECT_ID,
-          parentId: null,
+          projectId,
+          parentId,
           title: requireString('title'),
           ...contentStats(markdownToHtml(rawContent)),
           order,
@@ -1555,9 +1572,17 @@ export class DirectWorkspaceStore {
           updatedAt: now
         };
         this.saveBlock(block);
+        if (parentId) {
+          const parent = this.getBlock(parentId);
+          if (parent) {
+            const childCount = this.getAllBlocks().filter(b => b.parentId === parentId && !b.isTrash).length;
+            this.saveBlock({ ...parent, childCount, updatedAt: now });
+          }
+        }
         this.recordBlockRevision(block, 'agent', 'Initial task creation by agent');
-        this.recordActivity({ projectId: TASK_INBOX_PROJECT_ID, blockId: block.id, source: 'agent', action: 'task-created', summary: `${taskCreatorLabel(block.task) || 'Agent'} created task “${block.title}” in Workspace Inbox` });
-        return { ...block, projectId: null };
+        const projectSummary = targetProject?.title ? `“${targetProject.title}”` : 'Workspace Inbox';
+        this.recordActivity({ projectId, blockId: block.id, source: 'agent', action: 'task-created', summary: `${taskCreatorLabel(block.task) || 'Agent'} created task “${block.title}” in ${projectSummary}` });
+        return { ...block, projectId: block.projectId === TASK_INBOX_PROJECT_ID ? null : block.projectId };
       }
 
       case 'move_block': {

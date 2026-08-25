@@ -23,7 +23,7 @@ export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
 };
 
 export function createTaskMetadata(position = Date.now(), creator: TaskCreator = { type: 'user' }): TaskMetadata {
-  return { status: 'inbox', agentTarget: 'none', position, creator };
+  return { status: 'inbox', agentTarget: 'any', position, creator };
 }
 
 export function normalizeTaskCreator(value: unknown): TaskCreator | undefined {
