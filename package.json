@@ -1,7 +1,7 @@
 {
   "name": "deepscribe",
   "private": true,
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Local-first hierarchical writing and knowledge app with Miller columns",
   "author": "shiverish",
   "main": "electron/main.cjs",
@@ -36,6 +36,7 @@
       "package.json"
     ],
     "win": {
+      "icon": "public/icon.png",
       "target": [
         {
           "target": "nsis",
