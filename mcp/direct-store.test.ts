@@ -553,4 +553,29 @@ describe('DirectWorkspaceStore offline MCP engine', () => {
       store.close();
     }
   });
+
+  it('reads and updates export settings in offline direct SQLite mode', async () => {
+    const wsPath = temporaryWorkspace();
+    const store = new DirectWorkspaceStore({ workspacePath: wsPath });
+    try {
+      const initial = await store.handleRequest('get_export_settings', {});
+      expect(initial.settings.pageSize).toBe('A4');
+      expect(initial.presets.a5Book).toBeDefined();
+
+      const updated = await store.handleRequest('update_export_settings', {
+        preset: 'largeText',
+        headerDivider: true
+      });
+      expect(updated.status).toBe('updated');
+      expect(updated.settings.fontSize).toBe(13);
+      expect(updated.settings.margin).toBe('compact');
+      expect(updated.settings.headerDivider).toBe(true);
+
+      const reloaded = await store.handleRequest('get_export_settings', {});
+      expect(reloaded.settings.fontSize).toBe(13);
+      expect(reloaded.settings.headerDivider).toBe(true);
+    } finally {
+      store.close();
+    }
+  });
 });

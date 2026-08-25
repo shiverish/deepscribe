@@ -727,12 +727,48 @@ export function exportDirectBlockAsText({ project, rootBlock, blocks, includeChi
   return header + sections.join('\n\n\n');
 }
 
-export function exportDirectBlockAsHtml({ project, rootBlock, blocks, includeChildren = true, settings = {} }) {
+export const DEFAULT_BLOCK_PRINT_SETTINGS = {
+  pageSize: 'A4',
+  font: 'serif',
+  fontSize: 11,
+  margin: 'normal',
+  pageBreakPerBlock: true,
+  pageNumbers: true,
+  pageNumberPlacement: 'bottom',
+  pageNumberAlignment: 'center',
+  headerStyle: 'full',
+  headerAlignment: 'left',
+  headerDivider: false
+};
+
+export const BLOCK_PRINT_PRESETS = {
+  a4Document: DEFAULT_BLOCK_PRINT_SETTINGS,
+  a5Book: { ...DEFAULT_BLOCK_PRINT_SETTINGS, pageSize: 'A5', margin: 'compact' },
+  largeText: { ...DEFAULT_BLOCK_PRINT_SETTINGS, fontSize: 13, margin: 'compact' }
+};
+
+export function normalizeDirectBlockPrintSettings(value) {
+  if (!value || typeof value !== 'object') return { ...DEFAULT_BLOCK_PRINT_SETTINGS };
+  return {
+    pageSize: value.pageSize === 'A5' ? 'A5' : 'A4',
+    font: value.font === 'sans' ? 'sans' : 'serif',
+    fontSize: [10, 11, 12, 13, 14].includes(Number(value.fontSize)) ? Number(value.fontSize) : DEFAULT_BLOCK_PRINT_SETTINGS.fontSize,
+    margin: value.margin === 'compact' || value.margin === 'wide' ? value.margin : 'normal',
+    pageBreakPerBlock: value.pageBreakPerBlock !== false,
+    pageNumbers: value.pageNumbers !== false,
+    pageNumberPlacement: value.pageNumberPlacement === 'top' ? 'top' : 'bottom',
+    pageNumberAlignment: value.pageNumberAlignment === 'left' || value.pageNumberAlignment === 'right' ? value.pageNumberAlignment : 'center',
+    headerStyle: ['compact', 'title', 'none'].includes(value.headerStyle) ? value.headerStyle : 'full',
+    headerAlignment: value.headerAlignment === 'center' ? 'center' : 'left',
+    headerDivider: value.headerDivider === true
+  };
+}
+
+export function exportDirectBlockAsHtml({ project, rootBlock, blocks, includeChildren = true, settings: requestedSettings = {} }) {
+  const settings = normalizeDirectBlockPrintSettings(requestedSettings);
   const exportBlocks = includeChildren ? collectDirectExportSubtree(rootBlock, blocks) : [rootBlock];
-  const pageSize = settings.pageSize === 'A5' ? 'A5' : 'A4';
   const marginMm = settings.margin === 'compact' ? 10 : settings.margin === 'wide' ? 22 : 16;
   const fontStack = settings.font === 'sans' ? '"Segoe UI", Arial, sans-serif' : 'Georgia, "Times New Roman", serif';
-  const fontSize = [10, 11, 12, 13, 14].includes(Number(settings.fontSize)) ? Number(settings.fontSize) : 11;
   const documentTitle = `${rootBlock.title || 'Untitled block'} - ${project.title || 'DeepScribe'}`;
 
   const blocksById = new Map(blocks.map(b => [b.id, b]));
@@ -752,13 +788,19 @@ export function exportDirectBlockAsHtml({ project, rootBlock, blocks, includeChi
     const pathHtml = getBlockPath(block)
       .map(s => escapeHtml(s.title || 'Untitled block'))
       .join('<span class="path-separator" aria-hidden="true">/</span>');
+    const headerClass = `block-header ${settings.headerStyle} align-${settings.headerAlignment}${settings.headerDivider ? ' with-divider' : ''}`;
+    const metadata = settings.headerStyle === 'full' || settings.headerStyle === 'compact'
+      ? `<div class="project-name">${escapeHtml(project.title || 'Untitled project')}</div>
+        <nav class="block-path" aria-label="Block path">${pathHtml}</nav>`
+      : '';
+    const header = settings.headerStyle === 'none' ? '' : `
+      <header class="${headerClass}">
+        ${metadata}
+        <h1>${escapeHtml(block.title || 'Untitled block')}</h1>
+      </header>`;
     return `
     <section class="print-block" data-block-id="${escapeHtml(block.id)}">
-      <header class="block-header full align-left">
-        <div class="project-name">${escapeHtml(project.title || 'Untitled project')}</div>
-        <nav class="block-path" aria-label="Block path">${pathHtml}</nav>
-        <h1>${escapeHtml(block.title || 'Untitled block')}</h1>
-      </header>
+      ${header}
       <div class="block-content">${block.content || '<p></p>'}</div>
     </section>`;
   }).join('');
@@ -772,24 +814,31 @@ export function exportDirectBlockAsHtml({ project, rootBlock, blocks, includeChi
   <title>${escapeHtml(documentTitle)}</title>
   <style>
     @page {
-      size: ${pageSize} portrait;
+      size: ${settings.pageSize} portrait;
       margin: ${marginMm}mm;
-      @bottom-center {
+      ${settings.pageNumbers ? `@${settings.pageNumberPlacement}-${settings.pageNumberAlignment} {
         content: counter(page);
         color: #737373;
         font-family: "Segoe UI", Arial, sans-serif;
         font-size: 8pt;
-      }
+      }` : ''}
     }
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; background: #fff; color: #171717; }
-    body { font-family: "Segoe UI", Arial, sans-serif; font-size: ${fontSize}pt; line-height: 1.55; }
-    .print-block:not(:first-child) { break-before: page; page-break-before: always; }
-    .block-header.align-left { text-align: left; }
+    body { font-family: "Segoe UI", Arial, sans-serif; font-size: ${settings.fontSize}pt; line-height: 1.55; }
+    ${settings.pageBreakPerBlock ? '.print-block:not(:first-child) { break-before: page; page-break-before: always; }' : ''}
+    .block-header.align-center { text-align: center; }
+    .block-header.with-divider { margin-bottom: 5mm; padding-bottom: 4mm; border-bottom: .3mm solid #d4d4d4; }
     .project-name { color: #525252; font-size: 9pt; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
     .block-path { margin-top: 2mm; color: #737373; font-size: 9pt; overflow-wrap: anywhere; }
     .path-separator { display: inline-block; margin: 0 1.5mm; color: #a3a3a3; }
     .block-header h1 { margin: 6mm 0 5mm; font-size: 22pt; line-height: 1.2; overflow-wrap: anywhere; }
+    .block-header.with-divider h1 { margin-bottom: 0; }
+    .block-header.compact .project-name, .block-header.compact .block-path { display: inline; }
+    .block-header.compact .project-name::after { content: " · "; color: #a3a3a3; }
+    .block-header.compact .block-path { margin-top: 0; }
+    .block-header.compact h1 { margin-top: 3mm; font-size: 17pt; }
+    .block-header.title h1 { margin-top: 0; font-size: 20pt; }
     .block-content { font-family: ${fontStack}; overflow-wrap: anywhere; }
     .block-content h1 { margin: 7mm 0 3mm; font-size: 19pt; }
     .block-content h2 { margin: 6mm 0 2.5mm; font-size: 16pt; }
@@ -985,6 +1034,17 @@ export class DirectWorkspaceStore {
     this.open();
     this.database.prepare('INSERT INTO settings (id, json) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET json = excluded.json')
       .run(setting.key ?? setting.id, JSON.stringify(setting));
+  }
+
+  getPrintSettings() {
+    const record = this.getSetting('print_settings');
+    return normalizeDirectBlockPrintSettings(record?.value ?? record);
+  }
+
+  savePrintSettings(settings) {
+    const normalized = normalizeDirectBlockPrintSettings(settings);
+    this.saveSetting({ key: 'print_settings', value: normalized });
+    return normalized;
   }
 
   saveProject(project) {
@@ -1953,6 +2013,50 @@ export class DirectWorkspaceStore {
         return activity;
       }
 
+      case 'get_export_settings': {
+        const settings = this.getPrintSettings();
+        return {
+          settings,
+          presets: BLOCK_PRINT_PRESETS
+        };
+      }
+
+      case 'update_export_settings': {
+        const current = this.getPrintSettings();
+        const presetKey = typeof params.preset === 'string' && params.preset in BLOCK_PRINT_PRESETS
+          ? params.preset
+          : undefined;
+        const baseSettings = presetKey ? BLOCK_PRINT_PRESETS[presetKey] : current;
+
+        const updated = normalizeDirectBlockPrintSettings({
+          ...baseSettings,
+          ...(params.pageSize !== undefined ? { pageSize: params.pageSize } : {}),
+          ...(params.font !== undefined ? { font: params.font } : {}),
+          ...(params.fontSize !== undefined ? { fontSize: params.fontSize } : {}),
+          ...(params.margin !== undefined ? { margin: params.margin } : {}),
+          ...(params.pageBreakPerBlock !== undefined ? { pageBreakPerBlock: params.pageBreakPerBlock } : {}),
+          ...(params.pageNumbers !== undefined ? { pageNumbers: params.pageNumbers } : {}),
+          ...(params.pageNumberPlacement !== undefined ? { pageNumberPlacement: params.pageNumberPlacement } : {}),
+          ...(params.pageNumberAlignment !== undefined ? { pageNumberAlignment: params.pageNumberAlignment } : {}),
+          ...(params.headerStyle !== undefined ? { headerStyle: params.headerStyle } : {}),
+          ...(params.headerAlignment !== undefined ? { headerAlignment: params.headerAlignment } : {}),
+          ...(params.headerDivider !== undefined ? { headerDivider: params.headerDivider } : {})
+        });
+
+        const saved = this.savePrintSettings(updated);
+        this.recordActivity({
+          source: 'agent',
+          action: 'settings-updated',
+          summary: `Agent updated default export settings${presetKey ? ` (preset: ${presetKey})` : ''}`
+        });
+
+        return {
+          status: 'updated',
+          settings: saved,
+          presets: BLOCK_PRINT_PRESETS
+        };
+      }
+
       case 'export_block': {
         const blockId = requireString('blockId');
         this.open();
@@ -1964,10 +2068,23 @@ export class DirectWorkspaceStore {
         const rawFormat = typeof params.format === 'string' ? params.format.toLowerCase() : 'pdf';
         const format = ['pdf', 'markdown', 'html', 'text'].includes(rawFormat) ? rawFormat : 'pdf';
         const includeChildren = params.includeChildren !== false;
-        const pageSize = params.pageSize === 'A5' ? 'A5' : 'A4';
-        const font = params.font === 'sans' ? 'sans' : 'serif';
-        const margin = params.margin === 'compact' || params.margin === 'wide' ? params.margin : 'normal';
         const outputPath = typeof params.outputPath === 'string' && params.outputPath.trim() ? params.outputPath.trim() : undefined;
+
+        const storedSettings = this.getPrintSettings();
+        const exportSettings = normalizeDirectBlockPrintSettings({
+          ...storedSettings,
+          ...(params.pageSize !== undefined ? { pageSize: params.pageSize } : {}),
+          ...(params.font !== undefined ? { font: params.font } : {}),
+          ...(params.fontSize !== undefined ? { fontSize: params.fontSize } : {}),
+          ...(params.margin !== undefined ? { margin: params.margin } : {}),
+          ...(params.pageBreakPerBlock !== undefined ? { pageBreakPerBlock: params.pageBreakPerBlock } : {}),
+          ...(params.pageNumbers !== undefined ? { pageNumbers: params.pageNumbers } : {}),
+          ...(params.pageNumberPlacement !== undefined ? { pageNumberPlacement: params.pageNumberPlacement } : {}),
+          ...(params.pageNumberAlignment !== undefined ? { pageNumberAlignment: params.pageNumberAlignment } : {}),
+          ...(params.headerStyle !== undefined ? { headerStyle: params.headerStyle } : {}),
+          ...(params.headerAlignment !== undefined ? { headerAlignment: params.headerAlignment } : {}),
+          ...(params.headerDivider !== undefined ? { headerDivider: params.headerDivider } : {})
+        });
 
         const allBlocks = this.getAllBlocks().filter(b => b.projectId === project.id && !b.isTrash);
 
@@ -1977,7 +2094,7 @@ export class DirectWorkspaceStore {
             rootBlock: block,
             blocks: allBlocks,
             includeChildren,
-            settings: { pageSize, font, margin }
+            settings: exportSettings
           });
 
           const defaultFileName = `${String(block.title || 'Block').replace(/[\\/:*?"<>|]/g, '-').trim() || 'DeepScribe'}.pdf`;
@@ -2024,7 +2141,7 @@ export class DirectWorkspaceStore {
         } else if (format === 'text') {
           content = exportDirectBlockAsText({ project, rootBlock: block, blocks: allBlocks, includeChildren });
         } else if (format === 'html') {
-          content = exportDirectBlockAsHtml({ project, rootBlock: block, blocks: allBlocks, includeChildren, settings: { pageSize, font, margin } });
+          content = exportDirectBlockAsHtml({ project, rootBlock: block, blocks: allBlocks, includeChildren, settings: exportSettings });
         }
 
         let savedFilePath;

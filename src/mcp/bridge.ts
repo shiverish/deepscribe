@@ -8,6 +8,7 @@ import { rankBlocksLocally } from '../utils/semanticSearch';
 import { isDescendantOrSelf, moveBlockInTree } from '../utils/dragAndDrop';
 import { canTransitionTask, createTaskClaim, createTaskInboxProject, createTaskMetadata, isTaskClaimCandidate, isTaskInboxProject, normalizeLeaseSeconds, redactTaskClaim, taskCreatorLabel, TASK_INBOX_PROJECT_ID, validateTaskMetadata, validateTaskReady } from '../utils/taskBlocks';
 import { exportBlockAsHtml, exportBlockAsMarkdown, exportBlockAsText, type ExportFormat } from '../utils/exportUtils';
+import { BLOCK_PRINT_PRESETS, loadStoredPrintSettings, normalizeBlockPrintSettings, saveStoredPrintSettings } from '../utils/printDocument';
 
 type JsonObject = Record<string, unknown>;
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
@@ -1447,6 +1448,48 @@ export async function handleMcpBridgeRequest(method: string, rawParams: unknown)
       await db.activities.add(entry);
       return entry;
     }
+    case 'get_export_settings': {
+      const settings = await loadStoredPrintSettings();
+      return {
+        settings,
+        presets: BLOCK_PRINT_PRESETS
+      };
+    }
+    case 'update_export_settings': {
+      const current = await loadStoredPrintSettings();
+      const presetKey = typeof params.preset === 'string' && params.preset in BLOCK_PRINT_PRESETS
+        ? params.preset as keyof typeof BLOCK_PRINT_PRESETS
+        : undefined;
+      const baseSettings = presetKey ? BLOCK_PRINT_PRESETS[presetKey] : current;
+
+      const updated = normalizeBlockPrintSettings({
+        ...baseSettings,
+        ...(params.pageSize !== undefined ? { pageSize: params.pageSize } : {}),
+        ...(params.font !== undefined ? { font: params.font } : {}),
+        ...(params.fontSize !== undefined ? { fontSize: params.fontSize } : {}),
+        ...(params.margin !== undefined ? { margin: params.margin } : {}),
+        ...(params.pageBreakPerBlock !== undefined ? { pageBreakPerBlock: params.pageBreakPerBlock } : {}),
+        ...(params.pageNumbers !== undefined ? { pageNumbers: params.pageNumbers } : {}),
+        ...(params.pageNumberPlacement !== undefined ? { pageNumberPlacement: params.pageNumberPlacement } : {}),
+        ...(params.pageNumberAlignment !== undefined ? { pageNumberAlignment: params.pageNumberAlignment } : {}),
+        ...(params.headerStyle !== undefined ? { headerStyle: params.headerStyle } : {}),
+        ...(params.headerAlignment !== undefined ? { headerAlignment: params.headerAlignment } : {}),
+        ...(params.headerDivider !== undefined ? { headerDivider: params.headerDivider } : {})
+      });
+
+      const saved = await saveStoredPrintSettings(updated);
+      await recordActivity({
+        source: 'agent',
+        action: 'settings-updated',
+        summary: `Agent updated default export settings${presetKey ? ` (preset: ${presetKey})` : ''}`
+      });
+
+      return {
+        status: 'updated',
+        settings: saved,
+        presets: BLOCK_PRINT_PRESETS
+      };
+    }
     case 'export_block': {
       const blockId = requiredString(params, 'blockId');
       const block = await db.blocks.get(blockId);
@@ -1457,10 +1500,23 @@ export async function handleMcpBridgeRequest(method: string, rawParams: unknown)
       const rawFormat = typeof params.format === 'string' ? params.format.toLowerCase() : 'pdf';
       const format = (['pdf', 'markdown', 'html', 'text'].includes(rawFormat) ? rawFormat : 'pdf') as ExportFormat;
       const includeChildren = params.includeChildren !== false;
-      const pageSize = params.pageSize === 'A5' ? 'A5' : 'A4';
-      const font = params.font === 'sans' ? 'sans' : 'serif';
-      const margin = params.margin === 'compact' || params.margin === 'wide' ? params.margin : 'normal';
       const outputPath = typeof params.outputPath === 'string' && params.outputPath.trim() ? params.outputPath.trim() : undefined;
+
+      const storedSettings = await loadStoredPrintSettings();
+      const exportSettings = normalizeBlockPrintSettings({
+        ...storedSettings,
+        ...(params.pageSize !== undefined ? { pageSize: params.pageSize } : {}),
+        ...(params.font !== undefined ? { font: params.font } : {}),
+        ...(params.fontSize !== undefined ? { fontSize: params.fontSize } : {}),
+        ...(params.margin !== undefined ? { margin: params.margin } : {}),
+        ...(params.pageBreakPerBlock !== undefined ? { pageBreakPerBlock: params.pageBreakPerBlock } : {}),
+        ...(params.pageNumbers !== undefined ? { pageNumbers: params.pageNumbers } : {}),
+        ...(params.pageNumberPlacement !== undefined ? { pageNumberPlacement: params.pageNumberPlacement } : {}),
+        ...(params.pageNumberAlignment !== undefined ? { pageNumberAlignment: params.pageNumberAlignment } : {}),
+        ...(params.headerStyle !== undefined ? { headerStyle: params.headerStyle } : {}),
+        ...(params.headerAlignment !== undefined ? { headerAlignment: params.headerAlignment } : {}),
+        ...(params.headerDivider !== undefined ? { headerDivider: params.headerDivider } : {})
+      });
 
       const allBlocks = await db.blocks.where('projectId').equals(project.id).filter(b => !b.isTrash).toArray();
 
@@ -1470,7 +1526,7 @@ export async function handleMcpBridgeRequest(method: string, rawParams: unknown)
           rootBlock: block,
           blocks: allBlocks,
           includeChildren,
-          settings: { pageSize, font, margin }
+          settings: exportSettings
         });
 
         const electronAPI = typeof window !== 'undefined' ? window.electronAPI : undefined;
@@ -1478,7 +1534,7 @@ export async function handleMcpBridgeRequest(method: string, rawParams: unknown)
           const exportResult = await electronAPI.exportHeadlessPdf({
             html,
             jobName: `${block.title || 'Block'} - ${project.title || 'DeepScribe'}`,
-            pageSize,
+            pageSize: exportSettings.pageSize,
             outputPath
           });
           await recordActivity({
@@ -1512,7 +1568,7 @@ export async function handleMcpBridgeRequest(method: string, rawParams: unknown)
       } else if (format === 'text') {
         content = exportBlockAsText({ project, rootBlock: block, blocks: allBlocks, includeChildren });
       } else if (format === 'html') {
-        content = exportBlockAsHtml({ project, rootBlock: block, blocks: allBlocks, includeChildren, settings: { pageSize, font, margin } });
+        content = exportBlockAsHtml({ project, rootBlock: block, blocks: allBlocks, includeChildren, settings: exportSettings });
       }
 
       let savedFilePath: string | undefined;

@@ -599,4 +599,24 @@ describe('DeepScribe MCP export_block', () => {
     await expect(handleMcpBridgeRequest('export_block', { blockId: 'missing-id' }))
       .rejects.toThrow(/Block not found/i);
   });
+
+  it('reads and updates export settings via MCP bridge', async () => {
+    const initial = await handleMcpBridgeRequest('get_export_settings', {}) as { settings: { pageSize: string; margin: string }; presets: Record<string, unknown> };
+    expect(initial.settings.pageSize).toBe('A4');
+    expect(initial.presets.a5Book).toBeDefined();
+
+    const updated = await handleMcpBridgeRequest('update_export_settings', {
+      preset: 'a5Book',
+      font: 'sans'
+    }) as { status: string; settings: { pageSize: string; margin: string; font: string } };
+
+    expect(updated.status).toBe('updated');
+    expect(updated.settings.pageSize).toBe('A5');
+    expect(updated.settings.margin).toBe('compact');
+    expect(updated.settings.font).toBe('sans');
+
+    const reloaded = await handleMcpBridgeRequest('get_export_settings', {}) as { settings: { pageSize: string; font: string } };
+    expect(reloaded.settings.pageSize).toBe('A5');
+    expect(reloaded.settings.font).toBe('sans');
+  });
 });

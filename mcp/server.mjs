@@ -10,7 +10,7 @@ import { handleDirectStoreRequest } from './direct-store.mjs';
 
 const server = new McpServer({
   name: 'deepscribe',
-  version: '0.1.20'
+  version: '0.2.6'
 }, {
   instructions: 'DeepScribe stores projects, nested knowledge blocks and user-managed tasks. Read before writing and preserve existing content. Agents may use create_task to capture concrete future work, risks or ideas after checking for duplicates; every created task is forced into Workspace Inbox and becomes read-only except for status. Never create an administrative task before performing a directly requested change. Agents must not move, organize, assign, delete or restore tasks or create inline todos. Use list_tasks/get_task to read tasks and update_task_status only to report progress. Format block content as readable Markdown with blank lines between sections and one list item per line.'
 });
@@ -525,9 +525,36 @@ registerTool('record_activity', {
   annotations: write
 });
 
+registerTool('get_export_settings', {
+  title: 'Export-instellingen ophalen',
+  description: 'Read the active default PDF/document export settings and available presets (a4Document, a5Book, largeText).',
+  inputSchema: {},
+  annotations: readOnly
+});
+
+registerTool('update_export_settings', {
+  title: 'Export-instellingen aanpassen',
+  description: 'Update the workspace default export settings for PDF and document generation. Supports presets (a4Document, a5Book, largeText) and custom overrides (pageSize, font, fontSize, margin, pageBreakPerBlock, pageNumbers, pageNumberPlacement, pageNumberAlignment, headerStyle, headerAlignment, headerDivider).',
+  inputSchema: {
+    preset: z.enum(['a4Document', 'a5Book', 'largeText']).optional(),
+    pageSize: z.enum(['A4', 'A5']).optional(),
+    font: z.enum(['serif', 'sans']).optional(),
+    fontSize: z.number().int().min(10).max(14).optional(),
+    margin: z.enum(['compact', 'normal', 'wide']).optional(),
+    pageBreakPerBlock: z.boolean().optional(),
+    pageNumbers: z.boolean().optional(),
+    pageNumberPlacement: z.enum(['top', 'bottom']).optional(),
+    pageNumberAlignment: z.enum(['left', 'center', 'right']).optional(),
+    headerStyle: z.enum(['full', 'compact', 'title', 'none']).optional(),
+    headerAlignment: z.enum(['left', 'center']).optional(),
+    headerDivider: z.boolean().optional()
+  },
+  annotations: write
+});
+
 registerTool('export_block', {
   title: 'Export block or document',
-  description: 'Export a block (and optionally its nested child blocks) to PDF, Markdown, HTML, or plain text. If outputPath is omitted for PDF, it saves to Downloads. Use format="pdf" (default) for PDF exports.',
+  description: 'Export a block (and optionally its nested child blocks) to PDF, Markdown, HTML, or plain text. If outputPath is omitted for PDF, it saves to Downloads. Use format="pdf" (default) for PDF exports. Settings default to the workspace export settings.',
   inputSchema: {
     blockId: z.string().min(1),
     format: z.enum(['pdf', 'markdown', 'html', 'text']).optional(),
@@ -535,7 +562,15 @@ registerTool('export_block', {
     outputPath: z.string().optional(),
     pageSize: z.enum(['A4', 'A5']).optional(),
     font: z.enum(['serif', 'sans']).optional(),
-    margin: z.enum(['compact', 'normal', 'wide']).optional()
+    fontSize: z.number().int().min(10).max(14).optional(),
+    margin: z.enum(['compact', 'normal', 'wide']).optional(),
+    pageBreakPerBlock: z.boolean().optional(),
+    pageNumbers: z.boolean().optional(),
+    pageNumberPlacement: z.enum(['top', 'bottom']).optional(),
+    pageNumberAlignment: z.enum(['left', 'center', 'right']).optional(),
+    headerStyle: z.enum(['full', 'compact', 'title', 'none']).optional(),
+    headerAlignment: z.enum(['left', 'center']).optional(),
+    headerDivider: z.boolean().optional()
   },
   annotations: write
 });
