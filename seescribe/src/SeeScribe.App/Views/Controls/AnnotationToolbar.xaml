@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:enums="clr-namespace:SeeScribe.Core.Enums;assembly=SeeScribe.Core"
+             xmlns:conv="clr-namespace:SeeScribe.App.Converters"
              mc:Ignorable="d" 
              d:DesignHeight="120" d:DesignWidth="850">
     <Border Background="#1E1E24" 
@@ -15,7 +16,32 @@
             Effect="{DynamicResource DropShadowEffect}">
         <Border.Resources>
             <DropShadowEffect x:Key="DropShadowEffect" BlurRadius="25" ShadowDepth="4" Direction="270" Color="#000000" Opacity="0.6"/>
-            
+
+            <conv:BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
+            <conv:EmptyStringToVisibilityConverter x:Key="EmptyToVisibility"/>
+
+            <!-- De twee invoervelden delen deze stijl, zodat titel en beschrijving
+                 als één veld ogen dat langer wordt. -->
+            <Style x:Key="CaptureInput" TargetType="TextBox">
+                <Setter Property="Background" Value="#121217"/>
+                <Setter Property="Foreground" Value="#F8FAFC"/>
+                <Setter Property="BorderBrush" Value="#374151"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Padding" Value="12,8"/>
+                <Setter Property="FontSize" Value="13.5"/>
+                <Setter Property="CaretBrush" Value="#F8FAFC"/>
+            </Style>
+
+            <!-- Grijze hint die verdwijnt zodra er getypt wordt. Twee lege vakken
+                 onder elkaar zeggen anders niet welk vak waarvoor is. -->
+            <Style x:Key="InputHint" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="#64748B"/>
+                <Setter Property="FontSize" Value="13.5"/>
+                <Setter Property="Margin" Value="14,0,0,0"/>
+                <Setter Property="IsHitTestVisible" Value="False"/>
+            </Style>
+
+
             <Style x:Key="ToolButton" TargetType="RadioButton">
                 <Setter Property="Background" Value="#2A2A35"/>
                 <Setter Property="Foreground" Value="#E2E8F0"/>
@@ -80,6 +106,45 @@
                         </ControlTemplate>
                     </Setter.Value>
                 </Setter>
+            </Style>
+
+            <!-- Het knopje dat de beschrijving open- en dichtklapt. Licht ook op wanneer
+                 het veld dicht staat maar er wel iets in getypt is. -->
+            <Style x:Key="DescriptionToggle" TargetType="ToggleButton">
+                <Setter Property="Background" Value="#374151"/>
+                <Setter Property="Foreground" Value="#E2E8F0"/>
+                <Setter Property="BorderBrush" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="FontSize" Value="13"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ToggleButton">
+                            <Border x:Name="border" Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="8" Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="border" Property="Background" Value="#4B5563"/>
+                                </Trigger>
+                                <Trigger Property="IsChecked" Value="True">
+                                    <Setter TargetName="border" Property="Background" Value="#2563EB"/>
+                                    <Setter TargetName="border" Property="BorderBrush" Value="#60A5FA"/>
+                                    <Setter Property="Foreground" Value="#FFFFFF"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding HasDescription}" Value="True">
+                        <Setter Property="BorderBrush" Value="#60A5FA"/>
+                    </DataTrigger>
+                </Style.Triggers>
             </Style>
 
             <Style x:Key="ColorRadio" TargetType="RadioButton">
@@ -259,30 +324,47 @@
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
                 <!-- Text Prompt Box -->
-                <TextBox x:Name="PromptInputBox" Grid.Column="0" 
-                         Text="{Binding PromptText, UpdateSourceTrigger=PropertyChanged}"
-                         Background="#121217" Foreground="#F8FAFC" BorderBrush="#374151" BorderThickness="1"
-                         Padding="12,8" FontSize="13.5" Height="38"
-                         VerticalContentAlignment="Center">
-                    <TextBox.Resources>
-                        <Style TargetType="Border">
-                            <Setter Property="CornerRadius" Value="8"/>
-                        </Style>
-                    </TextBox.Resources>
-                </TextBox>
+                <Grid Grid.Column="0">
+                    <TextBox x:Name="PromptInputBox" Style="{StaticResource CaptureInput}" Height="38"
+                             Text="{Binding PromptText, UpdateSourceTrigger=PropertyChanged}"
+                             VerticalContentAlignment="Center">
+                        <TextBox.Resources>
+                            <Style TargetType="Border">
+                                <Setter Property="CornerRadius" Value="8"/>
+                            </Style>
+                        </TextBox.Resources>
+                    </TextBox>
+                    <TextBlock Style="{StaticResource InputHint}" VerticalAlignment="Center"
+                               Text="Waar gaat het over?"
+                               Visibility="{Binding Text, ElementName=PromptInputBox, Converter={StaticResource EmptyToVisibility}}"/>
+                </Grid>
+
+                <!-- Beschrijving erbij; blijft dicht zolang één regel genoeg is -->
+                <ToggleButton x:Name="DescriptionToggleButton" Grid.Column="1" Margin="6,0,0,0" Height="38" Padding="12,0"
+                              Style="{StaticResource DescriptionToggle}"
+                              IsChecked="{Binding IsDescriptionVisible, Mode=TwoWay}"
+                              ToolTip="Beschrijving toevoegen (Ctrl+D). Enter maakt daar een nieuwe regel, Ctrl+Enter slaat op.">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="📝 " FontSize="14"/>
+                        <TextBlock Text="Beschrijving"/>
+                        <TextBlock Text=" •" Foreground="#60A5FA" FontWeight="Bold"
+                                   Visibility="{Binding HasDescription, Converter={StaticResource BoolToVisibility}}"/>
+                    </StackPanel>
+                </ToggleButton>
 
                 <!-- Waar de vastlegging naartoe gaat; standaard de inbox -->
-                <ComboBox x:Name="TargetSelector" Grid.Column="1" Margin="6,0,0,0" Height="38" MinWidth="160" MaxWidth="240"
+                <ComboBox x:Name="TargetSelector" Grid.Column="2" Margin="6,0,0,0" Height="38" MinWidth="160" MaxWidth="240"
                           Style="{StaticResource TargetCombo}"
                           ItemsSource="{Binding Targets}" SelectedItem="{Binding SelectedTarget}"
                           DisplayMemberPath="Title"
                           ToolTip="Kies een project, of laat het in de inbox staan."/>
 
                 <!-- Voice Recording Button -->
-                <Button Grid.Column="2" Margin="6,0,0,0" Height="38" Padding="14,0" Cursor="Hand"
+                <Button Grid.Column="3" Margin="6,0,0,0" Height="38" Padding="14,0" Cursor="Hand"
                         Command="{Binding ToggleVoiceRecordingCommand}">
                     <Button.Style>
                         <Style TargetType="Button" BasedOn="{StaticResource ActionButton}">
@@ -302,7 +384,7 @@
                 </Button>
 
                 <!-- Opslaan in DeepScribe -->
-                <Button x:Name="SubmitButton" Grid.Column="3" Margin="6,0,0,0" Height="38" Padding="18,0"
+                <Button x:Name="SubmitButton" Grid.Column="4" Margin="6,0,0,0" Height="38" Padding="18,0"
                         Foreground="#FFFFFF" FontWeight="Bold" FontSize="13.5" Cursor="Hand"
                         Click="OnSubmitClicked">
                     <Button.Style>
@@ -325,6 +407,26 @@
                         <TextBlock Text="💾 Opslaan (Enter)" VerticalAlignment="Center"/>
                     </StackPanel>
                 </Button>
+            </Grid>
+
+            <!-- De beschrijving. Groeit onder de titelregel uit, zodat de volgorde
+                 leest zoals het item er in DeepScribe uit komt te zien. -->
+            <Grid Margin="0,6,0,0" Visibility="{Binding IsDescriptionVisible, Converter={StaticResource BoolToVisibility}}">
+                <TextBox x:Name="DescriptionInputBox" Style="{StaticResource CaptureInput}"
+                         Text="{Binding DescriptionText, UpdateSourceTrigger=PropertyChanged}"
+                         AcceptsReturn="True" TextWrapping="Wrap" MinHeight="66" MaxHeight="150"
+                         VerticalContentAlignment="Top" VerticalScrollBarVisibility="Auto"
+                         IsVisibleChanged="DescriptionInputBox_IsVisibleChanged"
+                         PreviewKeyDown="DescriptionInputBox_PreviewKeyDown">
+                    <TextBox.Resources>
+                        <Style TargetType="Border">
+                            <Setter Property="CornerRadius" Value="8"/>
+                        </Style>
+                    </TextBox.Resources>
+                </TextBox>
+                <TextBlock Style="{StaticResource InputHint}" VerticalAlignment="Top" Margin="14,9,0,0"
+                           Text="Beschrijving — wat een agent verder moet weten. Ctrl+Enter slaat op."
+                           Visibility="{Binding Text, ElementName=DescriptionInputBox, Converter={StaticResource EmptyToVisibility}}"/>
             </Grid>
 
             <TextBlock Text="{Binding SaveMessage}" Margin="2,8,2,0" FontSize="12.5"

@@ -162,6 +162,40 @@ public class CaptureWriterTests : IDisposable
     }
 
     [Fact]
+    public async Task WriteAsync_keeps_the_title_short_and_puts_the_description_in_the_content()
+    {
+        var (handler, writer) = Build();
+        var sample = SampleCapture();
+        sample.DescriptionText = "Alleen na een herstart, en niet bij een leeg project.";
+
+        await writer.WriteAsync(sample, CaptureDestination.Inbox);
+
+        var capture = handler.Calls.Single(call => call.Method == "create_capture").Params;
+        capture.GetProperty("title").GetString().Should().Be("Deze knop reageert niet");
+        capture.GetProperty("content").GetString()
+            .Should().Contain("Alleen na een herstart, en niet bij een leeg project.");
+    }
+
+    [Fact]
+    public async Task WriteAsync_titles_a_capture_that_only_has_a_description()
+    {
+        var (handler, writer) = Build();
+        var sample = SampleCapture();
+        sample.PromptText = string.Empty;
+        sample.DescriptionText = "De knop reageert niet na een herstart";
+
+        await writer.WriteAsync(sample, CaptureDestination.Inbox);
+
+        var capture = handler.Calls.Single(call => call.Method == "create_capture").Params;
+        var title = capture.GetProperty("title").GetString()!;
+
+        // Zonder titelregel is de beschrijving de beste titel die er is; "Schermvastlegging —"
+        // met de vensternaam erachter zegt in een lijst niets.
+        title.Should().Be("De knop reageert niet na een herstart");
+        capture.GetProperty("content").GetString().Should().NotStartWith(title);
+    }
+
+    [Fact]
     public async Task WriteAsync_attaches_the_image_and_the_annotation_data()
     {
         var (handler, writer) = Build();

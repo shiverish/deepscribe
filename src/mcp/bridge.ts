@@ -7,6 +7,7 @@ import { sanitizeTags } from '../utils/tagUtils';
 import { rankBlocksLocally } from '../utils/semanticSearch';
 import { isDescendantOrSelf, moveBlockInTree } from '../utils/dragAndDrop';
 import { canTransitionTask, createTaskClaim, createTaskInboxProject, createTaskMetadata, isTaskClaimCandidate, isTaskInboxProject, normalizeLeaseSeconds, redactTaskClaim, taskCreatorLabel, TASK_INBOX_PROJECT_ID, validateTaskMetadata, validateTaskReady } from '../utils/taskBlocks';
+import { exportBlockAsHtml, exportBlockAsMarkdown, exportBlockAsText, type ExportFormat } from '../utils/exportUtils';
 
 type JsonObject = Record<string, unknown>;
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
@@ -261,8 +262,9 @@ async function getActiveAttachment(attachmentId: string): Promise<Attachment> {
 async function readAttachmentBase64(attachment: Attachment): Promise<string> {
   if (attachment.fileSize > MAX_ATTACHMENT_BYTES) throw new Error('Deze bijlage is groter dan 25 MB.');
   if (attachment.localPath) {
-    if (!window.electronAPI?.readAttachment) throw new Error('Bijlagen lezen is alleen beschikbaar in de desktop-app.');
-    return await window.electronAPI.readAttachment(attachment.localPath);
+    const electronAPI = typeof window !== 'undefined' ? window.electronAPI : undefined;
+    if (!electronAPI?.readAttachment) throw new Error('Bijlagen lezen is alleen beschikbaar in de desktop-app.');
+    return await electronAPI.readAttachment(attachment.localPath);
   }
   if (attachment.dataUrl) {
     const separator = attachment.dataUrl.indexOf(',');
@@ -1170,11 +1172,12 @@ async function createAttachment(params: JsonObject) {
   const fileSize = Math.round((base64.length * 3) / 4);
   if (fileSize > MAX_ATTACHMENT_BYTES) throw new Error('Deze bijlage is groter dan 25 MB.');
 
-  if (!window.electronAPI?.importAttachment) {
+  const electronAPI = typeof window !== 'undefined' ? window.electronAPI : undefined;
+  if (!electronAPI?.importAttachment) {
     throw new Error('Bijlagen opslaan is alleen beschikbaar in de desktop-app.');
   }
 
-  const stored = await window.electronAPI.importAttachment({
+  const stored = await electronAPI.importAttachment({
     projectId: block.projectId,
     blockId,
     fileName,
@@ -1443,6 +1446,101 @@ export async function handleMcpBridgeRequest(method: string, rawParams: unknown)
       };
       await db.activities.add(entry);
       return entry;
+    }
+    case 'export_block': {
+      const blockId = requiredString(params, 'blockId');
+      const block = await db.blocks.get(blockId);
+      if (!block || block.isTrash) throw new Error('Block not found.');
+      const project = await db.projects.get(block.projectId);
+      if (!project || project.isTrash) throw new Error('Project not found.');
+
+      const rawFormat = typeof params.format === 'string' ? params.format.toLowerCase() : 'pdf';
+      const format = (['pdf', 'markdown', 'html', 'text'].includes(rawFormat) ? rawFormat : 'pdf') as ExportFormat;
+      const includeChildren = params.includeChildren !== false;
+      const pageSize = params.pageSize === 'A5' ? 'A5' : 'A4';
+      const font = params.font === 'sans' ? 'sans' : 'serif';
+      const margin = params.margin === 'compact' || params.margin === 'wide' ? params.margin : 'normal';
+      const outputPath = typeof params.outputPath === 'string' && params.outputPath.trim() ? params.outputPath.trim() : undefined;
+
+      const allBlocks = await db.blocks.where('projectId').equals(project.id).filter(b => !b.isTrash).toArray();
+
+      if (format === 'pdf') {
+        const html = exportBlockAsHtml({
+          project,
+          rootBlock: block,
+          blocks: allBlocks,
+          includeChildren,
+          settings: { pageSize, font, margin }
+        });
+
+        const electronAPI = typeof window !== 'undefined' ? window.electronAPI : undefined;
+        if (electronAPI?.exportHeadlessPdf) {
+          const exportResult = await electronAPI.exportHeadlessPdf({
+            html,
+            jobName: `${block.title || 'Block'} - ${project.title || 'DeepScribe'}`,
+            pageSize,
+            outputPath
+          });
+          await recordActivity({
+            projectId: project.id,
+            blockId: block.id,
+            source: 'agent',
+            action: 'block-exported',
+            summary: `Agent exported block “${block.title}” as PDF`
+          });
+          return {
+            status: 'exported',
+            format: 'pdf',
+            filePath: exportResult.filePath,
+            title: block.title,
+            sizeBytes: exportResult.sizeBytes
+          };
+        } else {
+          return {
+            status: 'exported',
+            format: 'html_fallback',
+            title: block.title,
+            content: html,
+            message: 'PDF export is processed natively in the desktop app. HTML markup returned.'
+          };
+        }
+      }
+
+      let content = '';
+      if (format === 'markdown') {
+        content = exportBlockAsMarkdown({ project, rootBlock: block, blocks: allBlocks, includeChildren });
+      } else if (format === 'text') {
+        content = exportBlockAsText({ project, rootBlock: block, blocks: allBlocks, includeChildren });
+      } else if (format === 'html') {
+        content = exportBlockAsHtml({ project, rootBlock: block, blocks: allBlocks, includeChildren, settings: { pageSize, font, margin } });
+      }
+
+      let savedFilePath: string | undefined;
+      let sizeBytes = Buffer.byteLength(content, 'utf8');
+
+      const electronAPI = typeof window !== 'undefined' ? window.electronAPI : undefined;
+      if (outputPath && electronAPI?.writeExportFile) {
+        const writeResult = await electronAPI.writeExportFile({ filePath: outputPath, content });
+        savedFilePath = writeResult.filePath;
+        sizeBytes = writeResult.sizeBytes;
+      }
+
+      await recordActivity({
+        projectId: project.id,
+        blockId: block.id,
+        source: 'agent',
+        action: 'block-exported',
+        summary: `Agent exported block “${block.title}” as ${format.toUpperCase()}`
+      });
+
+      return {
+        status: 'exported',
+        format,
+        title: block.title,
+        ...(savedFilePath ? { filePath: savedFilePath } : {}),
+        content,
+        sizeBytes
+      };
     }
     default:
       throw new Error(`Onbekende DeepScribe-methode: ${method}`);

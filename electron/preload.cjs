@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   migrateLegacyAttachment: payload => ipcRenderer.invoke('deepscribe:attachments:migrate-legacy', payload),
   printBlockDocument: payload => ipcRenderer.invoke('deepscribe:print:block-document', payload),
   exportBlockDocumentPdf: payload => ipcRenderer.invoke('deepscribe:export:block-document-pdf', payload),
+  exportHeadlessPdf: payload => ipcRenderer.invoke('deepscribe:export:headless-pdf', payload),
+  writeExportFile: payload => ipcRenderer.invoke('deepscribe:export:write-file', payload),
   screenCapture: {
     triggerOverlay: () => ipcRenderer.invoke('deepscribe:screen:trigger-overlay'),
     closeOverlay: () => ipcRenderer.invoke('deepscribe:screen:close-overlay'),

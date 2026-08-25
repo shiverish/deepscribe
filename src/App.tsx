@@ -4,6 +4,7 @@ import { db, requestPersistentStorage, seedDemoDataIfEmpty } from './db/db';
 import { createId, deleteTagFromProject, markBlockSubtreeAsRead, markProjectAsRead, renameTagInProject, saveBlockDraft, saveProjectDraft, trashBlock, trashProject } from './db/operations';
 import type { Project, Block, Attachment, BlockTemplate, PathSegment, SaveStatus, DragTarget, ActiveView, TaskMetadata } from './types';
 import { Breadcrumbs } from './components/Navigation/Breadcrumbs';
+import { UpdateNotification, type UpdaterState } from './components/Navigation/UpdateNotification';
 import { HorizontalLayout, type ColumnData } from './components/Navigation/HorizontalLayout';
 import { WritingPanel } from './components/Editor/WritingPanel';
 import { GraphView } from './components/Graph/GraphView';
@@ -57,6 +58,38 @@ function DeepScribeApp() {
 
   const [saveStatus, setSaveStatus] = useState<SaveStatus>({ state: 'saved' });
   const [overlayData, setOverlayData] = useState<{ screenshotDataUrl: string } | null>(null);
+  const [updaterState, setUpdaterState] = useState<UpdaterState | null>(null);
+
+  useEffect(() => {
+    const updater = window.electronAPI?.updater;
+    if (!updater) return;
+
+    let isDisposed = false;
+    const handleUpdaterStatus = (state: UpdaterState) => {
+      if (!isDisposed) setUpdaterState(state);
+    };
+
+    const unsubscribe = updater.onStatusChange(handleUpdaterStatus);
+    updater.getState().then(state => {
+      if (!isDisposed) handleUpdaterStatus(state);
+    }).catch(err => {
+      console.warn('Failed to retrieve updater state:', err);
+    });
+
+    return () => {
+      isDisposed = true;
+      unsubscribe();
+    };
+  }, []);
+
+  const handleInstallUpdate = useCallback(async () => {
+    if (!window.electronAPI?.updater) return;
+    try {
+      await window.electronAPI.updater.install();
+    } catch (err) {
+      console.error('Failed to install update:', err);
+    }
+  }, []);
 
   useEffect(() => {
     if (!window.electronAPI?.screenCapture?.onBlockCreated) return;
@@ -897,6 +930,8 @@ function DeepScribeApp() {
         onTriggerScreenAnnotation={handleTriggerScreenAnnotation}
         isWritingPanelOpen={isWritingPanelOpen}
         onToggleWritingPanel={() => setIsWritingPanelOpen(prev => !prev)}
+        updaterState={updaterState}
+        onInstallUpdate={handleInstallUpdate}
       />
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }}>
@@ -1057,6 +1092,11 @@ function DeepScribeApp() {
           onBlockCreated={handleBlockCreatedFromOverlay}
         />
       )}
+
+      <UpdateNotification
+        updaterState={updaterState}
+        onInstall={handleInstallUpdate}
+      />
     </div>
   );
 }

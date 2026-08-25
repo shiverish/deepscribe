@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
 
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
@@ -539,6 +540,342 @@ export function rankBlocksLocally(blocks, query) {
     score += trigramSimilarity(normalizedQuery, normalizeToken(block.title)) * 4;
     return { block, score };
   }).filter(result => result.score >= 1).sort((a, b) => b.score - a.score || b.block.updatedAt - a.block.updatedAt);
+}
+
+export function unescapeHtml(value) {
+  return String(value || '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ');
+}
+
+export function htmlToPlainText(html) {
+  if (!html) return '';
+  return unescapeHtml(
+    String(html)
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/p>/gi, '\n\n')
+      .replace(/<\/h[1-6]>/gi, '\n\n')
+      .replace(/<\/li>/gi, '\n')
+      .replace(/<\/tr>/gi, '\n')
+      .replace(/<[^>]+>/g, '')
+  )
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n\s*\n\s*\n+/g, '\n\n')
+    .trim();
+}
+
+export function htmlToMarkdown(html) {
+  if (!html || !String(html).trim()) return '';
+
+  let text = String(html).replace(/\r\n?/g, '\n');
+
+  text = text.replace(/<pre><code(?:\s+class="language-([a-z0-9_-]+)")?>([\s\S]*?)<\/code><\/pre>/gi, (_match, lang, code) => {
+    return `\n\`\`\`${lang || ''}\n${unescapeHtml(code)}\n\`\`\`\n`;
+  });
+
+  text = text.replace(/<code>([\s\S]*?)<\/code>/gi, (_match, code) => `\`${unescapeHtml(code)}\``);
+
+  text = text.replace(/<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/gi, (_match, level, content) => {
+    const depth = Number(level);
+    const hashes = '#'.repeat(depth);
+    return `\n\n${hashes} ${content.trim()}\n\n`;
+  });
+
+  text = text.replace(/<blockquote[^>]*>([\s\S]*?)<\/blockquote>/gi, (_match, content) => {
+    const lines = content.replace(/<p[^>]*>([\s\S]*?)<\/p>/gi, '$1\n').split('\n');
+    const quoted = lines.map(line => `> ${line.trim()}`).filter(l => l.length > 2).join('\n');
+    return `\n\n${quoted}\n\n`;
+  });
+
+  text = text.replace(/<hr\s*\/?>/gi, '\n\n---\n\n');
+  text = text.replace(/<(?:strong|b)[^>]*>([\s\S]*?)<\/(?:strong|b)>/gi, '**$1**');
+  text = text.replace(/<(?:em|i)[^>]*>([\s\S]*?)<\/(?:em|i)>/gi, '*$1*');
+  text = text.replace(/<(?:s|strike|del)[^>]*>([\s\S]*?)<\/(?:s|strike|del)>/gi, '~~$1~~');
+  text = text.replace(/<u[^>]*>([\s\S]*?)<\/u>/gi, '$1');
+  text = text.replace(/<a\s+[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, '[$2]($1)');
+
+  text = text.replace(/<li\s+[^>]*data-type="taskItem"[^>]*data-checked="(true|false)"[^>]*>([\s\S]*?)<\/li>/gi, (_match, checked, content) => {
+    const isChecked = checked === 'true';
+    const cleanContent = content
+      .replace(/<label>[\s\S]*?<\/label>/gi, '')
+      .replace(/<div[^>]*>/gi, '')
+      .replace(/<\/div>/gi, '')
+      .replace(/<p[^>]*>/gi, '')
+      .replace(/<\/p>/gi, '')
+      .trim();
+    return `\n- [${isChecked ? 'x' : ' '}] ${cleanContent}`;
+  });
+
+  text = text.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, (_match, content) => {
+    const clean = content.replace(/<p[^>]*>/gi, '').replace(/<\/p>/gi, '').trim();
+    return `\n- ${clean}`;
+  });
+
+  text = text.replace(/<\/?(?:ul|ol)[^>]*>/gi, '\n');
+
+  text = text.replace(/<table[^>]*>([\s\S]*?)<\/table>/gi, (_match, tableContent) => {
+    const rows = [];
+    const rowMatches = tableContent.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi);
+    for (const rowMatch of rowMatches) {
+      const cells = [];
+      const cellMatches = rowMatch[1].matchAll(/<(?:th|td)[^>]*>([\s\S]*?)<\/(?:th|td)>/gi);
+      for (const cellMatch of cellMatches) {
+        cells.push(cellMatch[1].replace(/<[^>]+>/g, '').trim());
+      }
+      if (cells.length > 0) rows.push(cells);
+    }
+    if (rows.length === 0) return '';
+    const colCount = Math.max(...rows.map(r => r.length));
+    const normalizedRows = rows.map(r => {
+      while (r.length < colCount) r.push('');
+      return r;
+    });
+    const header = `| ${normalizedRows[0].join(' | ')} |`;
+    const separator = `| ${normalizedRows[0].map(() => '---').join(' | ')} |`;
+    const body = normalizedRows.slice(1).map(r => `| ${r.join(' | ')} |`).join('\n');
+    return `\n\n${header}\n${separator}${body ? `\n${body}` : ''}\n\n`;
+  });
+
+  text = text.replace(/<p[^>]*>([\s\S]*?)<\/p>/gi, '\n\n$1\n\n');
+  text = text.replace(/<br\s*\/?>/gi, '\n');
+  text = text.replace(/<[^>]+>/g, '');
+  text = unescapeHtml(text);
+
+  return text
+    .split('\n')
+    .map(line => line.replace(/[ \t]+$/g, ''))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function compareBlocksForExport(left, right) {
+  return (left.order ?? 0) - (right.order ?? 0)
+    || (left.createdAt ?? 0) - (right.createdAt ?? 0)
+    || String(left.title || '').localeCompare(String(right.title || ''), 'en')
+    || String(left.id).localeCompare(String(right.id));
+}
+
+export function collectDirectExportSubtree(root, allBlocks) {
+  const projectBlocks = allBlocks.filter(b => b.projectId === root.projectId && !b.isTrash);
+  const childrenByParent = new Map();
+  for (const block of projectBlocks) {
+    if (!block.parentId) continue;
+    const siblings = childrenByParent.get(block.parentId) ?? [];
+    siblings.push(block);
+    childrenByParent.set(block.parentId, siblings);
+  }
+  for (const siblings of childrenByParent.values()) siblings.sort(compareBlocksForExport);
+
+  const result = [];
+  const visited = new Set();
+  const visit = block => {
+    if (visited.has(block.id)) return;
+    visited.add(block.id);
+    result.push(block);
+    for (const child of childrenByParent.get(block.id) ?? []) visit(child);
+  };
+  visit(root);
+  return result;
+}
+
+export function exportDirectBlockAsMarkdown({ project, rootBlock, blocks, includeChildren = true }) {
+  const exportBlocks = includeChildren ? collectDirectExportSubtree(rootBlock, blocks) : [rootBlock];
+  const depthMap = new Map();
+
+  const traverseDepth = (current, depth) => {
+    depthMap.set(current.id, depth);
+    const children = exportBlocks.filter(b => b.parentId === current.id);
+    for (const child of children) traverseDepth(child, depth + 1);
+  };
+  traverseDepth(rootBlock, 1);
+
+  const sections = [];
+  for (const block of exportBlocks) {
+    const depth = Math.min(6, depthMap.get(block.id) ?? 1);
+    const hashes = '#'.repeat(depth);
+    const title = block.title || 'Untitled';
+    const contentMd = htmlToMarkdown(block.content || '');
+
+    let section = `${hashes} ${title}`;
+    if (contentMd) section += `\n\n${contentMd}`;
+    sections.push(section);
+  }
+
+  const header = `<!-- DeepScribe Export: ${project.title || 'Project'} / ${rootBlock.title || 'Block'} -->\n\n`;
+  return header + sections.join('\n\n---\n\n');
+}
+
+export function exportDirectBlockAsText({ project, rootBlock, blocks, includeChildren = true }) {
+  const exportBlocks = includeChildren ? collectDirectExportSubtree(rootBlock, blocks) : [rootBlock];
+  const sections = [];
+
+  for (const block of exportBlocks) {
+    const title = block.title || 'Untitled';
+    const plainText = htmlToPlainText(block.content || '');
+    let section = `${title}\n${'='.repeat(title.length)}`;
+    if (plainText) section += `\n\n${plainText}`;
+    sections.push(section);
+  }
+
+  const header = `=== DeepScribe Export: ${project.title || 'Project'} ===\n\n`;
+  return header + sections.join('\n\n\n');
+}
+
+export function exportDirectBlockAsHtml({ project, rootBlock, blocks, includeChildren = true, settings = {} }) {
+  const exportBlocks = includeChildren ? collectDirectExportSubtree(rootBlock, blocks) : [rootBlock];
+  const pageSize = settings.pageSize === 'A5' ? 'A5' : 'A4';
+  const marginMm = settings.margin === 'compact' ? 10 : settings.margin === 'wide' ? 22 : 16;
+  const fontStack = settings.font === 'sans' ? '"Segoe UI", Arial, sans-serif' : 'Georgia, "Times New Roman", serif';
+  const fontSize = [10, 11, 12, 13, 14].includes(Number(settings.fontSize)) ? Number(settings.fontSize) : 11;
+  const documentTitle = `${rootBlock.title || 'Untitled block'} - ${project.title || 'DeepScribe'}`;
+
+  const blocksById = new Map(blocks.map(b => [b.id, b]));
+  const getBlockPath = block => {
+    const path = [];
+    const visited = new Set();
+    let current = block;
+    while (current && !visited.has(current.id)) {
+      visited.add(current.id);
+      path.unshift(current);
+      current = current.parentId ? blocksById.get(current.parentId) : undefined;
+    }
+    return path;
+  };
+
+  const sectionsHtml = exportBlocks.map(block => {
+    const pathHtml = getBlockPath(block)
+      .map(s => escapeHtml(s.title || 'Untitled block'))
+      .join('<span class="path-separator" aria-hidden="true">/</span>');
+    return `
+    <section class="print-block" data-block-id="${escapeHtml(block.id)}">
+      <header class="block-header full align-left">
+        <div class="project-name">${escapeHtml(project.title || 'Untitled project')}</div>
+        <nav class="block-path" aria-label="Block path">${pathHtml}</nav>
+        <h1>${escapeHtml(block.title || 'Untitled block')}</h1>
+      </header>
+      <div class="block-content">${block.content || '<p></p>'}</div>
+    </section>`;
+  }).join('');
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapeHtml(documentTitle)}</title>
+  <style>
+    @page {
+      size: ${pageSize} portrait;
+      margin: ${marginMm}mm;
+      @bottom-center {
+        content: counter(page);
+        color: #737373;
+        font-family: "Segoe UI", Arial, sans-serif;
+        font-size: 8pt;
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: #fff; color: #171717; }
+    body { font-family: "Segoe UI", Arial, sans-serif; font-size: ${fontSize}pt; line-height: 1.55; }
+    .print-block:not(:first-child) { break-before: page; page-break-before: always; }
+    .block-header.align-left { text-align: left; }
+    .project-name { color: #525252; font-size: 9pt; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+    .block-path { margin-top: 2mm; color: #737373; font-size: 9pt; overflow-wrap: anywhere; }
+    .path-separator { display: inline-block; margin: 0 1.5mm; color: #a3a3a3; }
+    .block-header h1 { margin: 6mm 0 5mm; font-size: 22pt; line-height: 1.2; overflow-wrap: anywhere; }
+    .block-content { font-family: ${fontStack}; overflow-wrap: anywhere; }
+    .block-content h1 { margin: 7mm 0 3mm; font-size: 19pt; }
+    .block-content h2 { margin: 6mm 0 2.5mm; font-size: 16pt; }
+    .block-content h3 { margin: 5mm 0 2mm; font-size: 13pt; }
+    .block-content p { margin: 0 0 3.5mm; }
+    .block-content ul, .block-content ol { margin: 0 0 3.5mm; padding-left: 7mm; }
+    .block-content li > p { margin: 0; }
+    .block-content blockquote { margin: 4mm 0; padding: 1mm 0 1mm 5mm; border-left: 1.2mm solid #a3a3a3; color: #404040; }
+    .block-content pre { margin: 4mm 0; padding: 4mm; border: .3mm solid #d4d4d4; border-radius: 2mm; background: #f5f5f5; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .block-content code { font-family: Consolas, "Courier New", monospace; font-size: 9.5pt; }
+    .block-content :not(pre) > code { padding: .3mm 1mm; border-radius: 1mm; background: #f5f5f5; }
+    .block-content table { width: 100%; margin: 4mm 0; border-collapse: collapse; table-layout: fixed; }
+    .block-content th, .block-content td { padding: 2mm; border: .3mm solid #a3a3a3; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+    .block-content th { background: #f5f5f5; }
+    .block-content img { display: block; max-width: 100%; height: auto; margin: 4mm auto; }
+    .block-content a { color: #1d4ed8; text-decoration: underline; }
+    .block-content ul[data-type="taskList"] { list-style: none; padding-left: 0; }
+    .block-content li[data-type="taskItem"] { display: flex; align-items: flex-start; gap: 2mm; }
+    .block-content li[data-type="taskItem"] > label { flex: 0 0 auto; }
+    .block-content li[data-type="taskItem"] > div { flex: 1 1 auto; min-width: 0; }
+    .block-content input[type="checkbox"] { width: 4mm; height: 4mm; margin: .8mm 0 0; accent-color: #171717; }
+    pre, blockquote, table, img { break-inside: avoid; page-break-inside: avoid; }
+  </style>
+</head>
+<body>${sectionsHtml}
+</body>
+</html>`;
+}
+
+function findHeadlessBrowser() {
+  const isWindows = process.platform === 'win32';
+  const candidates = isWindows ? [
+    process.env['PROGRAMFILES(X86)'] && path.join(process.env['PROGRAMFILES(X86)'], 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+    process.env.PROGRAMFILES && path.join(process.env.PROGRAMFILES, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+    process.env.PROGRAMFILES && path.join(process.env.PROGRAMFILES, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+    process.env['PROGRAMFILES(X86)'] && path.join(process.env['PROGRAMFILES(X86)'], 'Google', 'Chrome', 'Application', 'chrome.exe'),
+    process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+    'msedge',
+    'chrome',
+    'chromium'
+  ] : [
+    '/usr/bin/google-chrome',
+    '/usr/bin/chromium-browser',
+    '/usr/bin/chromium',
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+    'google-chrome',
+    'chromium'
+  ];
+
+  for (const candidate of candidates.filter(Boolean)) {
+    try {
+      if (path.isAbsolute(candidate) && fs.existsSync(candidate)) return candidate;
+    } catch {}
+  }
+  return isWindows ? 'msedge' : 'google-chrome';
+}
+
+function renderHtmlToPdfHeadless(html, outputPath) {
+  const browser = findHeadlessBrowser();
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'deepscribe-export-pdf-'));
+  const tempHtml = path.join(tempDir, 'document.html');
+  fs.writeFileSync(tempHtml, html, 'utf8');
+
+  try {
+    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+    const args = [
+      '--headless',
+      '--disable-gpu',
+      '--run-all-compositor-stages-before-draw',
+      '--no-pdf-header-footer',
+      `--print-to-pdf=${path.resolve(outputPath)}`,
+      tempHtml
+    ];
+    execFileSync(browser, args, { timeout: 15000, stdio: 'ignore' });
+    if (fs.existsSync(outputPath)) {
+      const stats = fs.statSync(outputPath);
+      return { success: true, sizeBytes: stats.size };
+    }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
+  } finally {
+    try { fs.unlinkSync(tempHtml); } catch {}
+    try { fs.rmdirSync(tempDir); } catch {}
+  }
+  return { success: false, error: 'Failed to generate PDF file' };
 }
 
 export class DirectWorkspaceStore {
@@ -1614,6 +1951,108 @@ export class DirectWorkspaceStore {
         };
         this.database.prepare('INSERT INTO activities (id, json) VALUES (?, ?)').run(activity.id, JSON.stringify(activity));
         return activity;
+      }
+
+      case 'export_block': {
+        const blockId = requireString('blockId');
+        this.open();
+        const block = this.getBlock(blockId);
+        if (!block || block.isTrash) throw new Error('Block niet gevonden.');
+        const project = this.getProject(block.projectId);
+        if (!project || project.isTrash) throw new Error('Project niet gevonden.');
+
+        const rawFormat = typeof params.format === 'string' ? params.format.toLowerCase() : 'pdf';
+        const format = ['pdf', 'markdown', 'html', 'text'].includes(rawFormat) ? rawFormat : 'pdf';
+        const includeChildren = params.includeChildren !== false;
+        const pageSize = params.pageSize === 'A5' ? 'A5' : 'A4';
+        const font = params.font === 'sans' ? 'sans' : 'serif';
+        const margin = params.margin === 'compact' || params.margin === 'wide' ? params.margin : 'normal';
+        const outputPath = typeof params.outputPath === 'string' && params.outputPath.trim() ? params.outputPath.trim() : undefined;
+
+        const allBlocks = this.getAllBlocks().filter(b => b.projectId === project.id && !b.isTrash);
+
+        if (format === 'pdf') {
+          const html = exportDirectBlockAsHtml({
+            project,
+            rootBlock: block,
+            blocks: allBlocks,
+            includeChildren,
+            settings: { pageSize, font, margin }
+          });
+
+          const defaultFileName = `${String(block.title || 'Block').replace(/[\\/:*?"<>|]/g, '-').trim() || 'DeepScribe'}.pdf`;
+          const downloadsPath = path.join(os.homedir(), 'Downloads');
+          const targetFilePath = outputPath ? path.resolve(outputPath) : path.join(downloadsPath, defaultFileName);
+
+          const pdfResult = renderHtmlToPdfHeadless(html, targetFilePath);
+          if (pdfResult.success) {
+            this.recordActivity({
+              projectId: project.id,
+              blockId: block.id,
+              source: 'agent',
+              action: 'block-exported',
+              summary: `Agent exported block “${block.title}” as PDF`
+            });
+            return {
+              status: 'exported',
+              format: 'pdf',
+              filePath: targetFilePath,
+              title: block.title,
+              sizeBytes: pdfResult.sizeBytes
+            };
+          } else {
+            // Fallback: save HTML
+            const fallbackPath = targetFilePath.replace(/\.pdf$/i, '.html');
+            fs.mkdirSync(path.dirname(fallbackPath), { recursive: true });
+            fs.writeFileSync(fallbackPath, html, 'utf8');
+            const stats = fs.statSync(fallbackPath);
+            return {
+              status: 'exported',
+              format: 'html_fallback',
+              filePath: fallbackPath,
+              title: block.title,
+              content: html,
+              sizeBytes: stats.size,
+              message: `PDF rendering was not available (${pdfResult.error}). Rendered HTML saved.`
+            };
+          }
+        }
+
+        let content = '';
+        if (format === 'markdown') {
+          content = exportDirectBlockAsMarkdown({ project, rootBlock: block, blocks: allBlocks, includeChildren });
+        } else if (format === 'text') {
+          content = exportDirectBlockAsText({ project, rootBlock: block, blocks: allBlocks, includeChildren });
+        } else if (format === 'html') {
+          content = exportDirectBlockAsHtml({ project, rootBlock: block, blocks: allBlocks, includeChildren, settings: { pageSize, font, margin } });
+        }
+
+        let savedFilePath;
+        let sizeBytes = Buffer.byteLength(content, 'utf8');
+
+        if (outputPath) {
+          savedFilePath = path.resolve(outputPath);
+          fs.mkdirSync(path.dirname(savedFilePath), { recursive: true });
+          fs.writeFileSync(savedFilePath, content, 'utf8');
+          sizeBytes = fs.statSync(savedFilePath).size;
+        }
+
+        this.recordActivity({
+          projectId: project.id,
+          blockId: block.id,
+          source: 'agent',
+          action: 'block-exported',
+          summary: `Agent exported block “${block.title}” as ${format.toUpperCase()}`
+        });
+
+        return {
+          status: 'exported',
+          format,
+          title: block.title,
+          ...(savedFilePath ? { filePath: savedFilePath } : {}),
+          content,
+          sizeBytes
+        };
       }
 
       default:

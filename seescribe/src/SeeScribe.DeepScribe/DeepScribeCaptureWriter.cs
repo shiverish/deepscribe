@@ -140,18 +140,29 @@ public class DeepScribeCaptureWriter
 
     private static string BuildTitle(CaptureResult capture)
     {
-        var prompt = capture.PromptText?.Trim();
-        if (!string.IsNullOrWhiteSpace(prompt))
-        {
-            var firstLine = prompt.Split('\n')[0].Trim();
-            return firstLine.Length > 70 ? firstLine[..67] + "..." : firstLine;
-        }
+        // Wie alleen een beschrijving typt en de titelregel leeg laat, krijgt liever
+        // de eerste regel daarvan boven "Schermvastlegging — Chrome".
+        if (FirstLineOf(capture.PromptText) is { } prompt) return prompt;
+        if (FirstLineOf(capture.DescriptionText) is { } description) return description;
 
         var window = capture.Window?.WindowTitle;
         if (!string.IsNullOrWhiteSpace(window))
             return $"Schermvastlegging — {(window.Length > 50 ? window[..47] + "..." : window)}";
 
         return $"Schermvastlegging {capture.Timestamp:dd-MM-yyyy HH:mm}";
+    }
+
+    /// <summary>
+    /// De eerste regel, ingekort tot een lengte die als titel leesbaar blijft.
+    /// Geeft null terug wanneer er niets staat.
+    /// </summary>
+    private static string? FirstLineOf(string? text)
+    {
+        var trimmed = text?.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed)) return null;
+
+        var firstLine = trimmed.Split('\n')[0].Trim();
+        return firstLine.Length > 70 ? firstLine[..67] + "..." : firstLine;
     }
 
     private static string ExtractId(JsonElement result)

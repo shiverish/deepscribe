@@ -21,7 +21,7 @@ SeeScribe praat niet met een AI-model. Iedere vastlegging wordt een item in Deep
 
 Per vastlegging ontstaat één taak, direct oppakbaar door welke agent dan ook:
 
-- **Titel en toelichting** — wat je hebt getypt.
+- **Titel en beschrijving** — wat je hebt getypt. De regel onderin wordt de titel; is één regel niet genoeg, dan klap je met `Ctrl + D` een beschrijving open die eronder in het item terechtkomt. Typ je alleen een beschrijving, dan wordt de eerste regel daarvan de titel.
 - **Context** — welk venster, welke applicatie, welk scherm, welk tijdstip.
 - **Wat je hebt aangewezen** — als leesbare tekst én als bijlage met gestructureerde gegevens: type, coördinaten, volgorde, kleur, badgenummer. Een agent hoeft dus niet uit pixels af te leiden waar pijl 2 naar wijst.
 - **De geannoteerde afbeelding** als bijlage.
@@ -37,8 +37,12 @@ Zonder project gaat het naar de Workspace Inbox; met project naar dat project.
 | :--- | :--- |
 | **`Ctrl + Alt + S`** | Bevries het scherm onder de muis en ga annoteren |
 | **`Enter`** | Bewaar in DeepScribe |
+| **`Ctrl + D`** | Klap het beschrijvingsveld open of dicht |
+| **`Ctrl + Enter`** | Bewaar in DeepScribe, ook vanuit het beschrijvingsveld |
 | **`Esc`** | Sluit de overlay |
 | **`Ctrl + Z`** | Maak de laatste annotatie ongedaan |
+
+In het beschrijvingsveld maakt `Enter` een nieuwe regel in plaats van te bewaren. Staat er een beschrijving klaar terwijl het veld dicht is, dan licht het knopje op; verborgen tekst gaat niet ongemerkt mee.
 
 Tekengereedschap: pijl, pen, kader, cirkel, markeerstift en genummerde stappen.
 

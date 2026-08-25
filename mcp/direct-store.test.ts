@@ -503,4 +503,54 @@ describe('DirectWorkspaceStore offline MCP engine', () => {
       store.close();
     }
   });
+
+  it('exports block to markdown, text, html and file in offline direct SQLite mode', async () => {
+    const wsPath = temporaryWorkspace();
+    const store = new DirectWorkspaceStore({ workspacePath: wsPath });
+    try {
+      const proj = await store.handleRequest('create_project', { title: 'Direct Export Project' });
+      const parent = await store.handleRequest('create_block', {
+        projectId: proj.id,
+        title: 'Main Specification',
+        content: '## Architecture\n\nHere is the **spec**.'
+      });
+      await store.handleRequest('create_block', {
+        projectId: proj.id,
+        parentId: parent.id,
+        title: 'Child Module',
+        content: 'Nested details.'
+      });
+
+      const md = await store.handleRequest('export_block', {
+        blockId: parent.id,
+        format: 'markdown',
+        includeChildren: true
+      });
+      expect(md.status).toBe('exported');
+      expect(md.format).toBe('markdown');
+      expect(md.content).toContain('# Main Specification');
+      expect(md.content).toContain('## Child Module');
+      expect(md.content).toContain('**spec**');
+
+      const outFilePath = path.join(wsPath, 'exports', 'spec.md');
+      const mdWithFile = await store.handleRequest('export_block', {
+        blockId: parent.id,
+        format: 'markdown',
+        outputPath: outFilePath
+      });
+      expect(mdWithFile.filePath).toBe(path.resolve(outFilePath));
+      expect(fs.existsSync(outFilePath)).toBe(true);
+      expect(fs.readFileSync(outFilePath, 'utf8')).toContain('# Main Specification');
+
+      const html = await store.handleRequest('export_block', {
+        blockId: parent.id,
+        format: 'html'
+      });
+      expect(html.status).toBe('exported');
+      expect(html.format).toBe('html');
+      expect(html.content).toContain('<!doctype html>');
+    } finally {
+      store.close();
+    }
+  });
 });

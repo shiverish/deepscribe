@@ -1,5 +1,6 @@
 import React from 'react';
 import type { PathSegment, ActiveView } from '../../types';
+import type { UpdaterState } from './UpdateNotification';
 import {
   Bot,
   ChevronRight,
@@ -16,7 +17,8 @@ import {
   CheckSquare,
   Network,
   BarChart3,
-  Camera
+  Camera,
+  ArrowUpCircle
 } from 'lucide-react';
 
 interface BreadcrumbsProps {
@@ -33,6 +35,8 @@ interface BreadcrumbsProps {
   onTriggerScreenAnnotation?: () => void;
   isWritingPanelOpen: boolean;
   onToggleWritingPanel: () => void;
+  updaterState?: UpdaterState | null;
+  onInstallUpdate?: () => void;
 }
 
 export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
@@ -48,12 +52,16 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
   onOpenWorkspace,
   onTriggerScreenAnnotation,
   isWritingPanelOpen,
-  onToggleWritingPanel
+  onToggleWritingPanel,
+  updaterState,
+  onInstallUpdate
 }) => {
+  const isUpdateDownloaded = updaterState?.status === 'downloaded';
+
   return (
     <div className="app-topbar">
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
-        <nav className="breadcrumb-trail" aria-label="Huidig pad">
+        <nav className="breadcrumb-trail" aria-label="Current path">
           <button
             type="button"
             className={`breadcrumb-segment ${pathSegments.length === 0 ? 'current' : ''}`}
@@ -130,6 +138,30 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {isUpdateDownloaded && (
+          <button
+            onClick={onInstallUpdate || onOpenSettings}
+            style={{
+              background: 'rgba(16, 185, 129, 0.15)',
+              border: '1px solid rgba(16, 185, 129, 0.4)',
+              color: '#10B981',
+              padding: '5px 10px',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              fontSize: '0.78rem',
+              fontWeight: 600,
+              animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
+            }}
+            title={`Update v${updaterState?.availableVersion || ''} is ready. Click to restart and update.`}
+          >
+            <ArrowUpCircle size={14} />
+            <span>Update Ready</span>
+          </button>
+        )}
+
         {onTriggerScreenAnnotation && (
           <button
             onClick={onTriggerScreenAnnotation}
@@ -146,10 +178,10 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
               fontSize: '0.78rem',
               fontWeight: 500
             }}
-            title="Scherm annoteren & taak maken (Ctrl + Alt + S)"
+            title="Annotate screen & create task (Ctrl + Alt + S)"
           >
             <Camera size={14} />
-            <span>Annoteren</span>
+            <span>Annotate</span>
             <kbd style={{ fontSize: '0.68rem', opacity: 0.8 }}>Ctrl+Alt+S</kbd>
           </button>
         )}

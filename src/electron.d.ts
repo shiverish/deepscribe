@@ -21,6 +21,8 @@ declare global {
       migrateLegacyAttachment: (payload: { projectId: string; blockId: string; localPath: string }) => Promise<{ localPath: string }>;
       printBlockDocument: (payload: { html: string; jobName: string; pageSize: 'A4' | 'A5' }) => Promise<{ status: 'printed' | 'cancelled' }>;
       exportBlockDocumentPdf: (payload: { html: string; jobName: string; pageSize: 'A4' | 'A5' }) => Promise<{ status: 'exported' | 'cancelled'; filePath?: string }>;
+      exportHeadlessPdf: (payload: { html: string; jobName: string; pageSize: 'A4' | 'A5'; outputPath?: string }) => Promise<{ status: 'exported'; filePath: string; sizeBytes: number }>;
+      writeExportFile: (payload: { filePath: string; content: string }) => Promise<{ status: 'exported'; filePath: string; sizeBytes: number }>;
       seeScribe?: {
         capture: (command?: 'capture' | 'record' | 'show') => Promise<{ ok: boolean; executablePath?: string; error?: string }>;
         status: () => Promise<{ executablePath: string | null }>;

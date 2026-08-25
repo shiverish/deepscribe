@@ -20,17 +20,28 @@ public static class AnnotationMarkdown
     {
         var builder = new StringBuilder();
 
-        var prompt = capture.PromptText?.Trim();
-        if (!string.IsNullOrWhiteSpace(prompt) && !string.Equals(prompt, title?.Trim(), StringComparison.Ordinal))
-        {
-            builder.AppendLine(prompt);
-            builder.AppendLine();
-        }
+        AppendUnlessItIsTheTitle(builder, capture.PromptText, title);
+        AppendUnlessItIsTheTitle(builder, capture.DescriptionText, title);
 
         AppendContext(builder, capture);
         AppendAnnotations(builder, capture);
 
         return builder.ToString().TrimEnd();
+    }
+
+    /// <summary>
+    /// Zet een getypt stuk tekst bovenaan, tenzij het al woordelijk de titel is.
+    /// De titel wordt uit dezelfde velden afgeleid; zonder deze controle zou de
+    /// eerste regel van het blok de titel nog eens herhalen.
+    /// </summary>
+    private static void AppendUnlessItIsTheTitle(StringBuilder builder, string? text, string? title)
+    {
+        var trimmed = text?.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed)) return;
+        if (string.Equals(trimmed, title?.Trim(), StringComparison.Ordinal)) return;
+
+        builder.AppendLine(trimmed);
+        builder.AppendLine();
     }
 
     private static void AppendContext(StringBuilder builder, CaptureResult capture)

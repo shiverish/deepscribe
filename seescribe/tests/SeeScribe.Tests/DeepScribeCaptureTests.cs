@@ -103,6 +103,45 @@ public class AnnotationMarkdownTests
 
         markdown.Should().NotContain("Aangewezen op het scherm");
     }
+
+    [Fact]
+    public void Describe_puts_the_description_under_the_prompt_and_above_the_context()
+    {
+        var capture = BuildCapture();
+        capture.DescriptionText = "Alleen bij een smal venster.\nBij breed gaat het goed.";
+
+        var markdown = AnnotationMarkdown.Describe(capture);
+
+        markdown.IndexOf("De knop staat verkeerd uitgelijnd", StringComparison.Ordinal)
+            .Should().BeLessThan(markdown.IndexOf("Alleen bij een smal venster.", StringComparison.Ordinal));
+        markdown.IndexOf("Alleen bij een smal venster.", StringComparison.Ordinal)
+            .Should().BeLessThan(markdown.IndexOf("## Context", StringComparison.Ordinal));
+        markdown.Should().Contain("Bij breed gaat het goed.");
+    }
+
+    [Fact]
+    public void Describe_keeps_the_description_when_the_prompt_is_already_the_title()
+    {
+        var capture = BuildCapture();
+        capture.DescriptionText = "Alleen bij een smal venster.";
+
+        var markdown = AnnotationMarkdown.Describe(capture, capture.PromptText);
+
+        markdown.Should().NotContain("De knop staat verkeerd uitgelijnd");
+        markdown.Should().StartWith("Alleen bij een smal venster.");
+    }
+
+    [Fact]
+    public void Describe_does_not_repeat_a_description_that_became_the_title()
+    {
+        var capture = BuildCapture();
+        capture.PromptText = string.Empty;
+        capture.DescriptionText = "Alleen bij een smal venster.";
+
+        var markdown = AnnotationMarkdown.Describe(capture, capture.DescriptionText);
+
+        markdown.Should().StartWith("## Context");
+    }
 }
 
 public class SingleInstanceCommandTests

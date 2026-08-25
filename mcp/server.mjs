@@ -525,6 +525,21 @@ registerTool('record_activity', {
   annotations: write
 });
 
+registerTool('export_block', {
+  title: 'Export block or document',
+  description: 'Export a block (and optionally its nested child blocks) to PDF, Markdown, HTML, or plain text. If outputPath is omitted for PDF, it saves to Downloads. Use format="pdf" (default) for PDF exports.',
+  inputSchema: {
+    blockId: z.string().min(1),
+    format: z.enum(['pdf', 'markdown', 'html', 'text']).optional(),
+    includeChildren: z.boolean().optional(),
+    outputPath: z.string().optional(),
+    pageSize: z.enum(['A4', 'A5']).optional(),
+    font: z.enum(['serif', 'sans']).optional(),
+    margin: z.enum(['compact', 'normal', 'wide']).optional()
+  },
+  annotations: write
+});
+
 const transport = new StdioServerTransport();
 await server.connect(transport);
 console.error('DeepScribe MCP-server is actief via stdio.');

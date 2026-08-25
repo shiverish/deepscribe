@@ -540,3 +540,63 @@ describe('DeepScribe MCP Activity Stream & Live Feed (Feature E)', () => {
     expect(recent.every(a => a.createdAt >= timestampBefore)).toBe(true);
   });
 });
+
+describe('DeepScribe MCP export_block', () => {
+  it('exports a block and children as markdown, text, and html', async () => {
+    const project = await handleMcpBridgeRequest('create_project', { title: 'Export Test Project' }) as Project;
+    const parent = await handleMcpBridgeRequest('create_block', {
+      projectId: project.id,
+      title: 'Chapter 1',
+      content: '## Heading\n\nParagraph with **bold** text.'
+    }) as Block;
+    await handleMcpBridgeRequest('create_block', {
+      projectId: project.id,
+      parentId: parent.id,
+      title: 'Section 1.1',
+      content: 'Nested details.'
+    });
+
+    const mdExport = await handleMcpBridgeRequest('export_block', {
+      blockId: parent.id,
+      format: 'markdown',
+      includeChildren: true
+    }) as { status: string; format: string; content: string; title: string };
+
+    expect(mdExport.status).toBe('exported');
+    expect(mdExport.format).toBe('markdown');
+    expect(mdExport.content).toContain('# Chapter 1');
+    expect(mdExport.content).toContain('## Section 1.1');
+    expect(mdExport.content).toContain('**bold**');
+
+    const textExport = await handleMcpBridgeRequest('export_block', {
+      blockId: parent.id,
+      format: 'text',
+      includeChildren: true
+    }) as { status: string; format: string; content: string };
+
+    expect(textExport.status).toBe('exported');
+    expect(textExport.content).toContain('Chapter 1');
+    expect(textExport.content).toContain('Section 1.1');
+
+    const htmlExport = await handleMcpBridgeRequest('export_block', {
+      blockId: parent.id,
+      format: 'html'
+    }) as { status: string; format: string; content: string };
+
+    expect(htmlExport.status).toBe('exported');
+    expect(htmlExport.content).toContain('<!doctype html>');
+    expect(htmlExport.content).toContain('Chapter 1');
+
+    const pdfFallback = await handleMcpBridgeRequest('export_block', {
+      blockId: parent.id,
+      format: 'pdf'
+    }) as { status: string; format: string };
+
+    expect(pdfFallback.status).toBe('exported');
+  });
+
+  it('rejects export on invalid blockId', async () => {
+    await expect(handleMcpBridgeRequest('export_block', { blockId: 'missing-id' }))
+      .rejects.toThrow(/Block not found/i);
+  });
+});

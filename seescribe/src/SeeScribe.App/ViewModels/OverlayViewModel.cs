@@ -27,6 +27,23 @@ public partial class OverlayViewModel : ObservableObject
     [ObservableProperty]
     private string _promptText = string.Empty;
 
+    /// <summary>
+    /// De optionele beschrijving. Meerdere regels, en alleen in beeld wanneer
+    /// erom gevraagd wordt: de snelle weg blijft titel typen en Enter.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasDescription))]
+    private string _descriptionText = string.Empty;
+
+    [ObservableProperty]
+    private bool _isDescriptionVisible;
+
+    /// <summary>
+    /// Of er een beschrijving klaarstaat. Het knopje laat dat zien, zodat een
+    /// dichtgeklapt veld met tekst erin geen verborgen inhoud wordt.
+    /// </summary>
+    public bool HasDescription => !string.IsNullOrWhiteSpace(DescriptionText);
+
     [ObservableProperty]
     private bool _isRecordingAudio;
 
@@ -141,6 +158,20 @@ public partial class OverlayViewModel : ObservableObject
             RecordedAudio = audioBytes.Length > 0 ? audioBytes : null;
             RecordingStatusText = RecordedAudio is null ? "Inspreken" : "Opname bijgevoegd";
         }
+    }
+
+    /// <summary>
+    /// Klapt het beschrijvingsveld open of dicht. Een lege beschrijving wordt bij
+    /// het dichtklappen opgeruimd, zodat een spatie die per ongeluk is blijven
+    /// staan het knopje niet als "er staat iets" laat oplichten.
+    /// </summary>
+    [RelayCommand]
+    public void ToggleDescription()
+    {
+        IsDescriptionVisible = !IsDescriptionVisible;
+
+        if (!IsDescriptionVisible && !HasDescription)
+            DescriptionText = string.Empty;
     }
 
     [RelayCommand]

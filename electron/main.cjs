@@ -14,6 +14,7 @@ let bridgeServer;
 let bridgeInfoPath;
 let workspaceStore;
 let workspaceQuitReady = false;
+let isInstallingUpdate = false;
 let tray = null;
 let isQuitting = false;
 let isTrayEnabled = true;
@@ -448,6 +449,82 @@ function registerPrintIpc() {
       try { await fs.promises.rmdir(tempDirectory); } catch { /* The OS will clear the temporary directory later. */ }
     }
   });
+
+  ipcMain.handle('deepscribe:export:headless-pdf', async (event, payload) => {
+    if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) {
+      throw new Error('The PDF export did not originate from the active DeepScribe window.');
+    }
+    if (!payload || typeof payload.html !== 'string' || !payload.html.trim()) {
+      throw new Error('The PDF document is empty.');
+    }
+    if (Buffer.byteLength(payload.html, 'utf8') > MAX_PRINT_DOCUMENT_BYTES) {
+      throw new Error('The PDF document is too large to process safely.');
+    }
+
+    const rawJobName = typeof payload.jobName === 'string' ? payload.jobName : 'DeepScribe';
+    const pageSize = payload.pageSize === 'A5' ? 'A5' : 'A4';
+    const jobName = Array.from(rawJobName, character => {
+      const code = character.charCodeAt(0);
+      return code < 32 || code === 127 ? ' ' : character;
+    }).join('').trim().slice(0, 200) || 'DeepScribe';
+    const defaultFileName = `${jobName.replace(/[\\/:*?"<>|]/g, '-').trim() || 'DeepScribe'}.pdf`;
+
+    let targetFilePath = payload.outputPath;
+    if (!targetFilePath || typeof targetFilePath !== 'string') {
+      targetFilePath = path.join(app.getPath('downloads'), defaultFileName);
+    } else {
+      targetFilePath = path.resolve(targetFilePath);
+    }
+
+    const tempDirectory = await fs.promises.mkdtemp(path.join(app.getPath('temp'), 'deepscribe-headless-pdf-'));
+    const tempFile = path.join(tempDirectory, 'document.html');
+    let printWindow;
+
+    try {
+      await fs.promises.mkdir(path.dirname(targetFilePath), { recursive: true });
+      await fs.promises.writeFile(tempFile, payload.html, 'utf8');
+      printWindow = new BrowserWindow({
+        show: false,
+        title: jobName,
+        backgroundColor: '#ffffff',
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true,
+          sandbox: true,
+          javascript: false
+        }
+      });
+      printWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+      printWindow.webContents.on('will-navigate', navigationEvent => navigationEvent.preventDefault());
+      await printWindow.loadFile(tempFile);
+      const pdf = await printWindow.webContents.printToPDF({
+        pageSize,
+        printBackground: true,
+        landscape: false,
+        preferCSSPageSize: true
+      });
+      await fs.promises.writeFile(targetFilePath, pdf);
+      return { status: 'exported', filePath: targetFilePath, sizeBytes: pdf.byteLength };
+    } finally {
+      if (printWindow && !printWindow.isDestroyed()) printWindow.destroy();
+      try { await fs.promises.unlink(tempFile); } catch { /* Temp file was not created or already removed. */ }
+      try { await fs.promises.rmdir(tempDirectory); } catch { /* The OS will clear the temporary directory later. */ }
+    }
+  });
+
+  ipcMain.handle('deepscribe:export:write-file', async (event, payload) => {
+    if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) {
+      throw new Error('The file export did not originate from the active DeepScribe window.');
+    }
+    if (!payload || typeof payload.filePath !== 'string' || typeof payload.content !== 'string') {
+      throw new Error('Invalid file export payload.');
+    }
+    const targetFilePath = path.resolve(payload.filePath);
+    await fs.promises.mkdir(path.dirname(targetFilePath), { recursive: true });
+    await fs.promises.writeFile(targetFilePath, payload.content, 'utf8');
+    const stats = await fs.promises.stat(targetFilePath);
+    return { status: 'exported', filePath: targetFilePath, sizeBytes: stats.size };
+  });
 }
 
 function setupAutoUpdater() {
@@ -547,15 +624,35 @@ function registerUpdaterIpc() {
   });
 
   ipcMain.handle('deepscribe:updater:install', async () => {
+    isInstallingUpdate = true;
+    isQuitting = true;
+    workspaceQuitReady = true;
+
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('deepscribe-workspace-flush');
-      await new Promise(resolve => setTimeout(resolve, 800));
+      await new Promise(resolve => {
+        const timeout = setTimeout(resolve, 2000);
+        ipcMain.once('deepscribe-workspace-flushed', () => {
+          clearTimeout(timeout);
+          resolve();
+        });
+        mainWindow.webContents.send('deepscribe-workspace-flush');
+      });
+    }
+
+    globalShortcut.unregisterAll();
+    askSeeScribeToQuit();
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      try { overlayWindow.destroy(); } catch {}
+      overlayWindow = null;
+    }
+    if (tray) {
+      try { tray.destroy(); } catch {}
+      tray = null;
     }
     stopMcpBridge();
     workspaceStore?.close();
-    setImmediate(() => {
-      autoUpdater.quitAndInstall(false, true);
-    });
+
+    autoUpdater.quitAndInstall(true, true);
     return { ok: true };
   });
 }
@@ -664,7 +761,9 @@ ipcMain.on('deepscribe-mcp-response', (_event, response) => {
 ipcMain.on('deepscribe-mcp-ready', startMcpBridge);
 ipcMain.on('deepscribe-workspace-flushed', () => {
   workspaceQuitReady = true;
-  app.quit();
+  if (!isInstallingUpdate) {
+    app.quit();
+  }
 });
 
 const SEESCRIBE_CONFIG_FILE = 'seescribe.json';

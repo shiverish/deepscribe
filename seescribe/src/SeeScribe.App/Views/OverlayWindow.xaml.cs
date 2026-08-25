@@ -449,6 +449,11 @@ public partial class OverlayWindow : Window
             UndoLastAction();
             e.Handled = true;
         }
+        else if (e.Key == Key.D && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+        {
+            _viewModel.ToggleDescription();
+            e.Handled = true;
+        }
         else if (e.Key == Key.Enter && !Toolbar.IsFocused)
         {
             Toolbar_SubmitRequested(this, new RoutedEventArgs());
@@ -468,6 +473,7 @@ public partial class OverlayWindow : Window
             AnnotatedImageData = composedBytes,
             RawImageData = _rawImageBytes,
             PromptText = _viewModel.PromptText,
+            DescriptionText = _viewModel.DescriptionText,
             ScreenWidth = (int)ActualWidth,
             ScreenHeight = (int)ActualHeight,
             ScreenDeviceName = _screenDeviceName,

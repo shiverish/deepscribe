@@ -1,6 +1,10 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
+using Key = System.Windows.Input.Key;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
+using Keyboard = System.Windows.Input.Keyboard;
+using ModifierKeys = System.Windows.Input.ModifierKeys;
 using UserControl = System.Windows.Controls.UserControl;
 
 namespace SeeScribe.App.Views.Controls;
@@ -17,11 +21,42 @@ public partial class AnnotationToolbar : UserControl
 
     private void PromptInputBox_KeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == System.Windows.Input.Key.Enter)
+        if (e.Key == Key.Enter)
         {
             e.Handled = true;
             SubmitRequested?.Invoke(this, new RoutedEventArgs());
         }
+    }
+
+    /// <summary>
+    /// In de beschrijving maakt Enter een nieuwe regel — daar is het veld voor.
+    /// Opslaan gaat daar met Ctrl+Enter.
+    /// </summary>
+    private void DescriptionInputBox_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+        {
+            e.Handled = true;
+            SubmitRequested?.Invoke(this, new RoutedEventArgs());
+        }
+    }
+
+    /// <summary>
+    /// Het veld openklappen betekent dat er getypt gaat worden. De cursor gaat
+    /// erheen, en bij dichtklappen terug naar de titelregel.
+    /// </summary>
+    private void DescriptionInputBox_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        var opened = DescriptionInputBox.IsVisible;
+
+        // Pas focussen wanneer de nieuwe indeling er staat; een veld dat nog niet
+        // zichtbaar is neemt de focus niet aan.
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            var box = opened ? DescriptionInputBox : PromptInputBox;
+            box.Focus();
+            box.CaretIndex = box.Text.Length;
+        }), DispatcherPriority.Input);
     }
 
     private void OnSubmitClicked(object sender, RoutedEventArgs e)

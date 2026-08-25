@@ -30,9 +30,16 @@ public class CaptureResult
     public byte[]? AudioData { get; set; }
 
     /// <summary>
-    /// De getypte toelichting.
+    /// De getypte toelichting. Eén regel, en die wordt de titel van het item.
     /// </summary>
     public string PromptText { get; set; } = string.Empty;
+
+    /// <summary>
+    /// De optionele beschrijving. Blijft meestal leeg, want één regel is genoeg
+    /// om aan te wijzen wat er mis is. Soms is het dat niet, en dan staat hier
+    /// wat een agent verder moet weten.
+    /// </summary>
+    public string DescriptionText { get; set; } = string.Empty;
 
     public int ScreenWidth { get; set; }
     public int ScreenHeight { get; set; }
