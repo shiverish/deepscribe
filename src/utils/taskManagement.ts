@@ -254,3 +254,118 @@ export async function archiveDoneTasks(
   }
   return { archivedCount: count };
 }
+
+export async function bulkUpdateTaskStatus(
+  tasks: Block[],
+  status: TaskStatus
+): Promise<{ updatedCount: number }> {
+  let count = 0;
+  const now = Date.now();
+  for (const task of tasks) {
+    if (task.kind !== 'task' || !task.task || task.task.status === status) continue;
+    try {
+      await db.blocks.update(task.id, {
+        task: {
+          ...task.task,
+          status,
+          claim: undefined,
+          ...(status === 'ready' ? { readyAt: now } : {})
+        },
+        updatedAt: now
+      });
+      await recordActivity({
+        projectId: task.projectId,
+        blockId: task.id,
+        action: task.task.claim ? 'task-claim-released-by-user' : 'task-status-changed',
+        summary: `Task “${task.title}” → ${status}`
+      });
+      count += 1;
+    } catch {
+      // Continue on individual failure
+    }
+  }
+  return { updatedCount: count };
+}
+
+export async function bulkRelocateTasks(
+  tasks: Block[],
+  projectId: string | null
+): Promise<{ relocatedCount: number }> {
+  let count = 0;
+  for (const task of tasks) {
+    if (task.kind !== 'task' || !task.task) continue;
+    try {
+      await relocateUserTask(task, projectId, null);
+      count += 1;
+    } catch {
+      // Continue on individual failure
+    }
+  }
+  return { relocatedCount: count };
+}
+
+export async function bulkUpdateTaskAgent(
+  tasks: Block[],
+  agentTarget: TaskAgentTarget,
+  customAgentName?: string
+): Promise<{ updatedCount: number }> {
+  let count = 0;
+  for (const task of tasks) {
+    if (task.kind !== 'task' || !task.task) continue;
+    try {
+      await updateUserTaskAgent(task, agentTarget, customAgentName);
+      count += 1;
+    } catch {
+      // Continue on individual failure
+    }
+  }
+  return { updatedCount: count };
+}
+
+export async function bulkDeleteTasks(
+  tasks: Block[]
+): Promise<{ deletedCount: number }> {
+  let count = 0;
+  const now = Date.now();
+  for (const task of tasks) {
+    if (task.isTrash) continue;
+    try {
+      await db.blocks.update(task.id, {
+        isTrash: true,
+        trashedAt: now,
+        updatedAt: now
+      });
+      await recordActivity({
+        projectId: task.projectId,
+        blockId: task.id,
+        action: 'block-trashed',
+        summary: `Task “${task.title}” moved to trash`
+      });
+      count += 1;
+    } catch {
+      // Continue on individual failure
+    }
+  }
+  return { deletedCount: count };
+}
+
+export async function bulkMarkTasksRead(
+  tasks: Block[]
+): Promise<{ markedCount: number }> {
+  let count = 0;
+  for (const task of tasks) {
+    if (task.lastAgentEditAt && task.lastSeenAgentEditAt !== task.lastAgentEditAt) {
+      try {
+        await db.blocks.update(task.id, {
+          lastSeenAgentEditAt: task.lastAgentEditAt,
+          updatedAt: Date.now()
+        });
+        count += 1;
+      } catch {
+        // Continue on individual failure
+      }
+    }
+  }
+  return { markedCount: count };
+}
+

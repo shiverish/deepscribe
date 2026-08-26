@@ -1,12 +1,14 @@
-import React, { useMemo, useState } from 'react';
-import { Archive, Bot, CheckCheck, Columns3, Copy, FolderArchive, List, PanelRightClose, PanelRightOpen, Plus, Search, Trash2 } from 'lucide-react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import { Archive, Bot, Camera, CheckCheck, ChevronDown, ChevronRight, Columns3, Copy, Folder, FolderArchive, Layers, List, PanelRightClose, PanelRightOpen, Plus, Search, Trash2, User } from 'lucide-react';
 import type { Block, Project, TaskAgentTarget, TaskStatus } from '../../types';
 import { formatTaskHumanId, taskCreatorLabel, TASK_AGENT_LABELS, TASK_AGENT_TARGETS, TASK_STATUSES, TASK_STATUS_LABELS, TASK_INBOX_PROJECT_ID } from '../../utils/taskBlocks';
 import { copyAgentReference } from '../../utils/agentReferences';
-import { archiveDoneTasks, archiveUserTask, createUserTask, relocateUserTask, updateUserTaskAgent, updateUserTaskStatus } from '../../utils/taskManagement';
+import { archiveDoneTasks, archiveUserTask, createUserTask, relocateUserTask, updateUserTaskAgent, updateUserTaskStatus, bulkUpdateTaskStatus, bulkRelocateTasks, bulkUpdateTaskAgent, bulkDeleteTasks, bulkMarkTasksRead } from '../../utils/taskManagement';
 import { hasUnseenAgentEdits } from '../../utils/agentEdits';
 import { getProjectColor, INBOX_PROJECT_COLOR } from '../../utils/projectColors';
 import { markBlockSubtreeAsRead } from '../../db/operations';
+import { ProjectFilterDropdown } from './ProjectFilterDropdown';
+import { FloatingBulkActionBar } from './FloatingBulkActionBar';
 import './Tasks.css';
 
 interface TasksViewProps {
@@ -21,11 +23,28 @@ interface ArchiveModalState {
   task?: Block;
 }
 
+export type GroupByOption = 'none' | 'project' | 'creator';
+
+interface TaskGroup {
+  id: string;
+  title: string;
+  color?: string;
+  icon?: 'project' | 'seescribe' | 'user' | 'agent' | 'inbox';
+  tasks: Block[];
+}
+
 export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTask, onDeleteTask }) => {
   const [mode, setMode] = useState<'board' | 'list'>('board');
   const [query, setQuery] = useState('');
-  const [projectFilter, setProjectFilter] = useState('all');
+  const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState<'all' | TaskStatus>('all');
+  const [groupBy, setGroupBy] = useState<GroupByOption>('none');
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+
+  // Multi-selection state
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
+  const [lastSelectedTaskId, setLastSelectedTaskId] = useState<string | null>(null);
+
   const [newTitle, setNewTitle] = useState('');
   const [newProjectId, setNewProjectId] = useState('');
   const [newParentId, setNewParentId] = useState('');
@@ -43,15 +62,44 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
   const [archiveModal, setArchiveModal] = useState<ArchiveModalState | null>(null);
   const [archiveProjectId, setArchiveProjectId] = useState<string>('');
 
+  // Clear selection on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && selectedTaskIds.size > 0) {
+        setSelectedTaskIds(new Set());
+        setLastSelectedTaskId(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedTaskIds.size]);
+
   const byId = useMemo(() => new Map(blocks.map(block => [block.id, block])), [blocks]);
   const userProjects = useMemo(() => projects.filter(p => !p.isTrash && p.id !== TASK_INBOX_PROJECT_ID && p.systemKind !== 'task-inbox'), [projects]);
 
+  const taskCountsByProject = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const block of blocks) {
+      if (!block.isTrash && block.kind === 'task' && block.task) {
+        const pid = block.projectId;
+        counts[pid] = (counts[pid] || 0) + 1;
+      }
+    }
+    return counts;
+  }, [blocks]);
+
   const tasks = useMemo(() => blocks
     .filter(block => !block.isTrash && block.kind === 'task' && block.task)
-    .filter(block => projectFilter === 'all' || (projectFilter === 'inbox' ? block.projectId === TASK_INBOX_PROJECT_ID : block.projectId === projectFilter))
+    .filter(block => selectedProjectIds.length === 0 || selectedProjectIds.includes(block.projectId))
     .filter(block => statusFilter === 'all' || block.task?.status === statusFilter)
     .filter(block => !query.trim() || `${block.title} ${block.plainText}`.toLocaleLowerCase('en-US').includes(query.trim().toLocaleLowerCase('en-US')))
-    .sort((left, right) => (left.task?.position ?? left.order) - (right.task?.position ?? right.order) || left.createdAt - right.createdAt), [blocks, projectFilter, query, statusFilter]);
+    .sort((left, right) => (left.task?.position ?? left.order) - (right.task?.position ?? right.order) || left.createdAt - right.createdAt),
+    [blocks, selectedProjectIds, query, statusFilter]
+  );
+
+  const selectedTasks = useMemo(() => {
+    return tasks.filter(t => selectedTaskIds.has(t.id));
+  }, [tasks, selectedTaskIds]);
 
   const doneTasksCount = useMemo(() => tasks.filter(task => task.task?.status === 'done').length, [tasks]);
   const unreadTasksCount = useMemo(() => tasks.filter(task => hasUnseenAgentEdits(task)).length, [tasks]);
@@ -64,6 +112,18 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
         localStorage.setItem('deepscribe:tasks:done-collapsed', String(next));
       } catch {
         // Ignore localStorage errors
+      }
+      return next;
+    });
+  };
+
+  const toggleGroupCollapse = (groupKey: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(groupKey)) {
+        next.delete(groupKey);
+      } else {
+        next.add(groupKey);
       }
       return next;
     });
@@ -171,13 +231,151 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
     }
   };
 
-  const card = (task: Block) => {
+  // Multi-select click handler
+  const handleTaskClick = (e: React.MouseEvent, task: Block, listScope: Block[]) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      setSelectedTaskIds(prev => {
+        const next = new Set(prev);
+        if (next.has(task.id)) {
+          next.delete(task.id);
+        } else {
+          next.add(task.id);
+        }
+        return next;
+      });
+      setLastSelectedTaskId(task.id);
+      return;
+    }
+
+    if (e.shiftKey && lastSelectedTaskId) {
+      e.preventDefault();
+      const lastIndex = listScope.findIndex(t => t.id === lastSelectedTaskId);
+      const currentIndex = listScope.findIndex(t => t.id === task.id);
+      if (lastIndex !== -1 && currentIndex !== -1) {
+        const start = Math.min(lastIndex, currentIndex);
+        const end = Math.max(lastIndex, currentIndex);
+        const rangeIds = listScope.slice(start, end + 1).map(t => t.id);
+        setSelectedTaskIds(prev => {
+          const next = new Set(prev);
+          rangeIds.forEach(id => next.add(id));
+          return next;
+        });
+        return;
+      }
+    }
+
+    // Normal click without modifiers: clear multi-selection and open task
+    if (selectedTaskIds.size > 0) {
+      setSelectedTaskIds(new Set());
+      setLastSelectedTaskId(null);
+    }
+    onOpenTask(task.id);
+  };
+
+  // Grouping helpers
+  const groupTasks = useCallback((taskList: Block[], option: GroupByOption): TaskGroup[] => {
+    if (option === 'none') {
+      return [{ id: 'all', title: 'All Tasks', tasks: taskList }];
+    }
+
+    if (option === 'project') {
+      const groupsMap = new Map<string, Block[]>();
+      for (const t of taskList) {
+        const key = t.projectId || TASK_INBOX_PROJECT_ID;
+        if (!groupsMap.has(key)) groupsMap.set(key, []);
+        groupsMap.get(key)!.push(t);
+      }
+
+      const groups: TaskGroup[] = [];
+      if (groupsMap.has(TASK_INBOX_PROJECT_ID)) {
+        groups.push({
+          id: TASK_INBOX_PROJECT_ID,
+          title: 'Workspace Inbox',
+          color: INBOX_PROJECT_COLOR,
+          icon: 'inbox',
+          tasks: groupsMap.get(TASK_INBOX_PROJECT_ID)!
+        });
+      }
+
+      for (const p of userProjects) {
+        if (groupsMap.has(p.id)) {
+          groups.push({
+            id: p.id,
+            title: p.title,
+            color: getProjectColor(p.color),
+            icon: 'project',
+            tasks: groupsMap.get(p.id)!
+          });
+        }
+      }
+
+      // Add any orphaned/unknown project tasks
+      for (const [pid, ptasks] of groupsMap.entries()) {
+        if (pid !== TASK_INBOX_PROJECT_ID && !userProjects.some(p => p.id === pid)) {
+          groups.push({
+            id: pid,
+            title: 'Other Project',
+            color: INBOX_PROJECT_COLOR,
+            icon: 'project',
+            tasks: ptasks
+          });
+        }
+      }
+
+      return groups;
+    }
+
+    if (option === 'creator') {
+      const groupsMap = new Map<string, { title: string; icon: TaskGroup['icon']; color: string; tasks: Block[] }>();
+
+      for (const t of taskList) {
+        const creator = t.task?.creator;
+        let key = 'user';
+        let title = 'User';
+        let icon: TaskGroup['icon'] = 'user';
+        let color = 'var(--text-secondary)';
+
+        if (creator?.agentId === 'seescribe' || creator?.customAgentName === 'SeeScribe') {
+          key = 'seescribe';
+          title = 'SeeScribe';
+          icon = 'seescribe';
+          color = '#38bdf8';
+        } else if (creator?.type === 'agent') {
+          const label = taskCreatorLabel(t.task) || 'Agent';
+          key = `agent-${label.toLowerCase()}`;
+          title = label;
+          icon = 'agent';
+          color = 'var(--atmosphere-secondary)';
+        }
+
+        if (!groupsMap.has(key)) {
+          groupsMap.set(key, { title, icon, color, tasks: [] });
+        }
+        groupsMap.get(key)!.tasks.push(t);
+      }
+
+      return Array.from(groupsMap.entries()).map(([id, g]) => ({
+        id,
+        title: g.title,
+        icon: g.icon,
+        color: g.color,
+        tasks: g.tasks
+      }));
+    }
+
+    return [{ id: 'all', title: 'All Tasks', tasks: taskList }];
+  }, [userProjects]);
+
+  const renderTaskCard = (task: Block, listScope: Block[]) => {
     const isNew = hasUnseenAgentEdits(task);
     const humanId = formatTaskHumanId(task.task?.taskNumber);
+    const isSelected = selectedTaskIds.has(task.id);
+
     return (
       <article
         key={task.id}
-        className={`task-card ${isNew ? 'has-agent-updates' : ''}`}
+        className={`task-card ${isNew ? 'has-agent-updates' : ''} ${isSelected ? 'is-selected' : ''}`}
         draggable
         onDragStart={event => event.dataTransfer.setData('text/deepscribe-task', task.id)}
         onDragOver={event => event.preventDefault()}
@@ -189,7 +387,10 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
           void updateUserTaskStatus(source, task.task.status, task.task.position - 0.5).catch(cause => setError(cause.message));
         }}
       >
-        <button className="task-card-open" onClick={() => onOpenTask(task.id)}>
+        <button
+          className="task-card-open"
+          onClick={(e) => handleTaskClick(e, task, listScope)}
+        >
           {(humanId || isNew) && (
             <div className="task-card-header-row">
               {humanId ? (
@@ -241,7 +442,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
             <button
               type="button"
               className="task-card-copy-ref"
-              title="Copy task reference with deep link"
+              title="Copy task reference"
               aria-label={`Copy reference for ${task.title}`}
               onClick={(e) => {
                 e.stopPropagation();
@@ -289,6 +490,56 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
     );
   };
 
+  // Bulk Operations Handlers
+  const handleBulkStatus = async (status: TaskStatus) => {
+    try {
+      await bulkUpdateTaskStatus(selectedTasks, status);
+      setSelectedTaskIds(new Set());
+      setError(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not update selected tasks.');
+    }
+  };
+
+  const handleBulkRelocate = async (projectId: string | null) => {
+    try {
+      await bulkRelocateTasks(selectedTasks, projectId);
+      setSelectedTaskIds(new Set());
+      setError(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not relocate selected tasks.');
+    }
+  };
+
+  const handleBulkAgent = async (target: TaskAgentTarget, customAgentName?: string) => {
+    try {
+      await bulkUpdateTaskAgent(selectedTasks, target, customAgentName);
+      setSelectedTaskIds(new Set());
+      setError(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not assign agent for selected tasks.');
+    }
+  };
+
+  const handleBulkMarkRead = async () => {
+    try {
+      await bulkMarkTasksRead(selectedTasks);
+      setError(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not mark selected tasks as read.');
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    try {
+      await bulkDeleteTasks(selectedTasks);
+      setSelectedTaskIds(new Set());
+      setError(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not delete selected tasks.');
+    }
+  };
+
   return (
     <section className="tasks-view">
       <header className="tasks-toolbar">
@@ -296,14 +547,43 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
           <button className={mode === 'board' ? 'active' : ''} onClick={() => setMode('board')}><Columns3 size={14} /> Board</button>
           <button className={mode === 'list' ? 'active' : ''} onClick={() => setMode('list')}><List size={14} /> List</button>
         </div>
-        <label className="tasks-search"><Search size={14} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search tasks..." /></label>
-        <select value={projectFilter} onChange={event => setProjectFilter(event.target.value)} aria-label="Filter tasks by project">
-          <option value="all">All projects</option><option value="inbox">Workspace Inbox</option>
-          {projects.map(project => <option key={project.id} value={project.id}>{project.title}</option>)}
-        </select>
-        <select value={statusFilter} onChange={event => setStatusFilter(event.target.value as 'all' | TaskStatus)} aria-label="Filter tasks by status">
-          <option value="all">All statuses</option>{TASK_STATUSES.map(status => <option key={status} value={status}>{TASK_STATUS_LABELS[status]}</option>)}
-        </select>
+
+        <label className="tasks-search">
+          <Search size={14} />
+          <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search tasks..." />
+        </label>
+
+        {/* Multi-select Project Filter */}
+        <ProjectFilterDropdown
+          projects={userProjects}
+          selectedProjectIds={selectedProjectIds}
+          onChangeSelectedProjects={setSelectedProjectIds}
+          taskCountsByProject={taskCountsByProject}
+        />
+
+        {/* Status Filter (visible in List mode) */}
+        {mode === 'list' && (
+          <select value={statusFilter} onChange={event => setStatusFilter(event.target.value as 'all' | TaskStatus)} aria-label="Filter tasks by status">
+            <option value="all">All statuses</option>
+            {TASK_STATUSES.map(status => <option key={status} value={status}>{TASK_STATUS_LABELS[status]}</option>)}
+          </select>
+        )}
+
+        {/* Group By Selector */}
+        <div className="tasks-group-by-wrapper">
+          <Layers size={13} className="tasks-group-icon" />
+          <select
+            value={groupBy}
+            onChange={event => setGroupBy(event.target.value as GroupByOption)}
+            aria-label="Group tasks by"
+            className="tasks-group-select"
+          >
+            <option value="none">No grouping</option>
+            <option value="project">Group by Project</option>
+            <option value="creator">Group by Creator</option>
+          </select>
+        </div>
+
         {unreadTasksCount > 0 && (
           <button
             type="button"
@@ -315,6 +595,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
             <span>Mark read ({unreadTasksCount})</span>
           </button>
         )}
+
         {doneTasksCount > 0 && (
           <button
             type="button"
@@ -337,7 +618,8 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
       }}>
         <input value={newTitle} onChange={event => setNewTitle(event.target.value)} placeholder="Quick task title..." />
         <select value={newProjectId} onChange={event => { setNewProjectId(event.target.value); setNewParentId(''); }} aria-label="Task project">
-          <option value="">Workspace Inbox</option>{userProjects.map(project => <option key={project.id} value={project.id}>{project.title}</option>)}
+          <option value="">Workspace Inbox</option>
+          {userProjects.map(project => <option key={project.id} value={project.id}>{project.title}</option>)}
         </select>
         {newProjectId && (
           <select value={newParentId} onChange={event => setNewParentId(event.target.value)} aria-label="Task context block">
@@ -368,6 +650,8 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
               );
             }
 
+            const groups = groupTasks(laneTasks, groupBy);
+
             return (
               <section key={status} className="task-lane">
                 <header>
@@ -389,175 +673,383 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
                     </div>
                   )}
                 </header>
-                <div>{laneTasks.map(task => card(task))}</div>
+                <div className="task-lane-content">
+                  {groupBy === 'none' ? (
+                    laneTasks.map(task => renderTaskCard(task, laneTasks))
+                  ) : (
+                    groups.map(group => {
+                      const groupKey = `${status}:${group.id}`;
+                      const isCollapsed = collapsedGroups.has(groupKey);
+
+                      return (
+                        <div key={group.id} className="task-group-section">
+                          <button
+                            type="button"
+                            className="task-group-header"
+                            onClick={() => toggleGroupCollapse(groupKey)}
+                            aria-expanded={!isCollapsed}
+                          >
+                            <span className="task-group-toggle">
+                              {isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+                            </span>
+                            {group.icon === 'seescribe' ? (
+                              <Camera size={13} color="#38bdf8" />
+                            ) : group.icon === 'agent' ? (
+                              <Bot size={13} color="var(--atmosphere-secondary)" />
+                            ) : group.icon === 'user' ? (
+                              <User size={13} color="var(--text-secondary)" />
+                            ) : (
+                              <span
+                                className="project-color-pip"
+                                style={{ backgroundColor: group.color || DEFAULT_PROJECT_COLOR }}
+                              />
+                            )}
+                            <span className="task-group-title">{group.title}</span>
+                            <span className="task-group-count">{group.tasks.length}</span>
+                          </button>
+
+                          {!isCollapsed && (
+                            <div className="task-group-items">
+                              {group.tasks.map(task => renderTaskCard(task, laneTasks))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
               </section>
             );
           })}
         </div>
       ) : (
         <div className="task-list">
-          {tasks.map(task => {
-            const isNew = hasUnseenAgentEdits(task);
-            const humanId = formatTaskHumanId(task.task?.taskNumber);
-            return (
-              <div
-                key={task.id}
-                className={`task-list-row ${isNew ? 'has-agent-updates' : ''}`}
-                draggable
-                onDragStart={event => event.dataTransfer.setData('text/deepscribe-task', task.id)}
-                onDragOver={event => event.preventDefault()}
-                onDrop={event => {
-                  event.preventDefault(); event.stopPropagation();
-                  const source = byId.get(event.dataTransfer.getData('text/deepscribe-task'));
-                  if (!source || source.id === task.id || !task.task) return;
-                  if (source.task?.claim && !window.confirm('This task has an active claim. Move it and release the claim?')) return;
-                  void updateUserTaskStatus(source, task.task.status, task.task.position - 0.5).catch(cause => setError(cause.message));
-                }}
-              >
-                <button onClick={() => onOpenTask(task.id)}>
-                  {(humanId || isNew) && (
-                    <div className="task-card-header-row">
-                      {humanId ? (
-                        <span
-                          className="task-human-id clickable"
-                          title="Click to copy task reference"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            void copyAgentReference(task, 'block');
-                            setCopiedTaskId(task.id);
-                            setTimeout(() => setCopiedTaskId(null), 2000);
-                          }}
-                        >
-                          {copiedTaskId === task.id ? <CheckCheck size={11} color="#22C55E" /> : humanId}
-                        </span>
-                      ) : <span />}
-                      {isNew && (
-                        <span className="task-badge agent-update" title="This task contains unread agent updates">
-                          <Bot size={11} /> New
-                        </span>
-                      )}
+          {groupBy === 'none' ? (
+            tasks.map(task => {
+              const isNew = hasUnseenAgentEdits(task);
+              const humanId = formatTaskHumanId(task.task?.taskNumber);
+              const isSelected = selectedTaskIds.has(task.id);
+
+              return (
+                <div
+                  key={task.id}
+                  className={`task-list-row ${isNew ? 'has-agent-updates' : ''} ${isSelected ? 'is-selected' : ''}`}
+                  draggable
+                  onDragStart={event => event.dataTransfer.setData('text/deepscribe-task', task.id)}
+                  onDragOver={event => event.preventDefault()}
+                  onDrop={event => {
+                    event.preventDefault(); event.stopPropagation();
+                    const source = byId.get(event.dataTransfer.getData('text/deepscribe-task'));
+                    if (!source || source.id === task.id || !task.task) return;
+                    if (source.task?.claim && !window.confirm('This task has an active claim. Move it and release the claim?')) return;
+                    void updateUserTaskStatus(source, task.task.status, task.task.position - 0.5).catch(cause => setError(cause.message));
+                  }}
+                >
+                  <button onClick={(e) => handleTaskClick(e, task, tasks)}>
+                    {(humanId || isNew) && (
+                      <div className="task-card-header-row">
+                        {humanId ? (
+                          <span
+                            className="task-human-id clickable"
+                            title="Click to copy task reference"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void copyAgentReference(task, 'block');
+                              setCopiedTaskId(task.id);
+                              setTimeout(() => setCopiedTaskId(null), 2000);
+                            }}
+                          >
+                            {copiedTaskId === task.id ? <CheckCheck size={11} color="#22C55E" /> : humanId}
+                          </span>
+                        ) : <span />}
+                        {isNew && (
+                          <span className="task-badge agent-update" title="This task contains unread agent updates">
+                            <Bot size={11} /> New
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    <div className="task-card-title-row">
+                      <strong>{task.title}</strong>
+                    </div>
+                    <div className="task-project-meta">
+                      <span className="project-color-pip" style={{ backgroundColor: getTaskProjectColor(task) }} title={projectLabel(task)} />
+                      <span>{projectLabel(task)}{contextLabel(task) ? ` · ${contextLabel(task)}` : ''}</span>
+                    </div>
+                    {taskCreatorLabel(task.task) && <span className="task-creator"><Bot size={11} /> Created by {taskCreatorLabel(task.task)}</span>}
+                  </button>
+                  <select value={task.task?.status} onChange={event => void moveTask(task, event.target.value as TaskStatus)}>{TASK_STATUSES.map(status => <option key={status} value={status}>{TASK_STATUS_LABELS[status]}</option>)}</select>
+                  <select value={task.projectId === TASK_INBOX_PROJECT_ID ? '' : task.projectId} disabled={Boolean(task.task?.claim)} onChange={event => void relocateUserTask(task, event.target.value || null, null).catch(cause => setError(cause.message))}>
+                    <option value="">Workspace Inbox</option>{userProjects.map(project => <option key={project.id} value={project.id}>{project.title}</option>)}
+                  </select>
+                  <select disabled={Boolean(task.task?.claim)} value={task.task?.agentTarget ?? 'none'} onChange={event => void updateUserTaskAgent(task, event.target.value as TaskAgentTarget).catch(cause => setError(cause.message))}>{TASK_AGENT_TARGETS.map(target => <option key={target} value={target}>{TASK_AGENT_LABELS[target]}</option>)}</select>
+                  <div className="task-list-row-actions">
+                    <button
+                      type="button"
+                      className="task-card-copy-ref"
+                      title="Copy task reference"
+                      aria-label={`Copy reference for ${task.title}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void copyAgentReference(task, 'block');
+                        setCopiedTaskId(task.id);
+                        setTimeout(() => setCopiedTaskId(null), 2000);
+                      }}
+                    >
+                      {copiedTaskId === task.id ? <CheckCheck size={12} color="#22C55E" /> : <Copy size={12} />}
+                    </button>
+                    {isNew && (
+                      <button
+                        type="button"
+                        className="task-card-mark-read"
+                        title="Mark as read"
+                        aria-label={`Mark ${task.title} as read`}
+                        onClick={(e) => void handleMarkTaskAsRead(e, task.id)}
+                      >
+                        <CheckCheck size={12} />
+                      </button>
+                    )}
+                    {task.task?.status === 'done' && (
+                      <button
+                        type="button"
+                        className="task-card-archive"
+                        title="Archive to project"
+                        aria-label={`Archive ${task.title} to project`}
+                        onClick={() => void handleArchiveTask(task)}
+                      >
+                        <Archive size={12} />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="task-card-delete"
+                      title="Move task to Trash"
+                      aria-label={`Move ${task.title} to Trash`}
+                      onClick={() => void deleteTask(task)}
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            groupTasks(tasks, groupBy).map(group => {
+              const groupKey = `list:${group.id}`;
+              const isCollapsed = collapsedGroups.has(groupKey);
+
+              return (
+                <div key={group.id} className="task-group-section list-mode">
+                  <button
+                    type="button"
+                    className="task-group-header"
+                    onClick={() => toggleGroupCollapse(groupKey)}
+                    aria-expanded={!isCollapsed}
+                  >
+                    <span className="task-group-toggle">
+                      {isCollapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
+                    </span>
+                    {group.icon === 'seescribe' ? (
+                      <Camera size={14} color="#38bdf8" />
+                    ) : group.icon === 'agent' ? (
+                      <Bot size={14} color="var(--atmosphere-secondary)" />
+                    ) : group.icon === 'user' ? (
+                      <User size={14} color="var(--text-secondary)" />
+                    ) : (
+                      <span
+                        className="project-color-pip"
+                        style={{ backgroundColor: group.color || DEFAULT_PROJECT_COLOR }}
+                      />
+                    )}
+                    <span className="task-group-title">{group.title}</span>
+                    <span className="task-group-count">{group.tasks.length}</span>
+                  </button>
+
+                  {!isCollapsed && (
+                    <div className="task-group-items">
+                      {group.tasks.map(task => {
+                        const isNew = hasUnseenAgentEdits(task);
+                        const humanId = formatTaskHumanId(task.task?.taskNumber);
+                        const isSelected = selectedTaskIds.has(task.id);
+
+                        return (
+                          <div
+                            key={task.id}
+                            className={`task-list-row ${isNew ? 'has-agent-updates' : ''} ${isSelected ? 'is-selected' : ''}`}
+                            draggable
+                            onDragStart={event => event.dataTransfer.setData('text/deepscribe-task', task.id)}
+                            onDragOver={event => event.preventDefault()}
+                            onDrop={event => {
+                              event.preventDefault(); event.stopPropagation();
+                              const source = byId.get(event.dataTransfer.getData('text/deepscribe-task'));
+                              if (!source || source.id === task.id || !task.task) return;
+                              if (source.task?.claim && !window.confirm('This task has an active claim. Move it and release the claim?')) return;
+                              void updateUserTaskStatus(source, task.task.status, task.task.position - 0.5).catch(cause => setError(cause.message));
+                            }}
+                          >
+                            <button onClick={(e) => handleTaskClick(e, task, tasks)}>
+                              {(humanId || isNew) && (
+                                <div className="task-card-header-row">
+                                  {humanId ? (
+                                    <span
+                                      className="task-human-id clickable"
+                                      title="Click to copy task reference"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        void copyAgentReference(task, 'block');
+                                        setCopiedTaskId(task.id);
+                                        setTimeout(() => setCopiedTaskId(null), 2000);
+                                      }}
+                                    >
+                                      {copiedTaskId === task.id ? <CheckCheck size={11} color="#22C55E" /> : humanId}
+                                    </span>
+                                  ) : <span />}
+                                  {isNew && (
+                                    <span className="task-badge agent-update" title="This task contains unread agent updates">
+                                      <Bot size={11} /> New
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                              <div className="task-card-title-row">
+                                <strong>{task.title}</strong>
+                              </div>
+                              <div className="task-project-meta">
+                                <span className="project-color-pip" style={{ backgroundColor: getTaskProjectColor(task) }} title={projectLabel(task)} />
+                                <span>{projectLabel(task)}{contextLabel(task) ? ` · ${contextLabel(task)}` : ''}</span>
+                              </div>
+                              {taskCreatorLabel(task.task) && <span className="task-creator"><Bot size={11} /> Created by {taskCreatorLabel(task.task)}</span>}
+                            </button>
+                            <select value={task.task?.status} onChange={event => void moveTask(task, event.target.value as TaskStatus)}>{TASK_STATUSES.map(status => <option key={status} value={status}>{TASK_STATUS_LABELS[status]}</option>)}</select>
+                            <select value={task.projectId === TASK_INBOX_PROJECT_ID ? '' : task.projectId} disabled={Boolean(task.task?.claim)} onChange={event => void relocateUserTask(task, event.target.value || null, null).catch(cause => setError(cause.message))}>
+                              <option value="">Workspace Inbox</option>{userProjects.map(project => <option key={project.id} value={project.id}>{project.title}</option>)}
+                            </select>
+                            <select disabled={Boolean(task.task?.claim)} value={task.task?.agentTarget ?? 'none'} onChange={event => void updateUserTaskAgent(task, event.target.value as TaskAgentTarget).catch(cause => setError(cause.message))}>{TASK_AGENT_TARGETS.map(target => <option key={target} value={target}>{TASK_AGENT_LABELS[target]}</option>)}</select>
+                            <div className="task-list-row-actions">
+                              <button
+                                type="button"
+                                className="task-card-copy-ref"
+                                title="Copy task reference"
+                                aria-label={`Copy reference for ${task.title}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void copyAgentReference(task, 'block');
+                                  setCopiedTaskId(task.id);
+                                  setTimeout(() => setCopiedTaskId(null), 2000);
+                                }}
+                              >
+                                {copiedTaskId === task.id ? <CheckCheck size={12} color="#22C55E" /> : <Copy size={12} />}
+                              </button>
+                              {isNew && (
+                                <button
+                                  type="button"
+                                  className="task-card-mark-read"
+                                  title="Mark as read"
+                                  aria-label={`Mark ${task.title} as read`}
+                                  onClick={(e) => void handleMarkTaskAsRead(e, task.id)}
+                                >
+                                  <CheckCheck size={12} />
+                                </button>
+                              )}
+                              {task.task?.status === 'done' && (
+                                <button
+                                  type="button"
+                                  className="task-card-archive"
+                                  title="Archive to project"
+                                  aria-label={`Archive ${task.title} to project`}
+                                  onClick={() => void handleArchiveTask(task)}
+                                >
+                                  <Archive size={12} />
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                className="task-card-delete"
+                                title="Move task to Trash"
+                                aria-label={`Move ${task.title} to Trash`}
+                                onClick={() => void deleteTask(task)}
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
-                  <div className="task-card-title-row">
-                    <strong>{task.title}</strong>
-                  </div>
-                  <div className="task-project-meta">
-                    <span className="project-color-pip" style={{ backgroundColor: getTaskProjectColor(task) }} title={projectLabel(task)} />
-                    <span>{projectLabel(task)}{contextLabel(task) ? ` · ${contextLabel(task)}` : ''}</span>
-                  </div>
-                  {taskCreatorLabel(task.task) && <span className="task-creator"><Bot size={11} /> Created by {taskCreatorLabel(task.task)}</span>}
-                </button>
-                <select value={task.task?.status} onChange={event => void moveTask(task, event.target.value as TaskStatus)}>{TASK_STATUSES.map(status => <option key={status} value={status}>{TASK_STATUS_LABELS[status]}</option>)}</select>
-                <select value={task.projectId === TASK_INBOX_PROJECT_ID ? '' : task.projectId} disabled={Boolean(task.task?.claim)} onChange={event => void relocateUserTask(task, event.target.value || null, null).catch(cause => setError(cause.message))}>
-                  <option value="">Workspace Inbox</option>{projects.map(project => <option key={project.id} value={project.id}>{project.title}</option>)}
-                </select>
-                <select value={task.parentId ?? ''} disabled={Boolean(task.task?.claim) || task.projectId === TASK_INBOX_PROJECT_ID} onChange={event => void relocateUserTask(task, task.projectId, event.target.value || null).catch(cause => setError(cause.message))} aria-label={`Context for ${task.title}`}>
-                  <option value="">No context block</option>
-                  {blocks.filter(block => !block.isTrash && block.kind !== 'task' && block.projectId === task.projectId).map(block => <option key={block.id} value={block.id}>{block.title}</option>)}
-                </select>
-                <div className="task-list-row-actions">
-                  <button
-                    type="button"
-                    className="task-card-copy-ref"
-                    title="Copy task reference with deep link"
-                    aria-label={`Copy reference for ${task.title}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      void copyAgentReference(task, 'block');
-                      setCopiedTaskId(task.id);
-                      setTimeout(() => setCopiedTaskId(null), 2000);
-                    }}
-                  >
-                    {copiedTaskId === task.id ? <CheckCheck size={13} color="#22C55E" /> : <Copy size={13} />}
-                  </button>
-                  {isNew && (
-                    <button
-                      type="button"
-                      className="task-card-mark-read"
-                      title="Mark as read"
-                      aria-label={`Mark ${task.title} as read`}
-                      onClick={(e) => void handleMarkTaskAsRead(e, task.id)}
-                    >
-                      <CheckCheck size={13} />
-                    </button>
-                  )}
-                  {task.task?.status === 'done' && (
-                    <button
-                      type="button"
-                      className="task-card-archive"
-                      title="Archive to project"
-                      aria-label={`Archive ${task.title} to project`}
-                      onClick={() => void handleArchiveTask(task)}
-                    >
-                      <Archive size={13} />
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className="task-card-delete"
-                    title="Move task to Trash"
-                    aria-label={`Move ${task.title} to Trash`}
-                    onClick={() => void deleteTask(task)}
-                  >
-                    <Trash2 size={13} />
-                  </button>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </div>
       )}
 
+      {/* Floating Bulk Action Bar */}
+      <FloatingBulkActionBar
+        selectedCount={selectedTaskIds.size}
+        selectedTasks={selectedTasks}
+        projects={userProjects}
+        onUpdateStatus={handleBulkStatus}
+        onRelocateProject={handleBulkRelocate}
+        onUpdateAgent={handleBulkAgent}
+        onMarkRead={handleBulkMarkRead}
+        onDelete={handleBulkDelete}
+        onClearSelection={() => {
+          setSelectedTaskIds(new Set());
+          setLastSelectedTaskId(null);
+        }}
+      />
+
+      {/* Archive Modal */}
       {archiveModal && (
-        <div className="task-archive-modal-overlay" onClick={() => setArchiveModal(null)}>
-          <div className="task-archive-modal" onClick={event => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="archive-modal-title">
-            <header className="task-archive-modal-header">
-              <div className="task-archive-modal-heading">
-                <FolderArchive size={18} />
-                <h3 id="archive-modal-title">
-                  {archiveModal.type === 'single' ? 'Archive Task to Project' : 'Archive Completed Tasks'}
-                </h3>
-              </div>
-            </header>
-            <div className="task-archive-modal-body">
-              <p>
-                {archiveModal.type === 'single'
-                  ? `“${archiveModal.task?.title}” is currently in the Workspace Inbox. Choose a destination project to archive it into under an “Archive” section:`
-                  : 'Some completed tasks are currently in the Workspace Inbox. Select a destination project for inbox tasks:'}
-              </p>
-              {userProjects.length > 0 ? (
-                <label className="task-archive-field">
-                  <span>Destination Project</span>
-                  <select
-                    className="task-archive-select"
-                    value={archiveProjectId}
-                    onChange={event => setArchiveProjectId(event.target.value)}
-                    aria-label="Select destination project"
-                  >
-                    {userProjects.map(project => (
-                      <option key={project.id} value={project.id}>{project.title}</option>
-                    ))}
-                  </select>
-                </label>
-              ) : (
-                <p className="task-archive-no-projects">Please create a project first before archiving tasks from the inbox.</p>
-              )}
+        <div className="task-archive-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="archive-modal-title">
+          <div className="task-archive-modal">
+            <div className="task-archive-modal-header">
+              <FolderArchive size={18} color="var(--atmosphere-secondary)" />
+              <h3 id="archive-modal-title">
+                {archiveModal.type === 'single' ? 'Archive Task' : 'Archive All Done Tasks'}
+              </h3>
             </div>
-            <footer className="task-archive-modal-footer">
-              <button type="button" className="task-archive-btn-secondary" onClick={() => setArchiveModal(null)}>Cancel</button>
+            <p className="task-archive-modal-description">
+              {archiveModal.type === 'single'
+                ? `Task “${archiveModal.task?.title}” is currently in the Workspace Inbox. Choose a project to move this task to its Archive section:`
+                : 'Some completed tasks are in the Workspace Inbox. Choose a project where inbox tasks should be archived:'}
+            </p>
+            <div className="task-archive-modal-field">
+              <label htmlFor="archive-project-select">Target Project</label>
+              <select
+                id="archive-project-select"
+                value={archiveProjectId}
+                onChange={e => setArchiveProjectId(e.target.value)}
+                autoFocus
+              >
+                {userProjects.map(project => (
+                  <option key={project.id} value={project.id}>
+                    {project.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="task-archive-modal-actions">
               <button
                 type="button"
-                className="task-archive-btn-primary"
-                disabled={!archiveProjectId || userProjects.length === 0}
-                onClick={() => void confirmArchiveModal()}
+                className="task-archive-modal-cancel"
+                onClick={() => setArchiveModal(null)}
               >
-                Archive
+                Cancel
               </button>
-            </footer>
+              <button
+                type="button"
+                className="task-archive-modal-confirm"
+                onClick={confirmArchiveModal}
+                disabled={!archiveProjectId}
+              >
+                Archive Task{archiveModal.type === 'all' ? 's' : ''}
+              </button>
+            </div>
           </div>
         </div>
       )}
     </section>
   );
 };
-

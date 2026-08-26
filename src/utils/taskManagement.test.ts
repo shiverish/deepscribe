@@ -102,4 +102,40 @@ describe('user-managed tasks', () => {
     expect((await db.blocks.get(done2.id))?.kind).toBeUndefined();
     expect((await db.blocks.get(pending.id))?.kind).toBe('task');
   });
+
+  it('performs bulk status, relocate, agent, delete, and mark-read operations', async () => {
+    const { bulkUpdateTaskStatus, bulkRelocateTasks, bulkUpdateTaskAgent, bulkDeleteTasks, bulkMarkTasksRead } = await import('./taskManagement');
+
+    const t1 = await createUserTask({ title: 'Task 1', projectId: 'project-1' });
+    const t2 = await createUserTask({ title: 'Task 2', projectId: 'project-1' });
+
+    // Bulk status update
+    const statusRes = await bulkUpdateTaskStatus([t1, t2], 'ready');
+    expect(statusRes.updatedCount).toBe(2);
+    expect((await db.blocks.get(t1.id))?.task?.status).toBe('ready');
+    expect((await db.blocks.get(t2.id))?.task?.status).toBe('ready');
+
+    // Bulk agent update
+    const agentRes = await bulkUpdateTaskAgent([t1, t2], 'gemini');
+    expect(agentRes.updatedCount).toBe(2);
+    expect((await db.blocks.get(t1.id))?.task?.agentTarget).toBe('gemini');
+
+    // Bulk relocate
+    const relocateRes = await bulkRelocateTasks([t1, t2], 'project-2');
+    expect(relocateRes.relocatedCount).toBe(2);
+    expect((await db.blocks.get(t1.id))?.projectId).toBe('project-2');
+
+    // Bulk mark read
+    await db.blocks.update(t1.id, { lastAgentEditAt: 500, lastSeenAgentEditAt: 100 });
+    const markRes = await bulkMarkTasksRead([(await db.blocks.get(t1.id))!]);
+    expect(markRes.markedCount).toBe(1);
+    expect((await db.blocks.get(t1.id))?.lastSeenAgentEditAt).toBe(500);
+
+    // Bulk delete
+    const deleteRes = await bulkDeleteTasks([t1, t2]);
+    expect(deleteRes.deletedCount).toBe(2);
+    expect((await db.blocks.get(t1.id))?.isTrash).toBe(true);
+    expect((await db.blocks.get(t2.id))?.isTrash).toBe(true);
+  });
 });
+
