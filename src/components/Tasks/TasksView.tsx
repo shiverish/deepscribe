@@ -38,8 +38,47 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
   const [query, setQuery] = useState('');
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState<'all' | TaskStatus>('all');
-  const [groupBy, setGroupBy] = useState<GroupByOption>('none');
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [groupBy, setGroupByState] = useState<GroupByOption>(() => {
+    try {
+      const saved = localStorage.getItem('deepscribe:tasks:group-by');
+      if (saved === 'none' || saved === 'project' || saved === 'creator') {
+        return saved;
+      }
+    } catch {
+      // Ignore localStorage errors
+    }
+    return 'project';
+  });
+
+  const setGroupBy = (option: GroupByOption) => {
+    setGroupByState(option);
+    try {
+      localStorage.setItem('deepscribe:tasks:group-by', option);
+    } catch {
+      // Ignore localStorage errors
+    }
+  };
+
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem('deepscribe:tasks:collapsed-groups');
+      if (saved) {
+        return new Set(JSON.parse(saved));
+      }
+    } catch {
+      // Ignore localStorage errors
+    }
+    return new Set();
+  });
+
+  const saveCollapsedGroups = (next: Set<string>) => {
+    setCollapsedGroups(next);
+    try {
+      localStorage.setItem('deepscribe:tasks:collapsed-groups', JSON.stringify(Array.from(next)));
+    } catch {
+      // Ignore localStorage errors
+    }
+  };
 
   // Multi-selection state
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
@@ -117,16 +156,36 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
     });
   };
 
-  const toggleGroupCollapse = (groupKey: string) => {
-    setCollapsedGroups(prev => {
-      const next = new Set(prev);
-      if (next.has(groupKey)) {
-        next.delete(groupKey);
+  const handleGroupHeaderClick = (
+    e: React.MouseEvent,
+    groupKey: string,
+    allColumnGroupKeys: string[]
+  ) => {
+    e.preventDefault();
+    const isCtrlClick = e.ctrlKey || e.metaKey || e.altKey;
+    const isCurrentlyCollapsed = collapsedGroups.has(groupKey);
+
+    if (isCtrlClick) {
+      // If clicked group was open -> Collapse All in column
+      // If clicked group was closed -> Expand All in column
+      const next = new Set(collapsedGroups);
+      if (isCurrentlyCollapsed) {
+        allColumnGroupKeys.forEach(k => next.delete(k));
       } else {
-        next.add(groupKey);
+        allColumnGroupKeys.forEach(k => next.add(k));
       }
-      return next;
-    });
+      saveCollapsedGroups(next);
+      return;
+    }
+
+    // Normal click: toggle just this group
+    const next = new Set(collapsedGroups);
+    if (isCurrentlyCollapsed) {
+      next.delete(groupKey);
+    } else {
+      next.add(groupKey);
+    }
+    saveCollapsedGroups(next);
   };
 
   const projectLabel = (task: Block) => {
@@ -651,6 +710,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
             }
 
             const groups = groupTasks(laneTasks, groupBy);
+            const allColumnGroupKeys = groups.map(g => `${status}:${g.id}`);
 
             return (
               <section key={status} className="task-lane">
@@ -686,8 +746,9 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
                           <button
                             type="button"
                             className="task-group-header"
-                            onClick={() => toggleGroupCollapse(groupKey)}
+                            onClick={(e) => handleGroupHeaderClick(e, groupKey, allColumnGroupKeys)}
                             aria-expanded={!isCollapsed}
+                            title="Click to collapse/expand (Ctrl+Click to collapse/expand all in column)"
                           >
                             <span className="task-group-toggle">
                               {isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
@@ -833,8 +894,11 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
                 </div>
               );
             })
-          ) : (
-            groupTasks(tasks, groupBy).map(group => {
+          ) : (() => {
+            const listGroups = groupTasks(tasks, groupBy);
+            const allListGroupKeys = listGroups.map(g => `list:${g.id}`);
+
+            return listGroups.map(group => {
               const groupKey = `list:${group.id}`;
               const isCollapsed = collapsedGroups.has(groupKey);
 
@@ -843,8 +907,9 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
                   <button
                     type="button"
                     className="task-group-header"
-                    onClick={() => toggleGroupCollapse(groupKey)}
+                    onClick={(e) => handleGroupHeaderClick(e, groupKey, allListGroupKeys)}
                     aria-expanded={!isCollapsed}
+                    title="Click to collapse/expand (Ctrl+Click to collapse/expand all)"
                   >
                     <span className="task-group-toggle">
                       {isCollapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
@@ -979,8 +1044,8 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
                   )}
                 </div>
               );
-            })
-          )}
+            });
+          })()}
         </div>
       )}
 
