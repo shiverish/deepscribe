@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import type { Block, Project } from '../../types';
 import { calculateStatistics } from '../../utils/statisticsData';
+import { TASK_STATUS_LABELS } from '../../utils/taskBlocks';
 import {
   FileText,
   Type,
@@ -19,19 +20,23 @@ interface StatisticsViewProps {
   blocks: Block[];
   activeProjectId: string | null;
   onSelectProject?: (projectId: string) => void;
+  onSelectBlock?: (blockId: string) => void;
 }
 
 export const StatisticsView: React.FC<StatisticsViewProps> = ({
   projects,
   blocks,
   activeProjectId,
-  onSelectProject
+  onSelectProject,
+  onSelectBlock
 }) => {
-  const [scope, setScope] = useState<'project' | 'workspace'>('project');
+  const [scope, setScope] = useState<'project' | 'workspace'>(() => activeProjectId ? 'project' : 'workspace');
+
+  const effectiveScope = activeProjectId ? scope : 'workspace';
 
   const stats = useMemo(() => {
-    return calculateStatistics(projects, blocks, scope, activeProjectId);
-  }, [projects, blocks, scope, activeProjectId]);
+    return calculateStatistics(projects, blocks, effectiveScope, activeProjectId);
+  }, [projects, blocks, effectiveScope, activeProjectId]);
 
   return (
     <div className="stats-view-container">
@@ -40,7 +45,7 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({
         <div className="stats-title-group">
           <h1>Statistics & Analytics</h1>
           <div className="stats-subtitle">
-            {scope === 'project'
+            {effectiveScope === 'project'
               ? `Showing metrics for: ${stats.activeProjectTitle || 'No project selected'}`
               : 'Showing workspace-wide content and productivity metrics'}
           </div>
@@ -50,16 +55,20 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({
         <div className="stats-scope-switch">
           <button
             type="button"
-            className={`stats-scope-btn ${scope === 'project' ? 'active' : ''}`}
+            className={`stats-scope-btn ${effectiveScope === 'project' ? 'active' : ''}`}
             onClick={() => setScope('project')}
+            disabled={!activeProjectId}
+            title={activeProjectId ? `View ${stats.activeProjectTitle || 'current project'} metrics` : 'Select a project first to view single-project metrics'}
+            style={!activeProjectId ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
           >
             <Folder size={14} />
             <span>Current Project</span>
           </button>
           <button
             type="button"
-            className={`stats-scope-btn ${scope === 'workspace' ? 'active' : ''}`}
+            className={`stats-scope-btn ${effectiveScope === 'workspace' ? 'active' : ''}`}
             onClick={() => setScope('workspace')}
+            title="View workspace-wide metrics and comparison"
           >
             <Layers size={14} />
             <span>Entire Workspace</span>
@@ -102,10 +111,10 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({
             <Layers size={16} className="stat-card-icon" />
           </div>
           <div className="stat-card-value">{stats.totalBlocks}</div>
-          <div className="stat-card-unit">{scope === 'workspace' ? `In ${stats.totalProjects} projects` : 'In current project'}</div>
+          <div className="stat-card-unit">{effectiveScope === 'workspace' ? `In ${stats.totalProjects} projects` : 'In current project'}</div>
         </div>
 
-        {scope === 'workspace' && (
+        {effectiveScope === 'workspace' && (
           <div className="stat-card">
             <div className="stat-card-header">
               <span className="stat-card-label">Projects</span>
@@ -206,14 +215,21 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({
               </>
             )}
 
-            {scope === 'workspace' && stats.projectBreakdown.length > 0 && (
+            {/* In Workspace Mode: show per-project breakdown */}
+            {effectiveScope === 'workspace' && stats.projectBreakdown.length > 0 && (
               <>
                 <div style={{ fontSize: '0.8rem', fontWeight: 600, marginTop: '8px', color: 'var(--text-secondary)' }}>
                   Per-Project Breakdown:
                 </div>
                 <div className="task-project-list">
                   {stats.projectBreakdown.map(p => (
-                    <div key={p.projectId} className="task-project-item">
+                    <div
+                      key={p.projectId}
+                      className="task-project-item"
+                      style={{ cursor: onSelectProject ? 'pointer' : 'default' }}
+                      onClick={() => onSelectProject && onSelectProject(p.projectId)}
+                      title={`View project: ${p.title}`}
+                    >
                       <div className="task-project-info">
                         <div className="task-project-title">
                           <div className="task-project-color-dot" style={{ background: p.color }} />
@@ -238,6 +254,30 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({
                           />
                         </div>
                       )}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* In Project Mode: show task list for this project */}
+            {effectiveScope === 'project' && stats.tasks.length > 0 && (
+              <>
+                <div style={{ fontSize: '0.8rem', fontWeight: 600, marginTop: '8px', color: 'var(--text-secondary)' }}>
+                  Tasks in this Project ({stats.tasks.length}):
+                </div>
+                <div className="task-project-task-list">
+                  {stats.tasks.map(t => (
+                    <div
+                      key={t.id}
+                      className="task-item-row"
+                      onClick={() => onSelectBlock && onSelectBlock(t.id)}
+                      title={`Open task: ${t.title}`}
+                    >
+                      <span className="task-item-title">{t.title}</span>
+                      <span className={`task-item-status ${t.status}`}>
+                        {TASK_STATUS_LABELS[t.status] || t.status}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -279,7 +319,7 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({
       </div>
 
       {/* Workspace Scope Projects Comparison Table */}
-      {scope === 'workspace' && stats.projectBreakdown.length > 0 && (
+      {effectiveScope === 'workspace' && stats.projectBreakdown.length > 0 && (
         <div className="stats-panel" style={{ marginTop: '8px' }}>
           <h2 className="stats-panel-title">
             <BarChart3 size={17} />

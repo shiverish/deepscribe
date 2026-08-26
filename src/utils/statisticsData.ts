@@ -20,6 +20,13 @@ export interface TagStatsSummary {
   percentage: number;
 }
 
+export interface TaskItemSummary {
+  id: string;
+  title: string;
+  status: TaskStatus;
+  projectId: string;
+}
+
 export interface WorkspaceStatistics {
   scope: 'project' | 'workspace';
   activeProjectTitle?: string;
@@ -36,6 +43,7 @@ export interface WorkspaceStatistics {
   statusCounts: Record<TaskStatus, number>;
   tagDistribution: TagStatsSummary[];
   projectBreakdown: ProjectStatsSummary[];
+  tasks: TaskItemSummary[];
 }
 
 function createEmptyStatusCounts(): Record<TaskStatus, number> {
@@ -59,13 +67,14 @@ export function calculateStatistics(
   const nonTrashBlocks = blocks.filter(b => !b.isTrash);
 
   const activeProject = activeProjectId ? nonTrashProjects.find(p => p.id === activeProjectId) : null;
+  const effectiveScope = activeProject ? scope : 'workspace';
 
-  const targetBlocks = scope === 'project' && activeProjectId
-    ? nonTrashBlocks.filter(b => b.projectId === activeProjectId)
+  const targetBlocks = effectiveScope === 'project' && activeProject
+    ? nonTrashBlocks.filter(b => b.projectId === activeProject.id)
     : nonTrashBlocks;
 
-  const targetProjects = scope === 'project' && activeProjectId
-    ? (activeProject ? [activeProject] : [])
+  const targetProjects = effectiveScope === 'project' && activeProject
+    ? [activeProject]
     : nonTrashProjects;
 
   let totalWords = 0;
@@ -76,6 +85,7 @@ export function calculateStatistics(
 
   const workspaceStatusCounts = createEmptyStatusCounts();
   const tagCounts = new Map<string, number>();
+  const taskList: TaskItemSummary[] = [];
 
   // Project map for quick lookup
   const projectStatsMap = new Map<string, {
@@ -124,6 +134,12 @@ export function calculateStatistics(
       if (status === 'done') {
         completedTasks += 1;
       }
+      taskList.push({
+        id: block.id,
+        title: block.title || 'Untitled task',
+        status,
+        projectId: block.projectId
+      });
     }
 
     // Track tags
@@ -201,7 +217,7 @@ export function calculateStatistics(
   const estimatedReadingTimeMinutes = Math.max(1, Math.ceil(totalWords / 200));
 
   return {
-    scope,
+    scope: effectiveScope,
     activeProjectTitle: activeProject?.title,
     totalProjects: targetProjects.filter(p => p.id !== TASK_INBOX_PROJECT_ID && p.systemKind !== 'task-inbox').length,
     totalBlocks: targetBlocks.length,
@@ -215,6 +231,7 @@ export function calculateStatistics(
     taskCompletionPercentage,
     statusCounts: workspaceStatusCounts,
     tagDistribution,
-    projectBreakdown
+    projectBreakdown,
+    tasks: taskList
   };
 }

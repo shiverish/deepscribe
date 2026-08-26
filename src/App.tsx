@@ -985,13 +985,14 @@ function DeepScribeApp() {
         {activeView === 'stats' && (
           <StatisticsView
             projects={projects}
-            blocks={projectBlocksForViews}
+            blocks={allBlocks}
             activeProjectId={activeProjectId}
             onSelectProject={(projId) => {
               setActiveProjectId(projId);
               setSelectedBlockPath([]);
               setActiveView('columns');
             }}
+            onSelectBlock={(blockId) => openBlockById(blockId)}
           />
         )}
 
