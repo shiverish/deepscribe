@@ -30,6 +30,7 @@ import { getBlockDependencyStatus } from './utils/dependencyUtils';
 import { resolveBlockReferences } from './utils/references';
 import { calculateAgentEditCounts } from './utils/agentEdits';
 import { buildBlockPrintDocument, type BlockPrintDraft, type BlockPrintSettings } from './utils/printDocument';
+import { repository } from './db/repository';
 import { canTransitionTask, convertContentToTask, createTaskMetadata, getNextTaskNumber, parseTaskHumanId, taskWithoutActiveClaim, TASK_INBOX_PROJECT_ID, validateTaskReady } from './utils/taskBlocks';
 import { relocateUserTask } from './utils/taskManagement';
 import './styles/theme.css';
@@ -176,14 +177,14 @@ function DeepScribeApp() {
           setSelectedBlockPath([rootBlocks[0].id]);
         }
       }
-    }).catch(error => console.error('Workspace initialiseren is mislukt.', error));
+    }).catch((error: unknown) => console.error('Workspace initialiseren is mislukt.', error));
   }, []);
 
   useEffect(() => {
     if (!window.electronAPI?.onWorkspaceFlushRequested) return;
     return window.electronAPI.onWorkspaceFlushRequested(() => {
       repository.flush()
-        .catch(error => console.error('Final workspace save failed.', error))
+        .catch((error: unknown) => console.error('Final workspace save failed.', error))
         .finally(() => window.electronAPI?.workspaceFlushed());
     });
   }, []);
@@ -194,7 +195,7 @@ function DeepScribeApp() {
     const handleFocus = () => {
       window.clearTimeout(focusTimeout);
       focusTimeout = window.setTimeout(() => {
-        repository.reload().catch(error => console.error('Workspace herladen bij focus is mislukt.', error));
+        repository.reload().catch((error: unknown) => console.error('Workspace herladen bij focus is mislukt.', error));
       }, 300);
     };
     window.addEventListener('focus', handleFocus);
@@ -218,12 +219,12 @@ function DeepScribeApp() {
         .catch((error: unknown) => window.deepScribeMcp?.respond({
           id: request.id,
           ok: false,
-      error: error instanceof Error ? error.message : 'Unknown DeepScribe error.'
+          error: error instanceof Error ? error.message : 'Unknown DeepScribe error.'
         }));
     });
     repository.initialize()
       .then(() => window.deepScribeMcp?.ready())
-      .catch(error => console.error('Agentbridge wacht op een geldige workspace.', error));
+      .catch((error: unknown) => console.error('Agentbridge wacht op een geldige workspace.', error));
     return unsubscribe;
   }, []);
 

@@ -1,11 +1,11 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
-import { Archive, Bot, Camera, CheckCheck, ChevronDown, ChevronRight, Columns3, Copy, Folder, FolderArchive, Layers, List, PanelRightClose, PanelRightOpen, Plus, Search, Trash2, User } from 'lucide-react';
+import { Archive, Bot, Camera, CheckCheck, ChevronDown, ChevronRight, Columns3, Copy, FolderArchive, Layers, List, PanelRightClose, PanelRightOpen, Plus, Search, Trash2, User } from 'lucide-react';
 import type { Block, Project, TaskAgentTarget, TaskStatus } from '../../types';
 import { formatTaskHumanId, taskCreatorLabel, TASK_AGENT_LABELS, TASK_AGENT_TARGETS, TASK_STATUSES, TASK_STATUS_LABELS, TASK_INBOX_PROJECT_ID } from '../../utils/taskBlocks';
 import { copyAgentReference } from '../../utils/agentReferences';
 import { archiveDoneTasks, archiveUserTask, createUserTask, relocateUserTask, updateUserTaskAgent, updateUserTaskStatus, bulkUpdateTaskStatus, bulkRelocateTasks, bulkUpdateTaskAgent, bulkDeleteTasks, bulkMarkTasksRead } from '../../utils/taskManagement';
 import { hasUnseenAgentEdits } from '../../utils/agentEdits';
-import { getProjectColor, INBOX_PROJECT_COLOR } from '../../utils/projectColors';
+import { getProjectColor, INBOX_PROJECT_COLOR, DEFAULT_PROJECT_COLOR } from '../../utils/projectColors';
 import { markBlockSubtreeAsRead } from '../../db/operations';
 import { ProjectFilterDropdown } from './ProjectFilterDropdown';
 import { FloatingBulkActionBar } from './FloatingBulkActionBar';
@@ -336,7 +336,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
         let icon: TaskGroup['icon'] = 'user';
         let color = 'var(--text-secondary)';
 
-        if (creator?.agentId === 'seescribe' || creator?.customAgentName === 'SeeScribe') {
+        if (creator?.type === 'agent' && (creator.agentId === 'seescribe' || creator.customAgentName === 'SeeScribe')) {
           key = 'seescribe';
           title = 'SeeScribe';
           icon = 'seescribe';

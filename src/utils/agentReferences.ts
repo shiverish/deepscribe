@@ -1,5 +1,5 @@
 import type { Block, Project } from '../types';
-import { formatTaskDeepLink, formatTaskHumanId } from './taskBlocks';
+import { formatTaskHumanId } from './taskBlocks';
 
 export type ReferenceableItemType = 'project' | 'block';
 
