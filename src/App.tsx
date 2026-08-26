@@ -30,8 +30,7 @@ import { getBlockDependencyStatus } from './utils/dependencyUtils';
 import { resolveBlockReferences } from './utils/references';
 import { calculateAgentEditCounts } from './utils/agentEdits';
 import { buildBlockPrintDocument, type BlockPrintDraft, type BlockPrintSettings } from './utils/printDocument';
-import { repository } from './db/repository';
-import { canTransitionTask, convertContentToTask, createTaskMetadata, parseTaskHumanId, taskWithoutActiveClaim, TASK_INBOX_PROJECT_ID, validateTaskReady } from './utils/taskBlocks';
+import { canTransitionTask, convertContentToTask, createTaskMetadata, getNextTaskNumber, parseTaskHumanId, taskWithoutActiveClaim, TASK_INBOX_PROJECT_ID, validateTaskReady } from './utils/taskBlocks';
 import { relocateUserTask } from './utils/taskManagement';
 import './styles/theme.css';
 import './components/Navigation/Navigation.css';
@@ -469,7 +468,7 @@ function DeepScribeApp() {
         completedTaskCount: 0,
         attachmentCount: 0,
         tags: [],
-        ...(kind === 'task' ? { kind: 'task' as const, task: createTaskMetadata() } : {}),
+        ...(kind === 'task' ? { kind: 'task' as const, task: createTaskMetadata(now, { type: 'user' }, getNextTaskNumber(allBlocks)) } : {}),
         isTrash: false,
         createdAt: now,
         updatedAt: now
@@ -507,7 +506,7 @@ function DeepScribeApp() {
       completedTaskCount: 0,
       attachmentCount: 0,
       tags: [],
-      ...(kind === 'task' ? { kind: 'task' as const, task: createTaskMetadata() } : {}),
+      ...(kind === 'task' ? { kind: 'task' as const, task: createTaskMetadata(now, { type: 'user' }, getNextTaskNumber(allBlocks)) } : {}),
       isTrash: false,
       createdAt: now,
       updatedAt: now
@@ -659,10 +658,12 @@ function DeepScribeApp() {
     await recordBlockRevision(block, 'user', 'State before conversion to task');
     const agentStatuses = new Set(['agent-ready', 'agent-claimed', 'agent-blocked', 'agent-review', 'agent-done']);
     const convertedContent = convertContentToTask(block.content);
+    const allBlocks = await db.blocks.toArray();
+    const taskNumber = getNextTaskNumber(allBlocks);
     const updated: Block = {
       ...block,
       kind: 'task',
-      task: createTaskMetadata(),
+      task: createTaskMetadata(Date.now(), { type: 'user' }, taskNumber),
       content: convertedContent,
       plainText: new DOMParser().parseFromString(convertedContent, 'text/html').body.textContent?.replace(/\s+/g, ' ').trim() ?? '',
       tags: block.tags.filter(tag => !agentStatuses.has(tag)),

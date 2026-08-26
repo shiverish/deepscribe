@@ -6,7 +6,7 @@ import type { Attachment, Block, ClaimantAgentTarget, Project, ActivityEntry, Ac
 import { sanitizeTags } from '../utils/tagUtils';
 import { rankBlocksLocally } from '../utils/semanticSearch';
 import { isDescendantOrSelf, moveBlockInTree } from '../utils/dragAndDrop';
-import { canTransitionTask, createTaskClaim, createTaskInboxProject, createTaskMetadata, formatTaskDeepLink, formatTaskHumanId, isTaskClaimCandidate, isTaskInboxProject, normalizeLeaseSeconds, parseTaskHumanId, redactTaskClaim, taskCreatorLabel, TASK_INBOX_PROJECT_ID, validateTaskMetadata, validateTaskReady } from '../utils/taskBlocks';
+import { canTransitionTask, createTaskClaim, createTaskInboxProject, createTaskMetadata, formatTaskDeepLink, formatTaskHumanId, getNextTaskNumber, isTaskClaimCandidate, isTaskInboxProject, normalizeLeaseSeconds, parseTaskHumanId, redactTaskClaim, taskCreatorLabel, TASK_INBOX_PROJECT_ID, validateTaskMetadata, validateTaskReady } from '../utils/taskBlocks';
 import { exportBlockAsHtml, exportBlockAsMarkdown, exportBlockAsText, type ExportFormat } from '../utils/exportUtils';
 import { BLOCK_PRINT_PRESETS, loadStoredPrintSettings, normalizeBlockPrintSettings, saveStoredPrintSettings } from '../utils/printDocument';
 
@@ -532,9 +532,11 @@ async function createAgentTask(params: JsonObject) {
       await db.projects.add(createTaskInboxProject(now));
     }
 
-    const siblingTasks = await db.blocks.filter(block => !block.isTrash && block.projectId === projectId && block.kind === 'task' && block.task?.status === 'inbox').toArray();
+    const allBlocks = await db.blocks.toArray();
+    const siblingTasks = allBlocks.filter(block => !block.isTrash && block.projectId === projectId && block.kind === 'task' && block.task?.status === 'inbox');
     const position = siblingTasks.reduce((highest, block) => Math.max(highest, block.task?.position ?? -1), -1) + 1;
-    const order = await db.blocks.filter(block => !block.isTrash && block.projectId === projectId && block.parentId === parentId).count();
+    const order = allBlocks.filter(block => !block.isTrash && block.projectId === projectId && block.parentId === parentId).length;
+    const taskNumber = getNextTaskNumber(allBlocks);
 
     const block: Block = {
       id: `block-${crypto.randomUUID()}`,
@@ -550,7 +552,7 @@ async function createAgentTask(params: JsonObject) {
       task: createTaskMetadata(position, {
         type: 'agent', agentTarget, agentId, requestId,
         ...(agentTarget === 'custom' ? { customAgentName } : {})
-      }),
+      }, taskNumber),
       lastAgentEditAt: now,
       isTrash: false,
       createdAt: now,
