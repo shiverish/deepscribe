@@ -132,27 +132,79 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({
         <div className="stats-panel">
           <h2 className="stats-panel-title">
             <CheckSquare size={17} />
-            <span>Checklist Progress</span>
+            <span>Task Progress</span>
           </h2>
 
           <div className="task-progress-box">
-            <div className="task-progress-overall">
-              <div className="task-progress-percentage">
-                {stats.taskCompletionPercentage}%
-              </div>
-              <div className="task-progress-bar-container">
-                <div className="task-progress-bar-bg">
-                  <div
-                    className="task-progress-bar-fill"
-                    style={{ width: `${stats.taskCompletionPercentage}%` }}
-                  />
+            {stats.totalTasks === 0 ? (
+              <p className="stats-empty-text">No tasks found in this scope. Create tasks in the Tasks view to track progress.</p>
+            ) : (
+              <>
+                <div className="task-progress-overall">
+                  <div className="task-progress-percentage">
+                    {stats.taskCompletionPercentage}%
+                  </div>
+                  <div className="task-progress-bar-container">
+                    <div className="task-progress-bar-bg">
+                      <div
+                        className="task-progress-bar-fill"
+                        style={{ width: `${stats.taskCompletionPercentage}%` }}
+                      />
+                    </div>
+                    <div className="task-progress-meta">
+                      <span>{stats.completedTasks} completed</span>
+                      <span>{stats.pendingTasks} remaining ({stats.totalTasks} total)</span>
+                    </div>
+                  </div>
                 </div>
-                <div className="task-progress-meta">
-                  <span>{stats.completedTasks} completed</span>
-                  <span>{stats.pendingTasks} remaining ({stats.totalTasks} total)</span>
+
+                {/* Status Breakdown Grid */}
+                <div className="task-status-grid">
+                  <div className="task-status-pill done" title="Completed tasks">
+                    <div className="task-status-pill-label">
+                      <div className="task-status-dot" />
+                      <span>Done</span>
+                    </div>
+                    <span className="task-status-pill-count">{stats.statusCounts.done}</span>
+                  </div>
+                  <div className="task-status-pill in-progress" title="Tasks currently in progress">
+                    <div className="task-status-pill-label">
+                      <div className="task-status-dot" />
+                      <span>In progress</span>
+                    </div>
+                    <span className="task-status-pill-count">{stats.statusCounts['in-progress']}</span>
+                  </div>
+                  <div className="task-status-pill review" title="Tasks under review">
+                    <div className="task-status-pill-label">
+                      <div className="task-status-dot" />
+                      <span>Review</span>
+                    </div>
+                    <span className="task-status-pill-count">{stats.statusCounts.review}</span>
+                  </div>
+                  <div className="task-status-pill blocked" title="Blocked tasks">
+                    <div className="task-status-pill-label">
+                      <div className="task-status-dot" />
+                      <span>Blocked</span>
+                    </div>
+                    <span className="task-status-pill-count">{stats.statusCounts.blocked}</span>
+                  </div>
+                  <div className="task-status-pill ready" title="Ready to start">
+                    <div className="task-status-pill-label">
+                      <div className="task-status-dot" />
+                      <span>Ready</span>
+                    </div>
+                    <span className="task-status-pill-count">{stats.statusCounts.ready}</span>
+                  </div>
+                  <div className="task-status-pill inbox" title="Inbox / unprioritized tasks">
+                    <div className="task-status-pill-label">
+                      <div className="task-status-dot" />
+                      <span>Inbox</span>
+                    </div>
+                    <span className="task-status-pill-count">{stats.statusCounts.inbox}</span>
+                  </div>
                 </div>
-              </div>
-            </div>
+              </>
+            )}
 
             {scope === 'workspace' && stats.projectBreakdown.length > 0 && (
               <>
@@ -167,19 +219,25 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({
                           <div className="task-project-color-dot" style={{ background: p.color }} />
                           <span>{p.title}</span>
                         </div>
-                        <span style={{ color: 'var(--text-secondary)' }}>
-                          {p.completedTaskCount}/{p.taskCount} tasks ({p.taskPercentage}%)
-                        </span>
+                        {p.taskCount > 0 ? (
+                          <span style={{ color: 'var(--text-secondary)' }}>
+                            {p.completedTaskCount}/{p.taskCount} tasks ({p.taskPercentage}%)
+                          </span>
+                        ) : (
+                          <span className="task-no-tasks-badge">No tasks</span>
+                        )}
                       </div>
-                      <div className="task-progress-bar-bg" style={{ height: 4 }}>
-                        <div
-                          className="task-progress-bar-fill"
-                          style={{
-                            width: `${p.taskPercentage}%`,
-                            background: p.color || 'var(--accent-color)'
-                          }}
-                        />
-                      </div>
+                      {p.taskCount > 0 && (
+                        <div className="task-progress-bar-bg" style={{ height: 4 }}>
+                          <div
+                            className="task-progress-bar-fill"
+                            style={{
+                              width: `${p.taskPercentage}%`,
+                              background: p.color || 'var(--accent-color)'
+                            }}
+                          />
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -233,7 +291,7 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({
                 <th>Project</th>
                 <th>Blocks</th>
                 <th>Words</th>
-                <th>Checklist items</th>
+                <th>Tasks</th>
                 <th>Progress</th>
               </tr>
             </thead>
@@ -252,17 +310,27 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({
                   </td>
                   <td>{p.blockCount}</td>
                   <td>{p.wordCount.toLocaleString()}</td>
-                  <td>{p.completedTaskCount} / {p.taskCount}</td>
                   <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <div className="task-progress-bar-bg" style={{ width: 80, height: 6 }}>
-                        <div
-                          className="task-progress-bar-fill"
-                          style={{ width: `${p.taskPercentage}%`, background: p.color }}
-                        />
+                    {p.taskCount > 0 ? (
+                      <span>{p.completedTaskCount} / {p.taskCount}</span>
+                    ) : (
+                      <span style={{ color: 'var(--text-secondary)' }}>—</span>
+                    )}
+                  </td>
+                  <td>
+                    {p.taskCount > 0 ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div className="task-progress-bar-bg" style={{ width: 80, height: 6 }}>
+                          <div
+                            className="task-progress-bar-fill"
+                            style={{ width: `${p.taskPercentage}%`, background: p.color }}
+                          />
+                        </div>
+                        <span style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>{p.taskPercentage}%</span>
                       </div>
-                      <span style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>{p.taskPercentage}%</span>
-                    </div>
+                    ) : (
+                      <span className="task-no-tasks-badge">No tasks</span>
+                    )}
                   </td>
                 </tr>
               ))}
