@@ -79,4 +79,20 @@ describe('unseen agent edits', () => {
     expect(calculateAgentEditCounts([orphan]).byBlock).toEqual({ orphan: 1 });
     expect(calculateAgentEditCounts([first, second]).byBlock).toEqual({ first: 1, second: 1 });
   });
+
+  it('correctly identifies unseen agent edits on task blocks', () => {
+    const task = block({
+      id: 'task-1',
+      kind: 'task',
+      task: { status: 'inbox', agentTarget: 'none', position: 0 },
+      lastAgentEditAt: 50
+    });
+    expect(hasUnseenAgentEdits(task)).toBe(true);
+
+    const seenTask = { ...task, lastSeenAgentEditAt: 50 };
+    expect(hasUnseenAgentEdits(seenTask)).toBe(false);
+
+    const updatedTask = { ...seenTask, lastAgentEditAt: 60 };
+    expect(hasUnseenAgentEdits(updatedTask)).toBe(true);
+  });
 });

@@ -786,7 +786,9 @@ input:checked + .toggle-slider:before {
   box-shadow: none !important;
 }
 
-.no-glow .miller-card.has-agent-updates {
+.no-glow .miller-card.has-agent-updates,
+.no-glow .task-card.has-agent-updates,
+.no-glow .task-list-row.has-agent-updates {
   box-shadow: inset 3px 0 0 rgba(var(--agent-alert-rgb), 0.82) !important;
 }
 

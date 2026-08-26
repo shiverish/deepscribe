@@ -1,8 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { Archive, Bot, Columns3, FolderArchive, List, PanelRightClose, PanelRightOpen, Plus, Search, Trash2 } from 'lucide-react';
+import { Archive, Bot, CheckCheck, Columns3, FolderArchive, List, PanelRightClose, PanelRightOpen, Plus, Search, Trash2 } from 'lucide-react';
 import type { Block, Project, TaskAgentTarget, TaskStatus } from '../../types';
 import { taskCreatorLabel, TASK_AGENT_LABELS, TASK_AGENT_TARGETS, TASK_STATUSES, TASK_STATUS_LABELS, TASK_INBOX_PROJECT_ID } from '../../utils/taskBlocks';
 import { archiveDoneTasks, archiveUserTask, createUserTask, relocateUserTask, updateUserTaskAgent, updateUserTaskStatus } from '../../utils/taskManagement';
+import { hasUnseenAgentEdits } from '../../utils/agentEdits';
+import { markBlockSubtreeAsRead } from '../../db/operations';
 import './Tasks.css';
 
 interface TasksViewProps {
@@ -49,6 +51,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
     .sort((left, right) => (left.task?.position ?? left.order) - (right.task?.position ?? right.order) || left.createdAt - right.createdAt), [blocks, projectFilter, query, statusFilter]);
 
   const doneTasksCount = useMemo(() => tasks.filter(task => task.task?.status === 'done').length, [tasks]);
+  const unreadTasksCount = useMemo(() => tasks.filter(task => hasUnseenAgentEdits(task)).length, [tasks]);
   const projectBlocks = blocks.filter(block => !block.isTrash && block.projectId === newProjectId && block.kind !== 'task');
 
   const toggleDoneCollapse = () => {
@@ -82,6 +85,28 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
     if (!window.confirm(`Move task “${task.title}” to Trash?`)) return;
     try { await onDeleteTask(task); setError(null); }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not delete the task.'); }
+  };
+
+  const handleMarkTaskAsRead = async (e: React.MouseEvent, taskId: string) => {
+    e.stopPropagation();
+    try {
+      await markBlockSubtreeAsRead(taskId);
+      setError(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not mark task as read.');
+    }
+  };
+
+  const handleMarkAllAsRead = async () => {
+    try {
+      const unreadTasks = tasks.filter(t => hasUnseenAgentEdits(t));
+      for (const t of unreadTasks) {
+        await markBlockSubtreeAsRead(t.id);
+      }
+      setError(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not mark tasks as read.');
+    }
   };
 
   const handleArchiveTask = async (task: Block) => {
@@ -138,66 +163,87 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
     }
   };
 
-  const card = (task: Block) => (
-    <article
-      key={task.id}
-      className="task-card"
-      draggable
-      onDragStart={event => event.dataTransfer.setData('text/deepscribe-task', task.id)}
-      onDragOver={event => event.preventDefault()}
-      onDrop={event => {
-        event.preventDefault(); event.stopPropagation();
-        const source = byId.get(event.dataTransfer.getData('text/deepscribe-task'));
-        if (!source || source.id === task.id || !task.task) return;
-        if (source.task?.claim && !window.confirm('This task has an active claim. Move it and release the claim?')) return;
-        void updateUserTaskStatus(source, task.task.status, task.task.position - 0.5).catch(cause => setError(cause.message));
-      }}
-    >
-      <button className="task-card-open" onClick={() => onOpenTask(task.id)}>
-        <strong>{task.title}</strong>
-        <span>{projectLabel(task)}{contextLabel(task) ? ` · ${contextLabel(task)}` : ''}</span>
-        {taskCreatorLabel(task.task) && <span className="task-creator"><Bot size={11} /> Created by {taskCreatorLabel(task.task)}</span>}
-      </button>
-      <div className="task-card-meta">
-        <select
-          aria-label={`Agent for ${task.title}`}
-          disabled={Boolean(task.task?.claim)}
-          value={task.task?.agentTarget ?? 'none'}
-          onChange={event => {
-            const target = event.target.value as TaskAgentTarget;
-            const customName = target === 'custom' ? window.prompt('Agent/provider name', task.task?.customAgentName ?? '') : undefined;
-            if (target === 'custom' && !customName?.trim()) return;
-            void updateUserTaskAgent(task, target, customName ?? undefined).catch(cause => setError(cause.message));
-          }}
-        >
-          {TASK_AGENT_TARGETS.map(target => <option key={target} value={target}>{TASK_AGENT_LABELS[target]}</option>)}
-        </select>
-        {task.task?.claim && <span className="task-claim"><Bot size={11} /> {task.task.claim.ownerId}</span>}
-        <div className="task-card-actions">
-          {task.task?.status === 'done' && (
+  const card = (task: Block) => {
+    const isNew = hasUnseenAgentEdits(task);
+    return (
+      <article
+        key={task.id}
+        className={`task-card ${isNew ? 'has-agent-updates' : ''}`}
+        draggable
+        onDragStart={event => event.dataTransfer.setData('text/deepscribe-task', task.id)}
+        onDragOver={event => event.preventDefault()}
+        onDrop={event => {
+          event.preventDefault(); event.stopPropagation();
+          const source = byId.get(event.dataTransfer.getData('text/deepscribe-task'));
+          if (!source || source.id === task.id || !task.task) return;
+          if (source.task?.claim && !window.confirm('This task has an active claim. Move it and release the claim?')) return;
+          void updateUserTaskStatus(source, task.task.status, task.task.position - 0.5).catch(cause => setError(cause.message));
+        }}
+      >
+        <button className="task-card-open" onClick={() => onOpenTask(task.id)}>
+          <div className="task-card-title-row">
+            <strong>{task.title}</strong>
+            {isNew && (
+              <span className="task-badge agent-update" title="This task contains unread agent updates">
+                <Bot size={11} /> New
+              </span>
+            )}
+          </div>
+          <span>{projectLabel(task)}{contextLabel(task) ? ` · ${contextLabel(task)}` : ''}</span>
+          {taskCreatorLabel(task.task) && <span className="task-creator"><Bot size={11} /> Created by {taskCreatorLabel(task.task)}</span>}
+        </button>
+        <div className="task-card-meta">
+          <select
+            aria-label={`Agent for ${task.title}`}
+            disabled={Boolean(task.task?.claim)}
+            value={task.task?.agentTarget ?? 'none'}
+            onChange={event => {
+              const target = event.target.value as TaskAgentTarget;
+              const customName = target === 'custom' ? window.prompt('Agent/provider name', task.task?.customAgentName ?? '') : undefined;
+              if (target === 'custom' && !customName?.trim()) return;
+              void updateUserTaskAgent(task, target, customName ?? undefined).catch(cause => setError(cause.message));
+            }}
+          >
+            {TASK_AGENT_TARGETS.map(target => <option key={target} value={target}>{TASK_AGENT_LABELS[target]}</option>)}
+          </select>
+          {task.task?.claim && <span className="task-claim"><Bot size={11} /> {task.task.claim.ownerId}</span>}
+          <div className="task-card-actions">
+            {isNew && (
+              <button
+                type="button"
+                className="task-card-mark-read"
+                title="Mark as read"
+                aria-label={`Mark ${task.title} as read`}
+                onClick={(e) => void handleMarkTaskAsRead(e, task.id)}
+              >
+                <CheckCheck size={12} />
+              </button>
+            )}
+            {task.task?.status === 'done' && (
+              <button
+                type="button"
+                className="task-card-archive"
+                title="Archive to project"
+                aria-label={`Archive ${task.title} to project`}
+                onClick={() => void handleArchiveTask(task)}
+              >
+                <Archive size={12} />
+              </button>
+            )}
             <button
               type="button"
-              className="task-card-archive"
-              title="Archive to project"
-              aria-label={`Archive ${task.title} to project`}
-              onClick={() => void handleArchiveTask(task)}
+              className="task-card-delete"
+              title="Move task to Trash"
+              aria-label={`Move ${task.title} to Trash`}
+              onClick={() => void deleteTask(task)}
             >
-              <Archive size={12} />
+              <Trash2 size={12} />
             </button>
-          )}
-          <button
-            type="button"
-            className="task-card-delete"
-            title="Move task to Trash"
-            aria-label={`Move ${task.title} to Trash`}
-            onClick={() => void deleteTask(task)}
-          >
-            <Trash2 size={12} />
-          </button>
+          </div>
         </div>
-      </div>
-    </article>
-  );
+      </article>
+    );
+  };
 
   return (
     <section className="tasks-view">
@@ -214,6 +260,17 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
         <select value={statusFilter} onChange={event => setStatusFilter(event.target.value as 'all' | TaskStatus)} aria-label="Filter tasks by status">
           <option value="all">All statuses</option>{TASK_STATUSES.map(status => <option key={status} value={status}>{TASK_STATUS_LABELS[status]}</option>)}
         </select>
+        {unreadTasksCount > 0 && (
+          <button
+            type="button"
+            className="tasks-mark-all-read-btn"
+            title="Mark all unread tasks as read"
+            onClick={() => void handleMarkAllAsRead()}
+          >
+            <CheckCheck size={14} />
+            <span>Mark read ({unreadTasksCount})</span>
+          </button>
+        )}
         {doneTasksCount > 0 && (
           <button
             type="button"
@@ -318,45 +375,79 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
         </div>
       ) : (
         <div className="task-list">
-          {tasks.map(task => <div className="task-list-row" key={task.id} draggable onDragStart={event => event.dataTransfer.setData('text/deepscribe-task', task.id)} onDragOver={event => event.preventDefault()} onDrop={event => {
-            event.preventDefault();
-            const source = byId.get(event.dataTransfer.getData('text/deepscribe-task'));
-            if (!source || source.id === task.id || !task.task) return;
-            if (source.task?.claim && !window.confirm('This task has an active claim. Move it and release the claim?')) return;
-            void updateUserTaskStatus(source, task.task.status, task.task.position - 0.5).catch(cause => setError(cause.message));
-          }}>
-            <button onClick={() => onOpenTask(task.id)}><strong>{task.title}</strong><span>{projectLabel(task)}{contextLabel(task) ? ` · ${contextLabel(task)}` : ''}</span>{taskCreatorLabel(task.task) && <span className="task-creator"><Bot size={11} /> Created by {taskCreatorLabel(task.task)}</span>}</button>
-            <select value={task.task?.status} onChange={event => void moveTask(task, event.target.value as TaskStatus)}>{TASK_STATUSES.map(status => <option key={status} value={status}>{TASK_STATUS_LABELS[status]}</option>)}</select>
-            <select value={task.projectId === TASK_INBOX_PROJECT_ID ? '' : task.projectId} disabled={Boolean(task.task?.claim)} onChange={event => void relocateUserTask(task, event.target.value || null, null).catch(cause => setError(cause.message))}>
-              <option value="">Workspace Inbox</option>{projects.map(project => <option key={project.id} value={project.id}>{project.title}</option>)}
-            </select>
-            <select value={task.parentId ?? ''} disabled={Boolean(task.task?.claim) || task.projectId === TASK_INBOX_PROJECT_ID} onChange={event => void relocateUserTask(task, task.projectId, event.target.value || null).catch(cause => setError(cause.message))} aria-label={`Context for ${task.title}`}>
-              <option value="">No context block</option>
-              {blocks.filter(block => !block.isTrash && block.kind !== 'task' && block.projectId === task.projectId).map(block => <option key={block.id} value={block.id}>{block.title}</option>)}
-            </select>
-            <div className="task-list-row-actions">
-              {task.task?.status === 'done' && (
-                <button
-                  type="button"
-                  className="task-card-archive"
-                  title="Archive to project"
-                  aria-label={`Archive ${task.title} to project`}
-                  onClick={() => void handleArchiveTask(task)}
-                >
-                  <Archive size={13} />
-                </button>
-              )}
-              <button
-                type="button"
-                className="task-card-delete"
-                title="Move task to Trash"
-                aria-label={`Move ${task.title} to Trash`}
-                onClick={() => void deleteTask(task)}
+          {tasks.map(task => {
+            const isNew = hasUnseenAgentEdits(task);
+            return (
+              <div
+                className={`task-list-row ${isNew ? 'has-agent-updates' : ''}`}
+                key={task.id}
+                draggable
+                onDragStart={event => event.dataTransfer.setData('text/deepscribe-task', task.id)}
+                onDragOver={event => event.preventDefault()}
+                onDrop={event => {
+                  event.preventDefault();
+                  const source = byId.get(event.dataTransfer.getData('text/deepscribe-task'));
+                  if (!source || source.id === task.id || !task.task) return;
+                  if (source.task?.claim && !window.confirm('This task has an active claim. Move it and release the claim?')) return;
+                  void updateUserTaskStatus(source, task.task.status, task.task.position - 0.5).catch(cause => setError(cause.message));
+                }}
               >
-                <Trash2 size={13} />
-              </button>
-            </div>
-          </div>)}
+                <button onClick={() => onOpenTask(task.id)}>
+                  <div className="task-card-title-row">
+                    <strong>{task.title}</strong>
+                    {isNew && (
+                      <span className="task-badge agent-update" title="This task contains unread agent updates">
+                        <Bot size={11} /> New
+                      </span>
+                    )}
+                  </div>
+                  <span>{projectLabel(task)}{contextLabel(task) ? ` · ${contextLabel(task)}` : ''}</span>
+                  {taskCreatorLabel(task.task) && <span className="task-creator"><Bot size={11} /> Created by {taskCreatorLabel(task.task)}</span>}
+                </button>
+                <select value={task.task?.status} onChange={event => void moveTask(task, event.target.value as TaskStatus)}>{TASK_STATUSES.map(status => <option key={status} value={status}>{TASK_STATUS_LABELS[status]}</option>)}</select>
+                <select value={task.projectId === TASK_INBOX_PROJECT_ID ? '' : task.projectId} disabled={Boolean(task.task?.claim)} onChange={event => void relocateUserTask(task, event.target.value || null, null).catch(cause => setError(cause.message))}>
+                  <option value="">Workspace Inbox</option>{projects.map(project => <option key={project.id} value={project.id}>{project.title}</option>)}
+                </select>
+                <select value={task.parentId ?? ''} disabled={Boolean(task.task?.claim) || task.projectId === TASK_INBOX_PROJECT_ID} onChange={event => void relocateUserTask(task, task.projectId, event.target.value || null).catch(cause => setError(cause.message))} aria-label={`Context for ${task.title}`}>
+                  <option value="">No context block</option>
+                  {blocks.filter(block => !block.isTrash && block.kind !== 'task' && block.projectId === task.projectId).map(block => <option key={block.id} value={block.id}>{block.title}</option>)}
+                </select>
+                <div className="task-list-row-actions">
+                  {isNew && (
+                    <button
+                      type="button"
+                      className="task-card-mark-read"
+                      title="Mark as read"
+                      aria-label={`Mark ${task.title} as read`}
+                      onClick={(e) => void handleMarkTaskAsRead(e, task.id)}
+                    >
+                      <CheckCheck size={13} />
+                    </button>
+                  )}
+                  {task.task?.status === 'done' && (
+                    <button
+                      type="button"
+                      className="task-card-archive"
+                      title="Archive to project"
+                      aria-label={`Archive ${task.title} to project`}
+                      onClick={() => void handleArchiveTask(task)}
+                    >
+                      <Archive size={13} />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="task-card-delete"
+                    title="Move task to Trash"
+                    aria-label={`Move ${task.title} to Trash`}
+                    onClick={() => void deleteTask(task)}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
