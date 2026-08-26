@@ -24,13 +24,13 @@ describe('agent references', () => {
       .toBe('DeepScribe block "Open vragen" (blockId: block-456)');
   });
 
-  it('formats a task block with human task ID and deep link', () => {
+  it('formats a task block with short human task ID', () => {
     const taskBlock: Block = {
       ...block,
       kind: 'task',
       task: { status: 'inbox', agentTarget: 'any', position: 0, taskNumber: 1 }
     };
     expect(formatAgentReference(taskBlock, 'block'))
-      .toBe('#TSK-1: "Open vragen" (deepscribe://task/TSK-1)');
+      .toBe('#TSK-1');
   });
 });

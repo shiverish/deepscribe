@@ -7,18 +7,16 @@ export function formatAgentReference(
   item: Block | Project,
   type: ReferenceableItemType
 ): string {
-  const title = item.title.trim() || (type === 'project' ? 'Untitled project' : 'Untitled block');
-  
   if (type === 'block' && (item as Block).kind === 'task') {
     const taskBlock = item as Block;
     const humanId = formatTaskHumanId(taskBlock.task?.taskNumber);
-    const deepLink = formatTaskDeepLink(taskBlock.task?.taskNumber ?? taskBlock.id);
     if (humanId) {
-      return `${humanId}: "${title}" (${deepLink})`;
+      return humanId;
     }
-    return `DeepScribe task "${title}" (blockId: ${taskBlock.id}, ${deepLink})`;
+    return `DeepScribe task (blockId: ${taskBlock.id})`;
   }
 
+  const title = item.title.trim() || (type === 'project' ? 'Untitled project' : 'Untitled block');
   const label = type === 'project' ? 'project' : 'block';
   const idLabel = type === 'project' ? 'projectId' : 'blockId';
   return `DeepScribe ${label} "${title}" (${idLabel}: ${item.id})`;
