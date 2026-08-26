@@ -1,7 +1,7 @@
 import { db } from '../db/db';
 import { recordActivity } from '../db/activity';
 import type { Block, TaskAgentTarget, TaskStatus } from '../types';
-import { createTaskMetadata, TASK_INBOX_PROJECT_ID } from './taskBlocks';
+import { createTaskMetadata, getNextTaskNumber, TASK_INBOX_PROJECT_ID } from './taskBlocks';
 import { sanitizeTags } from './tagUtils';
 
 function nextPosition(tasks: Block[], status: TaskStatus): number {
@@ -23,9 +23,11 @@ export async function createUserTask(input: {
     const parent = await db.blocks.get(parentId);
     if (!parent || parent.isTrash || parent.projectId !== projectId) throw new Error('The selected context block is unavailable.');
   }
-  const tasks = await db.blocks.filter(block => !block.isTrash && block.kind === 'task').toArray();
+  const allBlocks = await db.blocks.toArray();
+  const tasks = allBlocks.filter(block => !block.isTrash && block.kind === 'task');
   const now = Date.now();
   const position = nextPosition(tasks, 'inbox');
+  const taskNumber = getNextTaskNumber(allBlocks);
   const block: Block = {
     id: `block-${crypto.randomUUID()}`,
     projectId,
@@ -40,7 +42,7 @@ export async function createUserTask(input: {
     attachmentCount: 0,
     tags: [],
     kind: 'task',
-    task: createTaskMetadata(position),
+    task: createTaskMetadata(position, { type: 'user' }, taskNumber),
     isTrash: false,
     createdAt: now,
     updatedAt: now

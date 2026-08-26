@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Block } from '../types';
-import { canTransitionTask, createTaskMetadata, isTaskAutoPickupEligible, normalizeTaskMetadata, taskContentFromParts, taskCreatorLabel, taskTargetMatches, taskWithoutActiveClaim, validateTaskReady } from './taskBlocks';
+import { canTransitionTask, createTaskMetadata, formatTaskDeepLink, formatTaskHumanId, getNextTaskNumber, isTaskAutoPickupEligible, normalizeTaskMetadata, parseTaskHumanId, taskContentFromParts, taskCreatorLabel, taskTargetMatches, taskWithoutActiveClaim, validateTaskReady } from './taskBlocks';
 
 describe('task blocks', () => {
   it('allows free-form task content before ready', () => {
@@ -45,5 +45,25 @@ describe('task blocks', () => {
     expect(taskCreatorLabel(normalized)).toBe('Codex/ChatGPT');
     expect(taskCreatorLabel(normalizeTaskMetadata({ status: 'inbox', agentTarget: 'none', position: 1, creator: { type: 'agent', agentTarget: 'custom', agentId: 'local', requestId: 'request', customAgentName: 'Local Agent' } }))).toBe('Local Agent');
     expect(normalizeTaskMetadata({ status: 'inbox', agentTarget: 'none', position: 1, creator: { type: 'agent', agentTarget: 'custom', agentId: 'local', requestId: 'request' } }).creator).toBeUndefined();
+  });
+
+  it('formats and parses human task IDs and deep links correctly', () => {
+    expect(formatTaskHumanId(1)).toBe('#TSK-1');
+    expect(formatTaskHumanId(undefined)).toBeNull();
+
+    expect(parseTaskHumanId('#TSK-1')).toBe(1);
+    expect(parseTaskHumanId('TSK-42')).toBe(42);
+    expect(parseTaskHumanId('#7')).toBe(7);
+    expect(parseTaskHumanId('invalid')).toBeNull();
+
+    expect(formatTaskDeepLink(1)).toBe('deepscribe://task/TSK-1');
+    expect(formatTaskDeepLink('#TSK-5')).toBe('deepscribe://task/TSK-5');
+    expect(formatTaskDeepLink('block-123')).toBe('deepscribe://task/block-123');
+
+    const blocks = [
+      { kind: 'task', task: { taskNumber: 1 } },
+      { kind: 'task', task: { taskNumber: 3 } }
+    ];
+    expect(getNextTaskNumber(blocks)).toBe(4);
   });
 });

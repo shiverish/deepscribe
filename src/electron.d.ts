@@ -81,6 +81,7 @@ declare global {
       };
       onWorkspaceFlushRequested: (handler: () => void) => () => void;
       workspaceFlushed: () => void;
+      onNavigateToTarget?: (handler: (payload: { type: 'task' | 'block'; targetId: string }) => void) => () => void;
     };
     deepScribeMcp?: {
       onRequest: (handler: (request: { id: string; method: string; params?: unknown }) => void) => () => void;

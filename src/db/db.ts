@@ -186,7 +186,35 @@ export async function requestPersistentStorage(): Promise<boolean> {
   }
 }
 
+export async function ensureTaskNumbersAssigned(): Promise<void> {
+  const allBlocks = await db.blocks.toArray();
+  const unassignedTasks = allBlocks.filter(block => block.kind === 'task' && block.task && typeof block.task.taskNumber !== 'number');
+  if (unassignedTasks.length === 0) return;
+
+  let maxNumber = 0;
+  for (const block of allBlocks) {
+    if (block.kind === 'task' && typeof block.task?.taskNumber === 'number' && block.task.taskNumber > maxNumber) {
+      maxNumber = block.task.taskNumber;
+    }
+  }
+
+  unassignedTasks.sort((a, b) => a.createdAt - b.createdAt);
+
+  await db.transaction('rw', db.blocks, async () => {
+    for (const taskBlock of unassignedTasks) {
+      maxNumber += 1;
+      await db.blocks.update(taskBlock.id, {
+        task: {
+          ...taskBlock.task!,
+          taskNumber: maxNumber
+        }
+      });
+    }
+  });
+}
+
 export async function seedDemoDataIfEmpty() {
+  await ensureTaskNumbersAssigned();
   const projectCount = await db.projects.count();
   if (projectCount > 0) {
     if (!await db.projects.get(TASK_INBOX_PROJECT_ID)) await db.projects.add(createTaskInboxProject());

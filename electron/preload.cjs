@@ -63,7 +63,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('deepscribe-workspace-flush', listener);
     return () => ipcRenderer.removeListener('deepscribe-workspace-flush', listener);
   },
-  workspaceFlushed: () => ipcRenderer.send('deepscribe-workspace-flushed')
+  workspaceFlushed: () => ipcRenderer.send('deepscribe-workspace-flushed'),
+  onNavigateToTarget: handler => {
+    const listener = (_event, payload) => handler(payload);
+    ipcRenderer.on('deepscribe:navigate-to-target', listener);
+    return () => ipcRenderer.removeListener('deepscribe:navigate-to-target', listener);
+  }
 });
 
 contextBridge.exposeInMainWorld('deepScribeMcp', {

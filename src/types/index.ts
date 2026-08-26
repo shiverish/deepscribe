@@ -64,6 +64,7 @@ export interface TaskMetadata {
   agentTarget: TaskAgentTarget;
   customAgentName?: string;
   position: number;
+  taskNumber?: number;
   creator?: TaskCreator;
   readyAt?: number;
   claimAttempt?: number;

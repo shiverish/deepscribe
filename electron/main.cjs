@@ -1093,6 +1093,28 @@ function createWindow() {
   });
 }
 
+function handleDeepLinkUrl(url) {
+  if (typeof url !== 'string') return;
+  const match = url.match(/^deepscribe:\/\/(task|block)\/([^/?#]+)/i);
+  if (!match) return;
+  const targetType = match[1].toLowerCase();
+  const targetId = decodeURIComponent(match[2]);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+    mainWindow.webContents.send('deepscribe:navigate-to-target', { type: targetType, targetId });
+  }
+}
+
+if (process.defaultApp) {
+  if (process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient('deepscribe', process.execPath, [path.resolve(process.argv[1])]);
+  }
+} else {
+  app.setAsDefaultProtocolClient('deepscribe');
+}
+
 // Single instance lock to prevent duplicate app windows
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
@@ -1106,17 +1128,33 @@ if (!gotTheLock) {
   registerTrayIpc();
   setupAutoUpdater();
 
-  app.on('second-instance', () => {
+  app.on('second-instance', (_event, commandLine) => {
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.show();
       mainWindow.focus();
     }
+    const deepLinkArg = Array.isArray(commandLine) ? commandLine.find(arg => arg.startsWith('deepscribe://')) : null;
+    if (deepLinkArg) {
+      handleDeepLinkUrl(deepLinkArg);
+    }
+  });
+
+  app.on('open-url', (event, url) => {
+    event.preventDefault();
+    handleDeepLinkUrl(url);
   });
 
   app.whenReady().then(() => {
     createWindow();
     setupTray();
+
+    const initialDeepLink = process.argv.find(arg => arg.startsWith('deepscribe://'));
+    if (initialDeepLink) {
+      mainWindow.webContents.once('did-finish-load', () => {
+        handleDeepLinkUrl(initialDeepLink);
+      });
+    }
 
     // DeepScribe claimt Ctrl+Alt+S en stuurt hem door naar SeeScribe. Daardoor werkt de
     // sneltoets ook wanneer SeeScribe nog niet draait: dezelfde aanroep start hem.

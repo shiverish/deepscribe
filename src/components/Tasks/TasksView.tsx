@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { Archive, Bot, CheckCheck, Columns3, FolderArchive, List, PanelRightClose, PanelRightOpen, Plus, Search, Trash2 } from 'lucide-react';
+import { Archive, Bot, CheckCheck, Columns3, Copy, FolderArchive, List, PanelRightClose, PanelRightOpen, Plus, Search, Trash2 } from 'lucide-react';
 import type { Block, Project, TaskAgentTarget, TaskStatus } from '../../types';
-import { taskCreatorLabel, TASK_AGENT_LABELS, TASK_AGENT_TARGETS, TASK_STATUSES, TASK_STATUS_LABELS, TASK_INBOX_PROJECT_ID } from '../../utils/taskBlocks';
+import { formatTaskHumanId, taskCreatorLabel, TASK_AGENT_LABELS, TASK_AGENT_TARGETS, TASK_STATUSES, TASK_STATUS_LABELS, TASK_INBOX_PROJECT_ID } from '../../utils/taskBlocks';
+import { copyAgentReference } from '../../utils/agentReferences';
 import { archiveDoneTasks, archiveUserTask, createUserTask, relocateUserTask, updateUserTaskAgent, updateUserTaskStatus } from '../../utils/taskManagement';
 import { hasUnseenAgentEdits } from '../../utils/agentEdits';
 import { getProjectColor, INBOX_PROJECT_COLOR } from '../../utils/projectColors';
@@ -28,6 +29,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
   const [newTitle, setNewTitle] = useState('');
   const [newProjectId, setNewProjectId] = useState('');
   const [newParentId, setNewParentId] = useState('');
+  const [copiedTaskId, setCopiedTaskId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [isDoneCollapsed, setIsDoneCollapsed] = useState<boolean>(() => {
@@ -154,11 +156,11 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
   };
 
   const confirmArchiveModal = async () => {
-    if (!archiveProjectId || !archiveModal) return;
+    if (!archiveModal || !archiveProjectId) return;
     try {
       if (archiveModal.type === 'single' && archiveModal.task) {
         await archiveUserTask(archiveModal.task, archiveProjectId);
-      } else if (archiveModal.type === 'all') {
+      } else {
         const doneTasks = blocks.filter(b => !b.isTrash && b.kind === 'task' && b.task?.status === 'done');
         await archiveDoneTasks(doneTasks, archiveProjectId);
       }
@@ -171,6 +173,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
 
   const card = (task: Block) => {
     const isNew = hasUnseenAgentEdits(task);
+    const humanId = formatTaskHumanId(task.task?.taskNumber);
     return (
       <article
         key={task.id}
@@ -188,6 +191,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
       >
         <button className="task-card-open" onClick={() => onOpenTask(task.id)}>
           <div className="task-card-title-row">
+            {humanId && <span className="task-human-id" title={`Task ID: ${humanId}`}>{humanId}</span>}
             <strong>{task.title}</strong>
             {isNew && (
               <span className="task-badge agent-update" title="This task contains unread agent updates">
@@ -217,6 +221,20 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
           </select>
           {task.task?.claim && <span className="task-claim"><Bot size={11} /> {task.task.claim.ownerId}</span>}
           <div className="task-card-actions">
+            <button
+              type="button"
+              className="task-card-copy-ref"
+              title="Copy task reference with deep link"
+              aria-label={`Copy reference for ${task.title}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                void copyAgentReference(task, 'block');
+                setCopiedTaskId(task.id);
+                setTimeout(() => setCopiedTaskId(null), 2000);
+              }}
+            >
+              {copiedTaskId === task.id ? <CheckCheck size={12} color="#22C55E" /> : <Copy size={12} />}
+            </button>
             {isNew && (
               <button
                 type="button"
@@ -298,86 +316,63 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
         try {
           const task = await createUserTask({ title: newTitle, projectId: newProjectId || null, parentId: newParentId || null });
           setNewTitle(''); setNewParentId(''); setError(null); onOpenTask(task.id);
-        } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not create the task.'); }
+        } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not create task.'); }
       }}>
-        <input value={newTitle} onChange={event => setNewTitle(event.target.value)} placeholder="New task..." />
-        <select value={newProjectId} onChange={event => { setNewProjectId(event.target.value); setNewParentId(''); }} aria-label="New task project">
-          <option value="">Workspace Inbox</option>{projects.map(project => <option key={project.id} value={project.id}>{project.title}</option>)}
+        <input value={newTitle} onChange={event => setNewTitle(event.target.value)} placeholder="Quick task title..." />
+        <select value={newProjectId} onChange={event => { setNewProjectId(event.target.value); setNewParentId(''); }} aria-label="Task project">
+          <option value="">Workspace Inbox</option>{userProjects.map(project => <option key={project.id} value={project.id}>{project.title}</option>)}
         </select>
-        <select value={newParentId} disabled={!newProjectId} onChange={event => setNewParentId(event.target.value)} aria-label="New task context">
-          <option value="">No context block</option>{projectBlocks.map(block => <option key={block.id} value={block.id}>{block.title}</option>)}
-        </select>
-        <button type="submit"><Plus size={14} /> New task</button>
+        {newProjectId && (
+          <select value={newParentId} onChange={event => setNewParentId(event.target.value)} aria-label="Task context block">
+            <option value="">No context block</option>
+            {projectBlocks.map(block => <option key={block.id} value={block.id}>{block.title}</option>)}
+          </select>
+        )}
+        <button type="submit"><Plus size={14} /> Add task</button>
       </form>
 
-      {error && <p className="tasks-error" role="alert">{error}</p>}
+      {error && <div className="tasks-error">{error}</div>}
+
       {mode === 'board' ? (
         <div className={`task-board ${isDoneCollapsed ? 'has-done-collapsed' : ''}`}>
           {TASK_STATUSES.map(status => {
             const laneTasks = tasks.filter(task => task.task?.status === status);
-            if (status === 'done' && isDoneCollapsed) {
+            const isDoneLane = status === 'done';
+
+            if (isDoneLane && isDoneCollapsed) {
               return (
-                <section
-                  key={status}
-                  className="task-lane task-lane-collapsed"
-                  onDragOver={event => event.preventDefault()}
-                  onDrop={event => {
-                    const id = event.dataTransfer.getData('text/deepscribe-task');
-                    const task = byId.get(id); if (task) void moveTask(task, status);
-                  }}
-                >
-                  <button
-                    type="button"
-                    className="task-lane-collapsed-btn"
-                    onClick={toggleDoneCollapse}
-                    title="Expand Done lane"
-                    aria-label="Expand Done lane"
-                  >
-                    <PanelRightOpen size={14} />
+                <aside key={status} className="task-lane task-lane-collapsed" onClick={toggleDoneCollapse} title="Expand Done column">
+                  <button type="button" className="task-lane-collapsed-btn" aria-label="Expand Done column">
+                    <PanelRightOpen size={16} />
                     <span className="task-lane-collapsed-label">Done</span>
-                    <small className="task-lane-badge">{laneTasks.length}</small>
+                    <span className="task-lane-badge">{laneTasks.length}</span>
                   </button>
-                </section>
+                </aside>
               );
             }
 
             return (
-              <section key={status} className="task-lane" onDragOver={event => event.preventDefault()} onDrop={event => {
-                const id = event.dataTransfer.getData('text/deepscribe-task');
-                const task = byId.get(id); if (task) void moveTask(task, status);
-              }}>
+              <section key={status} className="task-lane">
                 <header>
                   <div className="task-lane-header-title">
                     <span>{TASK_STATUS_LABELS[status]}</span>
                     <small>{laneTasks.length}</small>
                   </div>
-                  {status === 'done' && (
+                  {isDoneLane && (
                     <div className="task-lane-header-actions">
-                      {laneTasks.length > 0 && (
-                        <button
-                          type="button"
-                          className="task-lane-action-btn"
-                          title="Archive all Done tasks into project items"
-                          aria-label="Archive all Done tasks"
-                          onClick={() => void handleArchiveAll()}
-                        >
-                          <Archive size={12} />
-                          <span>Archive all</span>
-                        </button>
-                      )}
                       <button
                         type="button"
                         className="task-lane-action-btn icon-only"
-                        title="Collapse Done lane"
-                        aria-label="Collapse Done lane"
+                        title="Collapse Done column"
+                        aria-label="Collapse Done column"
                         onClick={toggleDoneCollapse}
                       >
-                        <PanelRightClose size={13} />
+                        <PanelRightClose size={14} />
                       </button>
                     </div>
                   )}
                 </header>
-                <div>{laneTasks.map(card)}</div>
+                <div>{laneTasks.map(task => card(task))}</div>
               </section>
             );
           })}
@@ -386,15 +381,16 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
         <div className="task-list">
           {tasks.map(task => {
             const isNew = hasUnseenAgentEdits(task);
+            const humanId = formatTaskHumanId(task.task?.taskNumber);
             return (
               <div
-                className={`task-list-row ${isNew ? 'has-agent-updates' : ''}`}
                 key={task.id}
+                className={`task-list-row ${isNew ? 'has-agent-updates' : ''}`}
                 draggable
                 onDragStart={event => event.dataTransfer.setData('text/deepscribe-task', task.id)}
                 onDragOver={event => event.preventDefault()}
                 onDrop={event => {
-                  event.preventDefault();
+                  event.preventDefault(); event.stopPropagation();
                   const source = byId.get(event.dataTransfer.getData('text/deepscribe-task'));
                   if (!source || source.id === task.id || !task.task) return;
                   if (source.task?.claim && !window.confirm('This task has an active claim. Move it and release the claim?')) return;
@@ -403,6 +399,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
               >
                 <button onClick={() => onOpenTask(task.id)}>
                   <div className="task-card-title-row">
+                    {humanId && <span className="task-human-id" title={`Task ID: ${humanId}`}>{humanId}</span>}
                     <strong>{task.title}</strong>
                     {isNew && (
                       <span className="task-badge agent-update" title="This task contains unread agent updates">
@@ -425,6 +422,20 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
                   {blocks.filter(block => !block.isTrash && block.kind !== 'task' && block.projectId === task.projectId).map(block => <option key={block.id} value={block.id}>{block.title}</option>)}
                 </select>
                 <div className="task-list-row-actions">
+                  <button
+                    type="button"
+                    className="task-card-copy-ref"
+                    title="Copy task reference with deep link"
+                    aria-label={`Copy reference for ${task.title}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void copyAgentReference(task, 'block');
+                      setCopiedTaskId(task.id);
+                      setTimeout(() => setCopiedTaskId(null), 2000);
+                    }}
+                  >
+                    {copiedTaskId === task.id ? <CheckCheck size={13} color="#22C55E" /> : <Copy size={13} />}
+                  </button>
                   {isNew && (
                     <button
                       type="button"

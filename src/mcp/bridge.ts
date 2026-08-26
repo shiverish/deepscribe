@@ -6,7 +6,7 @@ import type { Attachment, Block, ClaimantAgentTarget, Project, ActivityEntry, Ac
 import { sanitizeTags } from '../utils/tagUtils';
 import { rankBlocksLocally } from '../utils/semanticSearch';
 import { isDescendantOrSelf, moveBlockInTree } from '../utils/dragAndDrop';
-import { canTransitionTask, createTaskClaim, createTaskInboxProject, createTaskMetadata, isTaskClaimCandidate, isTaskInboxProject, normalizeLeaseSeconds, redactTaskClaim, taskCreatorLabel, TASK_INBOX_PROJECT_ID, validateTaskMetadata, validateTaskReady } from '../utils/taskBlocks';
+import { canTransitionTask, createTaskClaim, createTaskInboxProject, createTaskMetadata, formatTaskDeepLink, formatTaskHumanId, isTaskClaimCandidate, isTaskInboxProject, normalizeLeaseSeconds, parseTaskHumanId, redactTaskClaim, taskCreatorLabel, TASK_INBOX_PROJECT_ID, validateTaskMetadata, validateTaskReady } from '../utils/taskBlocks';
 import { exportBlockAsHtml, exportBlockAsMarkdown, exportBlockAsText, type ExportFormat } from '../utils/exportUtils';
 import { BLOCK_PRINT_PRESETS, loadStoredPrintSettings, normalizeBlockPrintSettings, saveStoredPrintSettings } from '../utils/printDocument';
 
@@ -14,6 +14,32 @@ type JsonObject = Record<string, unknown>;
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 const CLAIM_RECEIPTS_KEY = 'task_claim_receipts';
 type ClaimReceipt = { agentId: string; requestId: string; blockId: string; token: string; createdAt: number };
+
+export function formatMcpTask(block: Block) {
+  const redacted = redactTaskClaim(block);
+  const humanId = formatTaskHumanId(block.task?.taskNumber);
+  const deepLink = formatTaskDeepLink(block.task?.taskNumber ?? block.id);
+  return {
+    ...redacted,
+    humanId,
+    deepLink,
+    projectId: block.projectId === 'proj-system-task-inbox' ? null : block.projectId
+  };
+}
+
+export async function findTaskBlockByIdentifier(identifier: string): Promise<Block | undefined> {
+  const clean = identifier.trim();
+  const direct = await db.blocks.get(clean);
+  if (direct && !direct.isTrash && direct.kind === 'task') return direct;
+  
+  const parsedNum = parseTaskHumanId(clean);
+  const allBlocks = await db.blocks.filter(b => !b.isTrash && b.kind === 'task').toArray();
+  if (parsedNum !== null) {
+    const found = allBlocks.find(b => b.task?.taskNumber === parsedNum);
+    if (found) return found;
+  }
+  return allBlocks.find(b => b.id === clean);
+}
 
 function asObject(value: unknown): JsonObject {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
@@ -564,9 +590,10 @@ async function createAgentTask(params: JsonObject) {
 }
 
 async function updateTaskBlock(params: JsonObject) {
-  const blockId = requiredString(params, 'blockId');
-  const block = await db.blocks.get(blockId);
+  const inputId = optionalString(params, 'taskId') || requiredString(params, 'blockId');
+  const block = await findTaskBlockByIdentifier(inputId);
   if (!block || block.isTrash || block.kind !== 'task' || !block.task) throw new Error('Taakblok niet gevonden.');
+  const blockId = block.id;
   const task = taskMetadataFromParams(params, block.task);
   if (task.status === 'in-progress' && block.task.status !== 'in-progress') throw new Error('Use claim_work_item or claim_next_work_item to claim a task.');
   if (block.task.claim && task.status !== block.task.status) {
@@ -583,7 +610,7 @@ async function updateTaskBlock(params: JsonObject) {
   await recordBlockRevision(updated, 'agent', 'Agent changed task metadata');
   const action = block.task.status !== task.status ? task.status === 'ready' ? 'task-readiness-changed' : task.status === 'done' ? 'task-completed' : 'task-status-changed' : 'task-metadata-updated';
   await recordActivity({ projectId: block.projectId, blockId, source: 'agent', action, summary: `Agent changed task “${block.title}” → ${task.status}` });
-  return updated;
+  return formatMcpTask(updated);
 }
 
 function claimantFromParams(params: JsonObject) {
@@ -593,28 +620,27 @@ function claimantFromParams(params: JsonObject) {
   if (!['openai', 'claude', 'gemini', 'custom'].includes(rawTarget)) throw new Error('agentTarget is invalid for an agent.');
   const agentTarget = rawTarget as ClaimantAgentTarget;
   const customAgentName = optionalString(params, 'customAgentName')?.trim();
-  if (agentTarget === 'custom' && !customAgentName) throw new Error('customAgentName is required for a custom agent.');
+  if (agentTarget === 'custom' && !customAgentName) throw new Error('customAgentName is verplicht bij agentTarget="custom".');
   return { agentId, requestId, agentTarget, customAgentName };
 }
 
 async function claimableWorkItems(params: JsonObject) {
   const { agentTarget, customAgentName } = claimantFromParams(params);
-  const projectId = optionalString(params, 'projectId');
   const now = Date.now();
   const projects = new Set((await db.projects.filter(project => !project.isTrash).toArray()).map(project => project.id));
   const allBlocks = await db.blocks.filter(block => !block.isTrash).toArray();
+  const limit = clampLimit(params.limit);
   return allBlocks
-    .filter(block => projects.has(block.projectId) && (!projectId || block.projectId === projectId) && isTaskClaimCandidate(block, allBlocks, agentTarget, customAgentName, now))
-    .sort((left, right) => (left.task?.readyAt ?? left.updatedAt) - (right.task?.readyAt ?? right.updatedAt) || left.id.localeCompare(right.id))
-    .slice(0, clampLimit(params.limit, 50))
-    .map(redactTaskClaim);
+    .filter(block => projects.has(block.projectId) && isTaskClaimCandidate(block, allBlocks, agentTarget, customAgentName, now))
+    .sort((left, right) => (left.task?.position ?? left.order) - (right.task?.position ?? right.order) || left.createdAt - right.createdAt)
+    .slice(0, limit)
+    .map(formatMcpTask);
 }
 
 async function claimNextWorkItem(params: JsonObject) {
   const { agentId, requestId, agentTarget, customAgentName } = claimantFromParams(params);
-  if (!requestId) throw new Error('requestId is verplicht.');
+  if (!requestId) throw new Error('requestId is required.');
   const leaseSeconds = normalizeLeaseSeconds(params.leaseSeconds);
-  const projectId = optionalString(params, 'projectId');
   const now = Date.now();
   return await db.transaction('rw', [db.projects, db.blocks, db.settings, db.activities], async () => {
     const receiptRecord = await db.settings.get(CLAIM_RECEIPTS_KEY);
@@ -622,28 +648,31 @@ async function claimNextWorkItem(params: JsonObject) {
     const replay = receipts.find(receipt => receipt.agentId === agentId && receipt.requestId === requestId);
     if (replay) {
       const replayBlock = await db.blocks.get(replay.blockId);
-      return replayBlock ? { block: redactTaskClaim(replayBlock), claimToken: replay.token, replayed: true } : null;
+      return replayBlock ? { block: formatMcpTask(replayBlock), claimToken: replay.token, replayed: true } : null;
     }
     const projects = new Set((await db.projects.filter(project => !project.isTrash).toArray()).map(project => project.id));
     const allBlocks = await db.blocks.filter(block => !block.isTrash).toArray();
     const candidate = allBlocks
-      .filter(block => projects.has(block.projectId) && (!projectId || block.projectId === projectId) && isTaskClaimCandidate(block, allBlocks, agentTarget, customAgentName, now))
-      .sort((left, right) => (left.task?.readyAt ?? left.updatedAt) - (right.task?.readyAt ?? right.updatedAt) || left.id.localeCompare(right.id))[0];
-    if (!candidate || !candidate.task) return null;
-    const attempt = (candidate.task.claimAttempt ?? candidate.task.claim?.attempt ?? 0) + 1;
+      .filter(block => projects.has(block.projectId) && isTaskClaimCandidate(block, allBlocks, agentTarget, customAgentName, now))
+      .sort((left, right) => (left.task?.position ?? left.order) - (right.task?.position ?? right.order) || left.createdAt - right.createdAt)[0];
+    if (!candidate) return null;
+    const attempt = (candidate.task!.claimAttempt ?? candidate.task!.claim?.attempt ?? 0) + 1;
     const token = crypto.randomUUID();
     const claim = createTaskClaim({ ownerId: agentId, agentTarget, customAgentName, requestId, token, now, leaseSeconds, attempt });
-    const updated: Block = { ...candidate, task: { ...candidate.task, status: 'in-progress', claimAttempt: attempt, claim }, updatedAt: now, lastAgentEditAt: now };
+    const updated: Block = { ...candidate, task: { ...candidate.task!, status: 'in-progress', claimAttempt: attempt, claim }, updatedAt: now, lastAgentEditAt: now };
     await db.blocks.put(updated);
     const nextReceipts = [...receipts.filter(receipt => receipt.createdAt >= now - 7 * 86400000), { agentId, requestId, blockId: updated.id, token, createdAt: now }].slice(-500);
     await db.settings.put({ key: CLAIM_RECEIPTS_KEY, value: nextReceipts });
-    await db.activities.add({ id: `activity-${crypto.randomUUID()}`, projectId: updated.projectId, blockId: updated.id, source: 'agent', action: candidate.task.status === 'in-progress' ? 'task-claim-taken-over' : 'task-claimed', summary: `${agentId} claimed task “${updated.title}”`, createdAt: now });
-    return { block: redactTaskClaim(updated), claimToken: token, expiresAt: claim.expiresAt, replayed: false };
+    await db.activities.add({ id: `activity-${crypto.randomUUID()}`, projectId: updated.projectId, blockId: updated.id, source: 'agent', action: candidate.task!.status === 'in-progress' ? 'task-claim-taken-over' : 'task-claimed', summary: `${agentId} claimed task “${updated.title}”`, createdAt: now });
+    return { block: formatMcpTask(updated), claimToken: token, expiresAt: claim.expiresAt, replayed: false };
   });
 }
 
 async function claimWorkItem(params: JsonObject) {
-  const blockId = requiredString(params, 'blockId');
+  const blockIdOrHuman = requiredString(params, 'blockId');
+  const targetTask = await findTaskBlockByIdentifier(blockIdOrHuman);
+  if (!targetTask) throw new Error('Task not found.');
+  const blockId = targetTask.id;
   const { agentId, requestId, agentTarget, customAgentName } = claimantFromParams(params);
   if (!requestId) throw new Error('requestId is required.');
   const leaseSeconds = normalizeLeaseSeconds(params.leaseSeconds);
@@ -655,7 +684,7 @@ async function claimWorkItem(params: JsonObject) {
     if (replay) {
       if (replay.blockId !== blockId) throw new Error('requestId has already been used to claim a different task.');
       const replayBlock = await db.blocks.get(replay.blockId);
-      return replayBlock ? { block: redactTaskClaim(replayBlock), claimToken: replay.token, replayed: true } : null;
+      return replayBlock ? { block: formatMcpTask(replayBlock), claimToken: replay.token, replayed: true } : null;
     }
     const candidate = await db.blocks.get(blockId);
     const projects = new Set((await db.projects.filter(project => !project.isTrash).toArray()).map(project => project.id));
@@ -671,12 +700,15 @@ async function claimWorkItem(params: JsonObject) {
     const nextReceipts = [...receipts.filter(receipt => receipt.createdAt >= now - 7 * 86400000), { agentId, requestId, blockId: updated.id, token, createdAt: now }].slice(-500);
     await db.settings.put({ key: CLAIM_RECEIPTS_KEY, value: nextReceipts });
     await db.activities.add({ id: `activity-${crypto.randomUUID()}`, projectId: updated.projectId, blockId: updated.id, source: 'agent', action: candidate.task!.status === 'in-progress' ? 'task-claim-taken-over' : 'task-claimed', summary: `${agentId} claimed task “${updated.title}”`, createdAt: now });
-    return { block: redactTaskClaim(updated), claimToken: token, expiresAt: claim.expiresAt, replayed: false };
+    return { block: formatMcpTask(updated), claimToken: token, expiresAt: claim.expiresAt, replayed: false };
   });
 }
 
 async function renewWorkItemClaim(params: JsonObject) {
-  const blockId = requiredString(params, 'blockId');
+  const blockIdOrHuman = requiredString(params, 'blockId');
+  const targetTask = await findTaskBlockByIdentifier(blockIdOrHuman);
+  if (!targetTask) throw new Error('Task not found.');
+  const blockId = targetTask.id;
   const agentId = requiredString(params, 'agentId');
   const token = requiredString(params, 'claimToken');
   const leaseSeconds = normalizeLeaseSeconds(params.leaseSeconds);
@@ -691,12 +723,15 @@ async function renewWorkItemClaim(params: JsonObject) {
     const updated = { ...block, task: { ...block.task, claim: renewed }, updatedAt: now, lastAgentEditAt: now };
     await db.blocks.put(updated);
     await db.activities.add({ id: `activity-${crypto.randomUUID()}`, projectId: block.projectId, blockId, source: 'agent', action: 'task-claim-renewed', summary: `${agentId} verlengde de claim op “${block.title}”`, createdAt: now });
-    return { block: redactTaskClaim(updated), expiresAt: renewed.expiresAt };
+    return { block: formatMcpTask(updated), expiresAt: renewed.expiresAt };
   });
 }
 
 async function transitionWorkItem(params: JsonObject) {
-  const blockId = requiredString(params, 'blockId');
+  const blockIdOrHuman = requiredString(params, 'blockId');
+  const targetTask = await findTaskBlockByIdentifier(blockIdOrHuman);
+  if (!targetTask) throw new Error('Task not found.');
+  const blockId = targetTask.id;
   const agentId = requiredString(params, 'agentId');
   const token = requiredString(params, 'claimToken');
   const status = requiredString(params, 'status') as TaskStatus;
@@ -712,7 +747,7 @@ async function transitionWorkItem(params: JsonObject) {
     const updated = { ...block, task, updatedAt: now, lastAgentEditAt: now };
     await db.blocks.put(updated);
     await db.activities.add({ id: `activity-${crypto.randomUUID()}`, projectId: block.projectId, blockId, source: 'agent', action: `task-${status}`, summary: optionalString(params, 'summary')?.trim() || `${agentId} changed “${block.title}” to ${status}`, createdAt: now });
-    return redactTaskClaim(updated);
+    return formatMcpTask(updated);
   });
 }
 
@@ -1372,12 +1407,13 @@ export async function handleMcpBridgeRequest(method: string, rawParams: unknown)
         .filter(block => !claimable || (block.task?.status === 'ready' && block.task.agentTarget !== 'none') || (block.task?.status === 'in-progress' && Boolean(block.task.claim && block.task.claim.expiresAt <= now)))
         .sort((left, right) => (left.task?.position ?? left.order) - (right.task?.position ?? right.order))
         .slice(0, clampLimit(params.limit, 100))
-        .map(block => ({ ...redactTaskClaim(block), projectId: block.projectId === 'proj-system-task-inbox' ? null : block.projectId }));
+        .map(formatMcpTask);
     }
     case 'get_task': {
-      const block = await db.blocks.get(requiredString(params, 'taskId'));
+      const taskId = requiredString(params, 'taskId');
+      const block = await findTaskBlockByIdentifier(taskId);
       if (!block || block.isTrash || block.kind !== 'task' || !block.task) throw new Error('Task not found.');
-      return { ...redactTaskClaim(block), projectId: block.projectId === 'proj-system-task-inbox' ? null : block.projectId };
+      return formatMcpTask(block);
     }
     case 'list_claimable_work_items':
       return await claimableWorkItems(params);

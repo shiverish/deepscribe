@@ -31,7 +31,7 @@ import { resolveBlockReferences } from './utils/references';
 import { calculateAgentEditCounts } from './utils/agentEdits';
 import { buildBlockPrintDocument, type BlockPrintDraft, type BlockPrintSettings } from './utils/printDocument';
 import { repository } from './db/repository';
-import { canTransitionTask, convertContentToTask, createTaskMetadata, taskWithoutActiveClaim, TASK_INBOX_PROJECT_ID, validateTaskReady } from './utils/taskBlocks';
+import { canTransitionTask, convertContentToTask, createTaskMetadata, parseTaskHumanId, taskWithoutActiveClaim, TASK_INBOX_PROJECT_ID, validateTaskReady } from './utils/taskBlocks';
 import { relocateUserTask } from './utils/taskManagement';
 import './styles/theme.css';
 import './components/Navigation/Navigation.css';
@@ -59,6 +59,48 @@ function DeepScribeApp() {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>({ state: 'saved' });
   const [overlayData, setOverlayData] = useState<{ screenshotDataUrl: string } | null>(null);
   const [updaterState, setUpdaterState] = useState<UpdaterState | null>(null);
+
+  useEffect(() => {
+    if (!window.electronAPI?.onNavigateToTarget) return;
+    return window.electronAPI.onNavigateToTarget(async payload => {
+      const { type, targetId } = payload;
+      const allBlocks = await db.blocks.filter(b => !b.isTrash).toArray();
+      let found: Block | undefined;
+      if (type === 'task') {
+        const parsedNum = parseTaskHumanId(targetId);
+        if (parsedNum !== null) {
+          found = allBlocks.find(b => b.kind === 'task' && b.task?.taskNumber === parsedNum);
+        }
+      }
+      if (!found) {
+        const parsedNum = parseTaskHumanId(targetId);
+        found = allBlocks.find(b => b.id === targetId || (parsedNum !== null && b.kind === 'task' && b.task?.taskNumber === parsedNum));
+      }
+      if (found) {
+        setActiveProjectId(found.projectId);
+        if (found.kind === 'task') {
+          setActiveView('tasks');
+          setSelectedBlockPath([found.id]);
+        } else {
+          setActiveView('columns');
+          const path: string[] = [found.id];
+          let current = found;
+          const blockMap = new Map(allBlocks.map(b => [b.id, b]));
+          while (current.parentId) {
+            const parent = blockMap.get(current.parentId);
+            if (parent) {
+              path.unshift(parent.id);
+              current = parent;
+            } else {
+              break;
+            }
+          }
+          setSelectedBlockPath(path);
+          setIsWritingPanelOpen(true);
+        }
+      }
+    });
+  }, []);
 
   useEffect(() => {
     const updater = window.electronAPI?.updater;

@@ -22,8 +22,44 @@ export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
   done: 'Done'
 };
 
-export function createTaskMetadata(position = Date.now(), creator: TaskCreator = { type: 'user' }): TaskMetadata {
-  return { status: 'inbox', agentTarget: 'any', position, creator };
+export function formatTaskHumanId(taskNumber?: number): string | null {
+  if (typeof taskNumber !== 'number' || !Number.isInteger(taskNumber) || taskNumber <= 0) return null;
+  return `#TSK-${taskNumber}`;
+}
+
+export function parseTaskHumanId(input: string): number | null {
+  const match = input.trim().match(/^(?:#?TSK-|#)(\d+)$/i);
+  if (!match) return null;
+  const num = parseInt(match[1], 10);
+  return Number.isFinite(num) && num > 0 ? num : null;
+}
+
+export function formatTaskDeepLink(taskIdentifier: number | string): string {
+  if (typeof taskIdentifier === 'number') {
+    return `deepscribe://task/TSK-${taskIdentifier}`;
+  }
+  const clean = taskIdentifier.trim();
+  const parsedNum = parseTaskHumanId(clean);
+  if (parsedNum !== null) {
+    return `deepscribe://task/TSK-${parsedNum}`;
+  }
+  return `deepscribe://task/${clean}`;
+}
+
+export function getNextTaskNumber(allBlocks: Array<{ kind?: string; task?: { taskNumber?: number } }>): number {
+  let highest = 0;
+  for (const block of allBlocks) {
+    if (block.kind === 'task' && typeof block.task?.taskNumber === 'number') {
+      if (block.task.taskNumber > highest) {
+        highest = block.task.taskNumber;
+      }
+    }
+  }
+  return highest + 1;
+}
+
+export function createTaskMetadata(position = Date.now(), creator: TaskCreator = { type: 'user' }, taskNumber?: number): TaskMetadata {
+  return { status: 'inbox', agentTarget: 'any', position, ...(taskNumber ? { taskNumber } : {}), creator };
 }
 
 export function normalizeTaskCreator(value: unknown): TaskCreator | undefined {
@@ -78,11 +114,13 @@ export function normalizeTaskMetadata(value: unknown, fallbackPosition = Date.no
   const rawTarget = typeof raw.agentTarget === 'string' ? raw.agentTarget : 'none';
   const agentTarget = TASK_AGENT_TARGETS.includes(rawTarget as TaskAgentTarget) ? rawTarget as TaskAgentTarget : 'none';
   const position = typeof raw.position === 'number' && Number.isFinite(raw.position) ? raw.position : fallbackPosition;
+  const taskNumber = typeof raw.taskNumber === 'number' && Number.isInteger(raw.taskNumber) && raw.taskNumber > 0 ? raw.taskNumber : undefined;
   const creator = normalizeTaskCreator(raw.creator);
   return {
     status,
     agentTarget,
     position,
+    ...(taskNumber ? { taskNumber } : {}),
     ...(creator ? { creator } : {}),
     ...(agentTarget === 'custom' && typeof raw.customAgentName === 'string' && raw.customAgentName.trim() ? { customAgentName: raw.customAgentName.trim() } : {}),
     ...(typeof raw.readyAt === 'number' && Number.isFinite(raw.readyAt) ? { readyAt: raw.readyAt } : {}),
