@@ -777,3 +777,112 @@
   cursor: pointer;
 }
 .references-group button:hover { border-color: var(--atmosphere-color); color: var(--text-primary); }
+
+/* In-editor Find Bar & Match Highlights */
+.find-bar {
+  position: absolute;
+  top: 48px;
+  right: 18px;
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  background: var(--bg-surface);
+  backdrop-filter: var(--glass-backdrop);
+  border: 1px solid var(--border-neon-cyan);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45), 0 0 12px rgba(var(--atmosphere-rgb), 0.15);
+  animation: modalScaleUp 0.15s ease;
+}
+
+.find-bar-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  margin-left: 2px;
+}
+
+.find-bar-input {
+  width: 140px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border-subtle);
+  border-radius: 5px;
+  color: var(--text-primary);
+  font-size: 0.76rem;
+  padding: 4px 7px;
+  outline: none;
+  transition: border-color 0.15s ease, width 0.15s ease;
+}
+
+.find-bar-input:focus {
+  border-color: var(--atmosphere-color);
+  width: 170px;
+}
+
+.find-bar-count {
+  font-size: 0.68rem;
+  color: var(--atmosphere-color);
+  font-weight: 600;
+  white-space: nowrap;
+  padding: 0 4px;
+  min-width: 38px;
+  text-align: center;
+}
+
+.find-bar-count.no-matches {
+  color: #fca5a5;
+  font-weight: 500;
+}
+
+.find-bar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 600;
+  transition: all 0.15s ease;
+}
+
+.find-bar-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  border-color: var(--border-subtle);
+}
+
+.find-bar-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.find-bar-btn.case-toggle.active {
+  background: rgba(var(--atmosphere-rgb), 0.18);
+  color: var(--atmosphere-color);
+  border-color: rgba(var(--atmosphere-rgb), 0.4);
+}
+
+.find-bar-btn.find-bar-close:hover {
+  color: #fca5a5;
+  background: rgba(252, 165, 165, 0.12);
+}
+
+.find-match {
+  background-color: rgba(234, 179, 8, 0.38);
+  border-radius: 2px;
+}
+
+.find-match.find-match-active {
+  background-color: #f59e0b;
+  color: #000;
+  font-weight: 600;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px #d97706;
+}
+

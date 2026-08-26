@@ -20,6 +20,7 @@ interface WritingPanelProps {
   pathSegments: PathSegment[];
   saveStatus: SaveStatus;
   focusTitleSignal?: number;
+  findSignal?: number;
   allProjectBlocks?: Block[];
   taskProjects?: Project[];
   allWorkspaceBlocks?: Block[];
@@ -60,6 +61,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
   itemType,
   saveStatus,
   focusTitleSignal,
+  findSignal,
   allProjectBlocks = [],
   taskProjects = [],
   allWorkspaceBlocks = [],
@@ -434,6 +436,16 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
       }, 50);
     }
   }, [focusTitleSignal]);
+
+  useEffect(() => {
+    if (findSignal && findSignal > 0) {
+      setTimeout(() => {
+        if (tipTapEditorRef.current) {
+          tipTapEditorRef.current.openFind();
+        }
+      }, 50);
+    }
+  }, [findSignal]);
 
   const handleAddTag = (tagText: string) => {
     const parsed = parseTag(tagText);

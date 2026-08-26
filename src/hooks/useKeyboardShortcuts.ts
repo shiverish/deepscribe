@@ -7,6 +7,7 @@ interface KeyboardShortcutsHandlers {
   onNavigateLeft: () => void;
   onEditFocus?: () => void;
   onOpenSearch: () => void;
+  onFindInDocument?: () => void;
   onNewBlock: () => void;
   onAddChildBlock?: () => void;
   onDuplicate: () => void;
@@ -24,6 +25,7 @@ export function useKeyboardShortcuts({
   onNavigateLeft,
   onEditFocus,
   onOpenSearch,
+  onFindInDocument,
   onNewBlock,
   onAddChildBlock,
   onDuplicate,
@@ -41,11 +43,20 @@ export function useKeyboardShortcuts({
 
       const isCtrlOrCmd = e.ctrlKey || e.metaKey;
 
-      // Global shortcuts (work anywhere or when not editing text)
-      if (isCtrlOrCmd && e.key.toLowerCase() === 'k') {
+      // Global search shortcuts: Ctrl+K or Ctrl+Shift+F
+      if ((isCtrlOrCmd && e.key.toLowerCase() === 'k') || (isCtrlOrCmd && e.shiftKey && e.key.toLowerCase() === 'f')) {
         e.preventDefault();
         onOpenSearch();
         return;
+      }
+
+      // In-document find shortcut: Ctrl+F (when not already typing inside an input/editor)
+      if (isCtrlOrCmd && !e.shiftKey && e.key.toLowerCase() === 'f') {
+        if (!isInput && onFindInDocument) {
+          e.preventDefault();
+          onFindInDocument();
+          return;
+        }
       }
 
       if (isCtrlOrCmd && e.key === ',') {
@@ -137,6 +148,7 @@ export function useKeyboardShortcuts({
     onNavigateLeft,
     onEditFocus,
     onOpenSearch,
+    onFindInDocument,
     onNewBlock,
     onAddChildBlock,
     onDuplicate,

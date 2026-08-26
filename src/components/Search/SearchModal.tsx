@@ -195,7 +195,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search locally by words, meaning, or tags... (Ctrl + K)"
+            placeholder="Search locally by words, meaning, or tags... (Ctrl + Shift + F)"
             style={{
               flex: 1,
               background: 'transparent',

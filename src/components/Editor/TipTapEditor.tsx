@@ -11,6 +11,8 @@ import TableCell from '@tiptap/extension-table-cell';
 import Image from '@tiptap/extension-image';
 import Link from '@tiptap/extension-link';
 import { extractTipTapTaskStats } from './tipTapTaskExtraction';
+import { SearchHighlightExtension, searchHighlightPluginKey, findMatchesInDoc } from './searchHighlightExtension';
+import { FindBar } from './FindBar';
 
 import {
   Bold,
@@ -33,6 +35,7 @@ import {
 
 export interface TipTapEditorHandle {
   focus: () => void;
+  openFind: (prefill?: string) => void;
 }
 
 interface TipTapEditorProps {
@@ -51,6 +54,11 @@ export const TipTapEditor = forwardRef<TipTapEditorHandle, TipTapEditorProps>(({
   onReturnFocusToCards
 }, ref) => {
   const [isImageDragActive, setIsImageDragActive] = useState(false);
+  const [isFindOpen, setIsFindOpen] = useState(false);
+  const [findSearchTerm, setFindSearchTerm] = useState('');
+  const [findCaseSensitive, setFindCaseSensitive] = useState(false);
+  const [findActiveMatchIndex, setFindActiveMatchIndex] = useState(0);
+  const [findMatchCount, setFindMatchCount] = useState(0);
 
   const resolveImageSource = useCallback(async (file: File): Promise<string> => {
       if (!file.type.startsWith('image/')) throw new Error(`“${file.name}” is not an image.`);
@@ -86,11 +94,19 @@ export const TipTapEditor = forwardRef<TipTapEditorHandle, TipTapEditorProps>(({
           target: '_blank',
           rel: 'noopener noreferrer'
         }
-      })
+      }),
+      SearchHighlightExtension
     ],
     content: content || '<p></p>',
     editorProps: {
       handleKeyDown: (_view, event) => {
+        if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === 'f') {
+          event.preventDefault();
+          const sel = editor?.state.selection;
+          const selectedText = sel && !sel.empty ? editor?.state.doc.textBetween(sel.from, sel.to) : '';
+          openFind(selectedText && selectedText.length < 100 ? selectedText : undefined);
+          return true;
+        }
         if (event.key === 'Escape') {
           if (editor) editor.commands.blur();
           if (onReturnFocusToCards) onReturnFocusToCards();
@@ -131,19 +147,101 @@ export const TipTapEditor = forwardRef<TipTapEditorHandle, TipTapEditorProps>(({
       const { taskCount, completedTaskCount } = extractTipTapTaskStats(editor.getJSON());
 
       onChange(html, plainText, taskCount, completedTaskCount);
+
+      if (findSearchTerm) {
+        const matches = findMatchesInDoc(editor.state.doc, findSearchTerm, findCaseSensitive);
+        setFindMatchCount(matches.length);
+      }
     },
     onBlur: () => {
       if (onBlur) onBlur();
     }
   }, [resolveImageSource]);
 
+  const updateSearchMatches = useCallback((term: string, caseSensitive: boolean, activeIdx: number) => {
+    if (!editor) return;
+    const matches = findMatchesInDoc(editor.state.doc, term, caseSensitive);
+    setFindMatchCount(matches.length);
+
+    const safeActiveIdx = matches.length > 0 ? Math.min(activeIdx, matches.length - 1) : 0;
+    setFindActiveMatchIndex(safeActiveIdx);
+
+    const ext = editor.extensionManager.extensions.find(e => e.name === 'searchHighlight');
+    if (ext) {
+      ext.options.searchTerm = term;
+      ext.options.caseSensitive = caseSensitive;
+      ext.options.activeMatchIndex = safeActiveIdx;
+    }
+    editor.view.dispatch(editor.state.tr.setMeta(searchHighlightPluginKey, true));
+
+    if (matches.length > 0 && matches[safeActiveIdx]) {
+      const match = matches[safeActiveIdx];
+      editor.commands.setTextSelection({ from: match.from, to: match.to });
+      editor.view.dispatch(editor.state.tr.scrollIntoView());
+    }
+  }, [editor]);
+
+  const handleFindSearchChange = useCallback((value: string) => {
+    setFindSearchTerm(value);
+    updateSearchMatches(value, findCaseSensitive, 0);
+  }, [findCaseSensitive, updateSearchMatches]);
+
+  const handleToggleCaseSensitive = useCallback(() => {
+    setFindCaseSensitive(prev => {
+      const next = !prev;
+      updateSearchMatches(findSearchTerm, next, 0);
+      return next;
+    });
+  }, [findSearchTerm, updateSearchMatches]);
+
+  const handleFindNext = useCallback(() => {
+    if (!editor || findMatchCount === 0) return;
+    const nextIdx = (findActiveMatchIndex + 1) % findMatchCount;
+    updateSearchMatches(findSearchTerm, findCaseSensitive, nextIdx);
+  }, [editor, findActiveMatchIndex, findCaseSensitive, findMatchCount, findSearchTerm, updateSearchMatches]);
+
+  const handleFindPrev = useCallback(() => {
+    if (!editor || findMatchCount === 0) return;
+    const prevIdx = (findActiveMatchIndex - 1 + findMatchCount) % findMatchCount;
+    updateSearchMatches(findSearchTerm, findCaseSensitive, prevIdx);
+  }, [editor, findActiveMatchIndex, findCaseSensitive, findMatchCount, findSearchTerm, updateSearchMatches]);
+
+  const openFind = useCallback((prefill?: string) => {
+    setIsFindOpen(true);
+    if (prefill !== undefined && prefill.trim()) {
+      setFindSearchTerm(prefill);
+      updateSearchMatches(prefill, findCaseSensitive, 0);
+    } else if (findSearchTerm) {
+      updateSearchMatches(findSearchTerm, findCaseSensitive, findActiveMatchIndex);
+    }
+  }, [findCaseSensitive, findActiveMatchIndex, findSearchTerm, updateSearchMatches]);
+
+  const closeFind = useCallback(() => {
+    setIsFindOpen(false);
+    setFindSearchTerm('');
+    setFindActiveMatchIndex(0);
+    setFindMatchCount(0);
+    if (editor) {
+      const ext = editor.extensionManager.extensions.find(e => e.name === 'searchHighlight');
+      if (ext) {
+        ext.options.searchTerm = '';
+        ext.options.activeMatchIndex = 0;
+      }
+      editor.view.dispatch(editor.state.tr.setMeta(searchHighlightPluginKey, true));
+      editor.commands.focus();
+    }
+  }, [editor]);
+
   useImperativeHandle(ref, () => ({
     focus: () => {
       if (editor) {
         editor.chain().focus().run();
       }
+    },
+    openFind: (prefill?: string) => {
+      openFind(prefill);
     }
-  }), [editor]);
+  }), [editor, openFind]);
 
   useEffect(() => {
     if (editor && !editor.isFocused && content !== editor.getHTML()) {
@@ -176,7 +274,19 @@ export const TipTapEditor = forwardRef<TipTapEditorHandle, TipTapEditorProps>(({
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <FindBar
+        isOpen={isFindOpen}
+        searchTerm={findSearchTerm}
+        onSearchChange={handleFindSearchChange}
+        caseSensitive={findCaseSensitive}
+        onToggleCaseSensitive={handleToggleCaseSensitive}
+        matchCount={findMatchCount}
+        activeMatchIndex={findActiveMatchIndex}
+        onFindNext={handleFindNext}
+        onFindPrev={handleFindPrev}
+        onClose={closeFind}
+      />
       <div className="editor-toolbar">
         <button
           className={`toolbar-btn ${editor.isActive('bold') ? 'is-active' : ''}`}

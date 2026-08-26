@@ -829,6 +829,7 @@ function DeepScribeApp() {
   }, [focusedLevel, columns]);
 
   const [focusTitleSignal, setFocusTitleSignal] = useState(0);
+  const [findSignal, setFindSignal] = useState(0);
 
   useKeyboardShortcuts({
     onNavigateUp: handleNavigateUp,
@@ -840,6 +841,14 @@ function DeepScribeApp() {
       setFocusTitleSignal(prev => prev + 1);
     },
     onOpenSearch: () => setIsSearchOpen(true),
+    onFindInDocument: () => {
+      if (activeBlockId || activeProjectId) {
+        setIsWritingPanelOpen(true);
+        setFindSignal(prev => prev + 1);
+      } else {
+        setIsSearchOpen(true);
+      }
+    },
     onNewBlock: () => handleAddNewItem(focusedLevel, activeColumn?.parentId || null),
     onAddChildBlock: () => {
       const item = activeColumnItems[currentFocusedIndex];
@@ -1003,6 +1012,7 @@ function DeepScribeApp() {
           pathSegments={pathSegments}
           saveStatus={saveStatus}
           focusTitleSignal={focusTitleSignal}
+          findSignal={findSignal}
           allProjectBlocks={activeProjectId ? allBlocks.filter(b => b.projectId === activeProjectId) : []}
           taskProjects={projects}
           allWorkspaceBlocks={allBlocks}

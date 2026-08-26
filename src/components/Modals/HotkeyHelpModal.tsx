@@ -30,10 +30,11 @@ export const HotkeyHelpModal: React.FC<HotkeyHelpModalProps> = ({ isOpen, onClos
     { key: 'Delete / Backspace', desc: 'Move the selected block to trash' },
     { key: '→', desc: 'Open the next level / child blocks' },
     { key: '←', desc: 'Navigate back to the parent column' },
-    { key: 'Ctrl + K', desc: 'Open global search (title, content, and tags)' },
+    { key: 'Ctrl + F', desc: 'Find text in current document' },
+    { key: 'Ctrl + Shift + F / Ctrl + K', desc: 'Open global search (title, content, and tags)' },
     { key: 'Ctrl + D', desc: 'Duplicate selected block and descendant branch' },
     { key: 'Ctrl + 1 / 2 / 3 / 4', desc: 'Switch view (Columns / Tasks / Graph / Stats)' },
-    { key: 'Ctrl + Alt + S', desc: 'Scherm annoteren & taak/blok aanmaken (werkt overal in Windows)' },
+    { key: 'Ctrl + Alt + S', desc: 'Annotate screen & create task/block (works across Windows)' },
     { key: 'Ctrl + Shift + E', desc: 'Expand or collapse the fixed writing panel' },
     { key: 'Shift + ?', desc: 'Open this keyboard shortcut overview' },
   ];

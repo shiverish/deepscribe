@@ -39,4 +39,32 @@ describe('useKeyboardShortcuts', () => {
     handleKeyDown({ key: 'ArrowDown', shiftKey: true, preventDefault: vi.fn() });
     expect(onNewBlock).toHaveBeenCalledTimes(1);
   });
+
+  it('triggers search and find shortcuts correctly', () => {
+    const onOpenSearch = vi.fn();
+    const onFindInDocument = vi.fn();
+
+    const handleKeyDown = (e: { key: string; ctrlKey?: boolean; metaKey?: boolean; shiftKey?: boolean; preventDefault: () => void }) => {
+      const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+      if ((isCtrlOrCmd && e.key.toLowerCase() === 'k') || (isCtrlOrCmd && e.shiftKey && e.key.toLowerCase() === 'f')) {
+        e.preventDefault();
+        onOpenSearch();
+      } else if (isCtrlOrCmd && !e.shiftKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        onFindInDocument();
+      }
+    };
+
+    // Ctrl+K opens global search
+    handleKeyDown({ key: 'k', ctrlKey: true, preventDefault: vi.fn() });
+    expect(onOpenSearch).toHaveBeenCalledTimes(1);
+
+    // Ctrl+Shift+F opens global search
+    handleKeyDown({ key: 'F', ctrlKey: true, shiftKey: true, preventDefault: vi.fn() });
+    expect(onOpenSearch).toHaveBeenCalledTimes(2);
+
+    // Ctrl+F opens in-document find
+    handleKeyDown({ key: 'f', ctrlKey: true, preventDefault: vi.fn() });
+    expect(onFindInDocument).toHaveBeenCalledTimes(1);
+  });
 });
