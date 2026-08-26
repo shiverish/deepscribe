@@ -870,14 +870,6 @@ function DeepScribeApp() {
     onSwitchView: setActiveView
   });
 
-  const handleSelectSearchResult = (blockId: string, projectId: string, pathSegmentIds: string[]) => {
-    setActiveProjectId(projectId);
-    const blockIds = pathSegmentIds.filter(id => id !== projectId);
-    setSelectedBlockPath(blockIds);
-    setFocusedLevel(blockIds.length);
-    setFocusedCardId(blockId);
-  };
-
   const openBlockById = useCallback((blockId: string) => {
     const block = allBlocks.find(item => item.id === blockId);
     if (!block) return;
@@ -893,7 +885,16 @@ function DeepScribeApp() {
     setFocusedLevel(path.length);
     setFocusedCardId(block.id);
     setIsWritingPanelOpen(true);
+    if (block.kind === 'task') {
+      setActiveView('tasks');
+    } else {
+      setActiveView('columns');
+    }
   }, [allBlocks]);
+
+  const handleSelectSearchResult = (blockId: string) => {
+    openBlockById(blockId);
+  };
 
   const handleApplyTemplate = async (template: BlockTemplate) => {
     if (!activeProjectId) throw new Error('Open eerst een project.');
