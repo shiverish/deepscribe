@@ -123,7 +123,7 @@ export const HotkeyHelpModal: React.FC<HotkeyHelpModalProps> = ({ isOpen, onClos
           }}
         >
           <span>Tip: All actions are also available with the mouse and context menu.</span>
-          <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>DeepScribe v0.1.7</span>
+          <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>DeepScribe v0.2.10</span>
         </div>
       </div>
     </div>
