@@ -4,6 +4,7 @@ import type { Block, Project, TaskAgentTarget, TaskStatus } from '../../types';
 import { taskCreatorLabel, TASK_AGENT_LABELS, TASK_AGENT_TARGETS, TASK_STATUSES, TASK_STATUS_LABELS, TASK_INBOX_PROJECT_ID } from '../../utils/taskBlocks';
 import { archiveDoneTasks, archiveUserTask, createUserTask, relocateUserTask, updateUserTaskAgent, updateUserTaskStatus } from '../../utils/taskManagement';
 import { hasUnseenAgentEdits } from '../../utils/agentEdits';
+import { getProjectColor, INBOX_PROJECT_COLOR } from '../../utils/projectColors';
 import { markBlockSubtreeAsRead } from '../../db/operations';
 import './Tasks.css';
 
@@ -69,6 +70,11 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
   const projectLabel = (task: Block) => {
     if (task.projectId === TASK_INBOX_PROJECT_ID) return 'Workspace Inbox';
     return projects.find(project => project.id === task.projectId)?.title ?? 'Unknown project';
+  };
+  const getTaskProjectColor = (task: Block) => {
+    if (task.projectId === TASK_INBOX_PROJECT_ID) return INBOX_PROJECT_COLOR;
+    const proj = projects.find(project => project.id === task.projectId);
+    return getProjectColor(proj?.color);
   };
   const contextLabel = (task: Block) => task.parentId ? byId.get(task.parentId)?.title : null;
   const nextPosition = (status: TaskStatus) => blocks.reduce((highest, block) => block.task?.status === status ? Math.max(highest, block.task.position) : highest, -1) + 1;
@@ -189,7 +195,10 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
               </span>
             )}
           </div>
-          <span>{projectLabel(task)}{contextLabel(task) ? ` · ${contextLabel(task)}` : ''}</span>
+          <div className="task-project-meta">
+            <span className="project-color-pip" style={{ backgroundColor: getTaskProjectColor(task) }} title={projectLabel(task)} />
+            <span>{projectLabel(task)}{contextLabel(task) ? ` · ${contextLabel(task)}` : ''}</span>
+          </div>
           {taskCreatorLabel(task.task) && <span className="task-creator"><Bot size={11} /> Created by {taskCreatorLabel(task.task)}</span>}
         </button>
         <div className="task-card-meta">
@@ -401,7 +410,10 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
                       </span>
                     )}
                   </div>
-                  <span>{projectLabel(task)}{contextLabel(task) ? ` · ${contextLabel(task)}` : ''}</span>
+                  <div className="task-project-meta">
+                    <span className="project-color-pip" style={{ backgroundColor: getTaskProjectColor(task) }} title={projectLabel(task)} />
+                    <span>{projectLabel(task)}{contextLabel(task) ? ` · ${contextLabel(task)}` : ''}</span>
+                  </div>
                   {taskCreatorLabel(task.task) && <span className="task-creator"><Bot size={11} /> Created by {taskCreatorLabel(task.task)}</span>}
                 </button>
                 <select value={task.task?.status} onChange={event => void moveTask(task, event.target.value as TaskStatus)}>{TASK_STATUSES.map(status => <option key={status} value={status}>{TASK_STATUS_LABELS[status]}</option>)}</select>

@@ -10,6 +10,8 @@ import { initialTagComposerState, tagComposerReducer } from '../../utils/tagComp
 import { getBlockDependencyStatus, detectCircularDependency, sanitizeDependsOn, isBlockCompleted } from '../../utils/dependencyUtils';
 import { getStoredPrintSettingsSync, loadStoredPrintSettings, saveStoredPrintSettings, type BlockPrintSettings } from '../../utils/printDocument';
 import { canTransitionTask, taskCreatorLabel, TASK_AGENT_LABELS, TASK_AGENT_TARGETS, TASK_STATUSES, TASK_STATUS_LABELS, validateTaskReady } from '../../utils/taskBlocks';
+import { saveProjectDraft } from '../../db/operations';
+import { PROJECT_COLOR_PALETTE, DEFAULT_PROJECT_COLOR } from '../../utils/projectColors';
 import { Check, Loader2, AlertCircle, FileText, Folder, FolderOpen, Paperclip, PanelRightClose, Edit3, Plus, Tag as TagIcon, Settings2, Trash2, Link2, ArrowUpRight, X, History, Lock, CheckCircle2, Clock, Bot, ClipboardCopy, Printer } from 'lucide-react';
 import './Editor.css';
 
@@ -91,6 +93,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
   const [tags, setTags] = useState<string[]>([]);
   const [dependsOn, setDependsOn] = useState<string[]>([]);
   const [scratchpad, setScratchpad] = useState('');
+  const [projectColor, setProjectColor] = useState<string>(DEFAULT_PROJECT_COLOR);
   const [taskMetadata, setTaskMetadata] = useState<TaskMetadata | undefined>();
   const [taskErrors, setTaskErrors] = useState<string[]>([]);
   const [scratchpadCopied, setScratchpadCopied] = useState(false);
@@ -301,6 +304,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
           nextScratchpad = p.scratchpad || '';
           nextTaskMetadata = undefined;
           observedHashtagsRef.current = new Set();
+          setProjectColor(p.color || DEFAULT_PROJECT_COLOR);
         }
 
         draftRef.current = {
@@ -423,6 +427,19 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
       setTimeout(() => setScratchpadCopied(false), 2000);
     } catch (err) {
       console.error('Copy failed', err);
+    }
+  };
+
+  const handleColorChange = (newColor: string) => {
+    setProjectColor(newColor);
+    if (itemType === 'project' && activeItem) {
+      void saveProjectDraft(activeItem.id, {
+        title: draftRef.current.title,
+        description: draftRef.current.htmlContent || draftRef.current.plainTextContent,
+        tags: draftRef.current.tags,
+        color: newColor,
+        scratchpad: draftRef.current.scratchpad
+      });
     }
   };
 
@@ -693,6 +710,44 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
             }}
             placeholder={itemType === 'project' ? 'Project title...' : 'Block title...'}
           />
+
+          {itemType === 'project' && (
+            <div style={{ margin: '10px 0 14px', padding: '10px 12px', background: 'var(--bg-surface)', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>
+                Project Color
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                {PROJECT_COLOR_PALETTE.map(option => (
+                  <button
+                    key={option.hex}
+                    type="button"
+                    title={option.name}
+                    aria-label={`Select ${option.name} color`}
+                    onClick={() => handleColorChange(option.hex)}
+                    style={{
+                      width: 22,
+                      height: 22,
+                      borderRadius: '50%',
+                      backgroundColor: option.hex,
+                      border: projectColor === option.hex ? '2px solid white' : '2px solid transparent',
+                      boxShadow: projectColor === option.hex ? `0 0 0 2px ${option.hex}` : 'none',
+                      cursor: 'pointer',
+                      padding: 0,
+                      transition: 'transform 0.15s ease'
+                    }}
+                  />
+                ))}
+                <input
+                  type="color"
+                  value={projectColor}
+                  onChange={e => handleColorChange(e.target.value)}
+                  title="Custom color"
+                  aria-label="Custom project color"
+                  style={{ width: 26, height: 26, padding: 0, border: 'none', background: 'none', cursor: 'pointer', borderRadius: 4 }}
+                />
+              </div>
+            </div>
+          )}
 
           {isBlock && taskMetadata && (
             <section className="task-inspector-panel">

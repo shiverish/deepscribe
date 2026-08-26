@@ -41,6 +41,8 @@
 .task-badge.agent-update { color: var(--agent-alert-color); border-color: rgba(var(--agent-alert-rgb), 0.48); background: rgba(var(--agent-alert-rgb), 0.12); font-weight: 650; }
 .task-card-open, .task-list-row > button { width: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; border: 0; background: none; color: inherit; text-align: left; cursor: pointer; }
 .task-card-open span, .task-list-row span { color: var(--text-muted); font-size: .7rem; }
+.task-project-meta { display: inline-flex; align-items: center; gap: 5px; }
+.project-color-pip { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .task-card-open .task-creator, .task-list-row .task-creator { display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); }
 .task-card-meta { margin-top: 8px; justify-content: space-between; }
 .task-card select { min-width: 0; max-width: 130px; padding: 4px; font-size: .68rem; }

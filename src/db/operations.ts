@@ -36,6 +36,7 @@ export interface ProjectDraftUpdate {
   title: string;
   description: string;
   tags: string[];
+  color?: string;
   scratchpad?: string;
 }
 
@@ -48,6 +49,9 @@ export async function saveProjectDraft(projectId: string, draft: ProjectDraftUpd
     tags: sanitizeTags(draft.tags),
     updatedAt: now
   };
+  if (draft.color !== undefined) {
+    update.color = draft.color;
+  }
   if (draft.scratchpad !== undefined) {
     update.scratchpad = draft.scratchpad;
     if (draft.scratchpad !== current?.scratchpad) {

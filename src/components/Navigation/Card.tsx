@@ -5,6 +5,7 @@ import { Bot, Folder, FileText, Layers, CheckSquare, MoreVertical, Paperclip, Pl
 import { formatAgentEditBadgeLabel, hasUnseenAgentEdits } from '../../utils/agentEdits';
 import { copyAgentReference } from '../../utils/agentReferences';
 import { TASK_AGENT_LABELS, TASK_STATUS_LABELS } from '../../utils/taskBlocks';
+import { getProjectColor } from '../../utils/projectColors';
 
 interface CardProps {
   item: Block | Project;
@@ -158,7 +159,7 @@ export const Card: React.FC<CardProps> = ({
         <div className="card-title">
           {type === 'project' ? (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              <Folder size={16} color={project?.color || 'var(--atmosphere-color)'} />
+              <Folder size={16} color={getProjectColor(project?.color)} />
               {project?.title}
             </span>
           ) : (
