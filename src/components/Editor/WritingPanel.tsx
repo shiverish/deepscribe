@@ -9,10 +9,11 @@ import { extractHashtags, mergeTags, parseTag, sanitizeTags } from '../../utils/
 import { initialTagComposerState, tagComposerReducer } from '../../utils/tagComposer';
 import { getBlockDependencyStatus, detectCircularDependency, sanitizeDependsOn, isBlockCompleted } from '../../utils/dependencyUtils';
 import { getStoredPrintSettingsSync, loadStoredPrintSettings, saveStoredPrintSettings, type BlockPrintSettings } from '../../utils/printDocument';
-import { canTransitionTask, taskCreatorLabel, TASK_AGENT_LABELS, TASK_AGENT_TARGETS, TASK_STATUSES, TASK_STATUS_LABELS, validateTaskReady } from '../../utils/taskBlocks';
+import { canTransitionTask, formatTaskHumanId, taskCreatorLabel, TASK_AGENT_LABELS, TASK_AGENT_TARGETS, TASK_STATUSES, TASK_STATUS_LABELS, validateTaskReady } from '../../utils/taskBlocks';
+import { copyAgentReference } from '../../utils/agentReferences';
 import { saveProjectDraft } from '../../db/operations';
 import { PROJECT_COLOR_PALETTE, DEFAULT_PROJECT_COLOR } from '../../utils/projectColors';
-import { Check, Loader2, AlertCircle, FileText, Folder, FolderOpen, Paperclip, PanelRightClose, Edit3, Plus, Tag as TagIcon, Settings2, Trash2, Link2, ArrowUpRight, X, History, Lock, CheckCircle2, Clock, Bot, ClipboardCopy, Printer } from 'lucide-react';
+import { Check, Loader2, AlertCircle, FileText, Folder, FolderOpen, Paperclip, PanelRightClose, Edit3, Plus, Tag as TagIcon, Settings2, Trash2, Link2, ArrowUpRight, X, History, Lock, CheckCircle2, Clock, Bot, ClipboardCopy, Printer, Copy, CheckCheck } from 'lucide-react';
 import './Editor.css';
 
 interface WritingPanelProps {
@@ -97,6 +98,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
   const [taskMetadata, setTaskMetadata] = useState<TaskMetadata | undefined>();
   const [taskErrors, setTaskErrors] = useState<string[]>([]);
   const [scratchpadCopied, setScratchpadCopied] = useState(false);
+  const [taskRefCopied, setTaskRefCopied] = useState(false);
   const [tagComposer, dispatchTagComposer] = useReducer(tagComposerReducer, initialTagComposerState);
   const [isTagManagerOpen, setIsTagManagerOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
@@ -752,8 +754,43 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
           {isBlock && taskMetadata && (
             <section className="task-inspector-panel">
               <div className="task-inspector-heading">
-                <span><CheckCircle2 size={14} /> Task · {TASK_STATUS_LABELS[taskMetadata.status]}</span>
+                <span>
+                  <CheckCircle2 size={14} />
+                  {formatTaskHumanId(taskMetadata.taskNumber) && (
+                    <span
+                      className="task-human-id clickable"
+                      title="Click to copy task reference"
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        if (activeItem) {
+                          await copyAgentReference(activeItem, 'block');
+                          setTaskRefCopied(true);
+                          setTimeout(() => setTaskRefCopied(false), 2000);
+                        }
+                      }}
+                    >
+                      {taskRefCopied ? <CheckCheck size={11} color="#22C55E" /> : formatTaskHumanId(taskMetadata.taskNumber)}
+                    </span>
+                  )}
+                  <span>Task · {TASK_STATUS_LABELS[taskMetadata.status]}</span>
+                </span>
                 <div className="task-status-actions">
+                  {activeItem && (
+                    <button
+                      type="button"
+                      className="task-inspector-copy-btn"
+                      title="Copy task reference with deep link"
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        await copyAgentReference(activeItem, 'block');
+                        setTaskRefCopied(true);
+                        setTimeout(() => setTaskRefCopied(false), 2000);
+                      }}
+                    >
+                      {taskRefCopied ? <CheckCheck size={12} color="#22C55E" /> : <Copy size={12} />}
+                      <span>{taskRefCopied ? 'Copied!' : 'Copy Reference'}</span>
+                    </button>
+                  )}
                   {taskMetadata.claim ? (
                     <button type="button" onClick={() => handleTaskStatus('ready')}>Release claim</button>
                   ) : (

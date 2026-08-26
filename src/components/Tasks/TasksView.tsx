@@ -190,14 +190,31 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
         }}
       >
         <button className="task-card-open" onClick={() => onOpenTask(task.id)}>
+          {(humanId || isNew) && (
+            <div className="task-card-header-row">
+              {humanId ? (
+                <span
+                  className="task-human-id clickable"
+                  title="Click to copy task reference"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void copyAgentReference(task, 'block');
+                    setCopiedTaskId(task.id);
+                    setTimeout(() => setCopiedTaskId(null), 2000);
+                  }}
+                >
+                  {copiedTaskId === task.id ? <CheckCheck size={11} color="#22C55E" /> : humanId}
+                </span>
+              ) : <span />}
+              {isNew && (
+                <span className="task-badge agent-update" title="This task contains unread agent updates">
+                  <Bot size={11} /> New
+                </span>
+              )}
+            </div>
+          )}
           <div className="task-card-title-row">
-            {humanId && <span className="task-human-id" title={`Task ID: ${humanId}`}>{humanId}</span>}
             <strong>{task.title}</strong>
-            {isNew && (
-              <span className="task-badge agent-update" title="This task contains unread agent updates">
-                <Bot size={11} /> New
-              </span>
-            )}
           </div>
           <div className="task-project-meta">
             <span className="project-color-pip" style={{ backgroundColor: getTaskProjectColor(task) }} title={projectLabel(task)} />
@@ -398,14 +415,31 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
                 }}
               >
                 <button onClick={() => onOpenTask(task.id)}>
+                  {(humanId || isNew) && (
+                    <div className="task-card-header-row">
+                      {humanId ? (
+                        <span
+                          className="task-human-id clickable"
+                          title="Click to copy task reference"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void copyAgentReference(task, 'block');
+                            setCopiedTaskId(task.id);
+                            setTimeout(() => setCopiedTaskId(null), 2000);
+                          }}
+                        >
+                          {copiedTaskId === task.id ? <CheckCheck size={11} color="#22C55E" /> : humanId}
+                        </span>
+                      ) : <span />}
+                      {isNew && (
+                        <span className="task-badge agent-update" title="This task contains unread agent updates">
+                          <Bot size={11} /> New
+                        </span>
+                      )}
+                    </div>
+                  )}
                   <div className="task-card-title-row">
-                    {humanId && <span className="task-human-id" title={`Task ID: ${humanId}`}>{humanId}</span>}
                     <strong>{task.title}</strong>
-                    {isNew && (
-                      <span className="task-badge agent-update" title="This task contains unread agent updates">
-                        <Bot size={11} /> New
-                      </span>
-                    )}
                   </div>
                   <div className="task-project-meta">
                     <span className="project-color-pip" style={{ backgroundColor: getTaskProjectColor(task) }} title={projectLabel(task)} />
