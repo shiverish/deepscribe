@@ -24,3 +24,21 @@ export function parseSearchQuery(query: string): ParsedSearchQuery {
 
   return { text: textParts.join(' '), tags: Array.from(tags) };
 }
+
+export interface TagCount {
+  tag: string;
+  count: number;
+}
+
+/**
+ * Returns the top tags sorted by count descending, then alphabetically.
+ * Preserves any active tags not in the top limit so the user can toggle/remove them.
+ */
+export function rankTopTags(tagCounts: TagCount[], activeTags: string[] = [], limit: number = 10): string[] {
+  const sorted = [...tagCounts].sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
+  const top = sorted.slice(0, limit).map(tc => tc.tag);
+  const topSet = new Set(top);
+  const extraActive = activeTags.filter(t => !topSet.has(t));
+  return [...top, ...extraActive];
+}
+

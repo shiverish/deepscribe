@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { db } from '../../db/db';
 import type { Block, Project, SearchResultItem, PathSegment } from '../../types';
 import { TagBadge } from '../Navigation/TagBadge';
 import { Search, FileText, ChevronRight, X, Tag as TagIcon } from 'lucide-react';
-import { parseSearchQuery } from '../../utils/searchUtils';
+import { parseSearchQuery, rankTopTags, type TagCount } from '../../utils/searchUtils';
 import { sanitizeTags } from '../../utils/tagUtils';
 import { rankBlocksLocally } from '../../utils/semanticSearch';
 
@@ -20,7 +20,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
 }) => {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResultItem[]>([]);
-  const [allTags, setAllTags] = useState<string[]>([]);
+  const [tagCounts, setTagCounts] = useState<TagCount[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const searchRequestRef = useRef(0);
@@ -32,11 +32,16 @@ export const SearchModal: React.FC<SearchModalProps> = ({
       setSelectedIndex(0);
       setTimeout(() => inputRef.current?.focus(), 50);
 
-      // Load all distinct tags in DB for quick filter chips
+      // Load tags with occurrence counts for top tags ranking
       db.blocks.filter(b => !b.isTrash && Boolean(b.tags?.length)).toArray().then(blocks => {
-        const tagSet = new Set<string>();
-        blocks.forEach(b => sanitizeTags(b.tags).forEach(t => tagSet.add(t)));
-        setAllTags(Array.from(tagSet).sort());
+        const countMap = new Map<string, number>();
+        blocks.forEach(b => {
+          sanitizeTags(b.tags).forEach(t => {
+            countMap.set(t, (countMap.get(t) ?? 0) + 1);
+          });
+        });
+        const tagsWithCounts: TagCount[] = Array.from(countMap.entries()).map(([tag, count]) => ({ tag, count }));
+        setTagCounts(tagsWithCounts);
       }).catch(err => console.error(err));
     }
   }, [isOpen]);
@@ -146,6 +151,10 @@ export const SearchModal: React.FC<SearchModalProps> = ({
     }
   };
 
+  const activeTags = useMemo(() => parseSearchQuery(query).tags, [query]);
+  const tagCountMap = useMemo(() => new Map(tagCounts.map(tc => [tc.tag, tc.count])), [tagCounts]);
+  const visibleTags = useMemo(() => rankTopTags(tagCounts, activeTags, 10), [tagCounts, activeTags]);
+
   if (!isOpen) return null;
 
   return (
@@ -169,7 +178,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
           maxWidth: '90vw',
           background: 'var(--bg-surface)',
           backdropFilter: 'var(--glass-backdrop)',
-          border: '1px solid var(--border-neon-cyan)',
+          border: '1px solid var(--neon-cyan)',
           borderRadius: 'var(--radius-lg)',
           boxShadow: '0 0 30px rgba(0, 240, 255, 0.2)',
           overflow: 'hidden',
@@ -213,23 +222,28 @@ export const SearchModal: React.FC<SearchModalProps> = ({
           </button>
         </div>
 
-        {allTags.length > 0 && (
+        {visibleTags.length > 0 && (
           <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', background: 'rgba(0,0,0,0.1)' }}>
             <TagIcon size={12} color="var(--text-muted)" />
-            <span style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>Tags:</span>
-            {allTags.map(tag => (
-              <TagBadge
-                key={tag}
-                tag={tag}
-                size="sm"
-                active={parseSearchQuery(query).tags.includes(tag)}
-                onClick={(t) => {
-                  const parsed = parseSearchQuery(query);
-                  const nextTags = parsed.tags.includes(t) ? parsed.tags.filter(tag => tag !== t) : [...parsed.tags, t];
-                  setQuery([parsed.text, ...nextTags.map(tag => `#${tag}`)].filter(Boolean).join(' '));
-                }}
-              />
-            ))}
+            <span style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>Top Tags:</span>
+            {visibleTags.map(tag => {
+              const count = tagCountMap.get(tag) ?? 1;
+              const isActive = activeTags.includes(tag);
+              return (
+                <div key={tag} title={`${tag} (${count} ${count === 1 ? 'block' : 'blocks'})`}>
+                  <TagBadge
+                    tag={tag}
+                    size="sm"
+                    active={isActive}
+                    onClick={(t) => {
+                      const parsed = parseSearchQuery(query);
+                      const nextTags = parsed.tags.includes(t) ? parsed.tags.filter(tagItem => tagItem !== t) : [...parsed.tags, t];
+                      setQuery([parsed.text, ...nextTags.map(tagItem => `#${tagItem}`)].filter(Boolean).join(' '));
+                    }}
+                  />
+                </div>
+              );
+            })}
           </div>
         )}
 
