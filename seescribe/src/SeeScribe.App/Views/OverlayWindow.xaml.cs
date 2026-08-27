@@ -18,6 +18,7 @@ using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 using MouseEventArgs = System.Windows.Input.MouseEventArgs;
 using Point = System.Windows.Point;
 using Rectangle = System.Windows.Shapes.Rectangle;
+using TextBox = System.Windows.Controls.TextBox;
 
 namespace SeeScribe.App.Views;
 
@@ -88,7 +89,7 @@ public partial class OverlayWindow : Window
         }
 
         ClearCanvas();
-        Toolbar.FocusPromptInput();
+        Focus();
 
         // De lijst met projecten mag het openen niet ophouden.
         _ = _viewModel.LoadTargetsAsync();
@@ -458,6 +459,42 @@ public partial class OverlayWindow : Window
         {
             Toolbar_SubmitRequested(this, new RoutedEventArgs());
             e.Handled = true;
+        }
+        else if (e.OriginalSource is not TextBox && Keyboard.Modifiers == ModifierKeys.None)
+        {
+            switch (e.Key)
+            {
+                case Key.D1:
+                case Key.NumPad1:
+                    _viewModel.SelectTool(DrawingTool.Arrow);
+                    e.Handled = true;
+                    break;
+                case Key.D2:
+                case Key.NumPad2:
+                    _viewModel.SelectTool(DrawingTool.Pen);
+                    e.Handled = true;
+                    break;
+                case Key.D3:
+                case Key.NumPad3:
+                    _viewModel.SelectTool(DrawingTool.Rectangle);
+                    e.Handled = true;
+                    break;
+                case Key.D4:
+                case Key.NumPad4:
+                    _viewModel.SelectTool(DrawingTool.Ellipse);
+                    e.Handled = true;
+                    break;
+                case Key.D5:
+                case Key.NumPad5:
+                    _viewModel.SelectTool(DrawingTool.TextBadge);
+                    e.Handled = true;
+                    break;
+                case Key.D6:
+                case Key.NumPad6:
+                    _viewModel.SelectTool(DrawingTool.Highlighter);
+                    e.Handled = true;
+                    break;
+            }
         }
     }
 

@@ -16,21 +16,26 @@ public partial class AnnotationToolbar : UserControl
     public AnnotationToolbar()
     {
         InitializeComponent();
-        PromptInputBox.KeyDown += PromptInputBox_KeyDown;
+        PromptInputBox.PreviewKeyDown += PromptInputBox_PreviewKeyDown;
     }
 
-    private void PromptInputBox_KeyDown(object sender, KeyEventArgs e)
+    private void PromptInputBox_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter)
         {
             e.Handled = true;
             SubmitRequested?.Invoke(this, new RoutedEventArgs());
         }
+        else if (e.Key == Key.Escape)
+        {
+            e.Handled = true;
+            Keyboard.ClearFocus();
+        }
     }
 
     /// <summary>
     /// In de beschrijving maakt Enter een nieuwe regel — daar is het veld voor.
-    /// Opslaan gaat daar met Ctrl+Enter.
+    /// Opslaan gaat daar met Ctrl+Enter. Escape haalt de focus van het veld af.
     /// </summary>
     private void DescriptionInputBox_PreviewKeyDown(object sender, KeyEventArgs e)
     {
@@ -38,6 +43,11 @@ public partial class AnnotationToolbar : UserControl
         {
             e.Handled = true;
             SubmitRequested?.Invoke(this, new RoutedEventArgs());
+        }
+        else if (e.Key == Key.Escape)
+        {
+            e.Handled = true;
+            Keyboard.ClearFocus();
         }
     }
 

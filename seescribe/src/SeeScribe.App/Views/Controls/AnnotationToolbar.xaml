@@ -19,6 +19,7 @@
 
             <conv:BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
             <conv:EmptyStringToVisibilityConverter x:Key="EmptyToVisibility"/>
+            <conv:EnumToBooleanConverter x:Key="EnumToBool"/>
 
             <!-- De twee invoervelden delen deze stijl, zodat titel en beschrijving
                  als één veld ogen dat langer wordt. -->
@@ -275,19 +276,74 @@
 
                 <!-- Drawing tools -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal">
-                    <RadioButton Style="{StaticResource ToolButton}" Content="↗ Pijl" IsChecked="True"
-                                 Command="{Binding SelectToolCommand}" CommandParameter="{x:Static enums:DrawingTool.Arrow}"/>
-                    <RadioButton Style="{StaticResource ToolButton}" Content="✏️ Pen"
-                                 Command="{Binding SelectToolCommand}" CommandParameter="{x:Static enums:DrawingTool.Pen}"/>
-                    <RadioButton Style="{StaticResource ToolButton}" Content="▢ Kader"
-                                 Command="{Binding SelectToolCommand}" CommandParameter="{x:Static enums:DrawingTool.Rectangle}"/>
-                    <RadioButton Style="{StaticResource ToolButton}" Content="◯ Cirkel"
-                                 Command="{Binding SelectToolCommand}" CommandParameter="{x:Static enums:DrawingTool.Ellipse}"/>
-                    <RadioButton Style="{StaticResource ToolButton}" Content="🔢 Stap (1,2..)"
-                                 Command="{Binding SelectToolCommand}" CommandParameter="{x:Static enums:DrawingTool.TextBadge}"/>
-                    <RadioButton Style="{StaticResource ToolButton}" Content="🖍 Highlight"
-                                 Command="{Binding SelectToolCommand}" CommandParameter="{x:Static enums:DrawingTool.Highlighter}"/>
+                    <RadioButton Style="{StaticResource ToolButton}" GroupName="DrawingTools"
+                                 IsChecked="{Binding ActiveTool, Converter={StaticResource EnumToBool}, ConverterParameter={x:Static enums:DrawingTool.Arrow}, Mode=TwoWay}"
+                                 Command="{Binding SelectToolCommand}" CommandParameter="{x:Static enums:DrawingTool.Arrow}"
+                                 ToolTip="Arrow (1)">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="↗ Arrow" Margin="0,0,5,0"/>
+                            <Border Background="#16161C" CornerRadius="3" Padding="3,0" VerticalAlignment="Center">
+                                <TextBlock Text="1" FontSize="10" Foreground="#94A3B8" FontWeight="Bold"/>
+                            </Border>
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton Style="{StaticResource ToolButton}" GroupName="DrawingTools"
+                                 IsChecked="{Binding ActiveTool, Converter={StaticResource EnumToBool}, ConverterParameter={x:Static enums:DrawingTool.Pen}, Mode=TwoWay}"
+                                 Command="{Binding SelectToolCommand}" CommandParameter="{x:Static enums:DrawingTool.Pen}"
+                                 ToolTip="Pen (2)">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="✏️ Pen" Margin="0,0,5,0"/>
+                            <Border Background="#16161C" CornerRadius="3" Padding="3,0" VerticalAlignment="Center">
+                                <TextBlock Text="2" FontSize="10" Foreground="#94A3B8" FontWeight="Bold"/>
+                            </Border>
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton Style="{StaticResource ToolButton}" GroupName="DrawingTools"
+                                 IsChecked="{Binding ActiveTool, Converter={StaticResource EnumToBool}, ConverterParameter={x:Static enums:DrawingTool.Rectangle}, Mode=TwoWay}"
+                                 Command="{Binding SelectToolCommand}" CommandParameter="{x:Static enums:DrawingTool.Rectangle}"
+                                 ToolTip="Rectangle (3)">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="▢ Rectangle" Margin="0,0,5,0"/>
+                            <Border Background="#16161C" CornerRadius="3" Padding="3,0" VerticalAlignment="Center">
+                                <TextBlock Text="3" FontSize="10" Foreground="#94A3B8" FontWeight="Bold"/>
+                            </Border>
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton Style="{StaticResource ToolButton}" GroupName="DrawingTools"
+                                 IsChecked="{Binding ActiveTool, Converter={StaticResource EnumToBool}, ConverterParameter={x:Static enums:DrawingTool.Ellipse}, Mode=TwoWay}"
+                                 Command="{Binding SelectToolCommand}" CommandParameter="{x:Static enums:DrawingTool.Ellipse}"
+                                 ToolTip="Ellipse (4)">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="◯ Ellipse" Margin="0,0,5,0"/>
+                            <Border Background="#16161C" CornerRadius="3" Padding="3,0" VerticalAlignment="Center">
+                                <TextBlock Text="4" FontSize="10" Foreground="#94A3B8" FontWeight="Bold"/>
+                            </Border>
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton Style="{StaticResource ToolButton}" GroupName="DrawingTools"
+                                 IsChecked="{Binding ActiveTool, Converter={StaticResource EnumToBool}, ConverterParameter={x:Static enums:DrawingTool.TextBadge}, Mode=TwoWay}"
+                                 Command="{Binding SelectToolCommand}" CommandParameter="{x:Static enums:DrawingTool.TextBadge}"
+                                 ToolTip="Step badge (5)">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="🔢 Step" Margin="0,0,5,0"/>
+                            <Border Background="#16161C" CornerRadius="3" Padding="3,0" VerticalAlignment="Center">
+                                <TextBlock Text="5" FontSize="10" Foreground="#94A3B8" FontWeight="Bold"/>
+                            </Border>
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton Style="{StaticResource ToolButton}" GroupName="DrawingTools"
+                                 IsChecked="{Binding ActiveTool, Converter={StaticResource EnumToBool}, ConverterParameter={x:Static enums:DrawingTool.Highlighter}, Mode=TwoWay}"
+                                 Command="{Binding SelectToolCommand}" CommandParameter="{x:Static enums:DrawingTool.Highlighter}"
+                                 ToolTip="Highlighter (6)">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="🖍 Highlight" Margin="0,0,5,0"/>
+                            <Border Background="#16161C" CornerRadius="3" Padding="3,0" VerticalAlignment="Center">
+                                <TextBlock Text="6" FontSize="10" Foreground="#94A3B8" FontWeight="Bold"/>
+                            </Border>
+                        </StackPanel>
+                    </RadioButton>
                 </StackPanel>
+
 
                 <!-- Separator -->
                 <Rectangle Grid.Column="1" Width="1" Fill="#374151" Margin="8,2"/>
