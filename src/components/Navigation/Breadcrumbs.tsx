@@ -15,7 +15,6 @@ import {
   FileText,
   Columns3,
   CheckSquare,
-  Network,
   BarChart3,
   Camera,
   ArrowUpCircle
@@ -93,7 +92,7 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
           })}
         </nav>
 
-        {/* View Switcher: Columns | Tasks | Graph | Stats */}
+        {/* View Switcher: Columns | Tasks | Stats */}
         <div className="view-switcher-group">
           <button
             type="button"
@@ -117,19 +116,9 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
 
           <button
             type="button"
-            className={`view-switch-btn ${activeView === 'graph' ? 'active' : ''}`}
-            onClick={() => onViewChange('graph')}
-            title="Graph View (Ctrl+3)"
-          >
-            <Network size={13} />
-            <span>Graph</span>
-          </button>
-
-          <button
-            type="button"
             className={`view-switch-btn ${activeView === 'stats' ? 'active' : ''}`}
             onClick={() => onViewChange('stats')}
-            title="Statistics View (Ctrl+4)"
+            title="Statistics View (Ctrl+3)"
           >
             <BarChart3 size={13} />
             <span>Stats</span>

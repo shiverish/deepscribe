@@ -7,7 +7,6 @@ import { Breadcrumbs } from './components/Navigation/Breadcrumbs';
 import { UpdateNotification, type UpdaterState } from './components/Navigation/UpdateNotification';
 import { HorizontalLayout, type ColumnData } from './components/Navigation/HorizontalLayout';
 import { WritingPanel } from './components/Editor/WritingPanel';
-import { GraphView } from './components/Graph/GraphView';
 import { StatisticsView } from './components/Statistics/StatisticsView';
 import { TasksView } from './components/Tasks/TasksView';
 import { SearchModal } from './components/Search/SearchModal';
@@ -234,7 +233,6 @@ function DeepScribeApp() {
     (a, b) => (a.order ?? a.createdAt) - (b.order ?? b.createdAt)
   ), [projectsQuery]);
   const allBlocks = useMemo(() => blocksQuery ?? [], [blocksQuery]);
-  const projectBlocksForViews = useMemo(() => allBlocks.filter(block => block.projectId !== TASK_INBOX_PROJECT_ID), [allBlocks]);
 
   const activeProject = useMemo(() => projects.find(p => p.id === activeProjectId) || null, [projects, activeProjectId]);
 
@@ -1019,20 +1017,6 @@ function DeepScribeApp() {
             blocks={allBlocks}
             onOpenTask={openBlockById}
             onDeleteTask={task => handleDeleteToTrash(task, 'block')}
-          />
-        )}
-
-        {activeView === 'graph' && (
-          <GraphView
-            projects={projects}
-            blocks={projectBlocksForViews}
-            activeProjectId={activeProjectId}
-            selectedBlockId={activeBlock?.id ?? null}
-            onSelectBlock={(blockId) => openBlockById(blockId)}
-            onSelectProject={(projId) => {
-              setActiveProjectId(projId);
-              setSelectedBlockPath([]);
-            }}
           />
         )}
 

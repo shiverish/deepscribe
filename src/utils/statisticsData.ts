@@ -1,6 +1,10 @@
 import type { Block, Project, TaskStatus } from '../types';
-import { countWords } from './graphData';
 import { TASK_INBOX_PROJECT_ID, TASK_STATUSES } from './taskBlocks';
+
+function countWords(text: string): number {
+  const trimmed = text.trim();
+  return trimmed ? trimmed.split(/\s+/).length : 0;
+}
 
 export interface ProjectStatsSummary {
   projectId: string;
