@@ -76,3 +76,8 @@ npm run build
 ```
 
 De tests bewaken onder andere cyclische boomstructuren, verplaatsen, project- en blokherstel, definitief verwijderen en archiefvalidatie.
+
+## Licentie
+
+DeepScribe is gelicentieerd onder de [GNU General Public License v3.0 (GPLv3)](LICENSE).
+
