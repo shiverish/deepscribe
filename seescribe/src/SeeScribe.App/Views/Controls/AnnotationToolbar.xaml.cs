@@ -29,7 +29,7 @@ public partial class AnnotationToolbar : UserControl
         else if (e.Key == Key.Escape)
         {
             e.Handled = true;
-            Keyboard.ClearFocus();
+            Window.GetWindow(this)?.Focus();
         }
     }
 
@@ -47,17 +47,21 @@ public partial class AnnotationToolbar : UserControl
         else if (e.Key == Key.Escape)
         {
             e.Handled = true;
-            Keyboard.ClearFocus();
+            Window.GetWindow(this)?.Focus();
         }
     }
 
     /// <summary>
     /// Het veld openklappen betekent dat er getypt gaat worden. De cursor gaat
-    /// erheen, en bij dichtklappen terug naar de titelregel.
+    /// erheen, en bij dichtklappen terug naar de titelregel indien al aan het typen.
     /// </summary>
     private void DescriptionInputBox_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
+        if (!IsLoaded) return;
+
         var opened = DescriptionInputBox.IsVisible;
+
+        if (!opened && !IsKeyboardFocusWithin) return;
 
         // Pas focussen wanneer de nieuwe indeling er staat; een veld dat nog niet
         // zichtbaar is neemt de focus niet aan.

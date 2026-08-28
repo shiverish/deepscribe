@@ -12,8 +12,9 @@
         Topmost="True"
         ShowInTaskbar="False"
         WindowState="Normal"
-        KeyDown="Window_KeyDown">
-    <Grid x:Name="RootGrid" Cursor="Cross">
+        Focusable="True"
+        PreviewKeyDown="Window_PreviewKeyDown">
+    <Grid x:Name="RootGrid" Cursor="Cross" PreviewMouseDown="RootGrid_PreviewMouseDown">
         <!-- Background Frozen Screenshot -->
         <Image x:Name="BackgroundImage" Stretch="Fill" IsHitTestVisible="False"/>
 

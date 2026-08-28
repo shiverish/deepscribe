@@ -59,6 +59,8 @@ public partial class OverlayWindow : Window
 
         MainInkCanvas.StrokeCollected += MainInkCanvas_StrokeCollected;
         UpdateDrawingMode();
+
+        Loaded += (s, e) => Focus();
     }
 
     public void SetupForScreen(Bitmap screenBitmap, ScreenInfo screenInfo)
@@ -438,29 +440,69 @@ public partial class OverlayWindow : Window
         _currentPreviewShape = null;
     }
 
-    private void Window_KeyDown(object sender, KeyEventArgs e)
+    private void RootGrid_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (!Toolbar.IsMouseOver)
+        {
+            Focus();
+        }
+    }
+
+    private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Escape)
         {
-            _viewModel.Close();
-            e.Handled = true;
+            if (Keyboard.FocusedElement is TextBox || e.OriginalSource is TextBox)
+            {
+                Focus();
+                e.Handled = true;
+            }
+            else
+            {
+                _viewModel.Close();
+                e.Handled = true;
+            }
         }
         else if (e.Key == Key.Z && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
         {
-            UndoLastAction();
-            e.Handled = true;
+            if (Keyboard.FocusedElement is not TextBox && e.OriginalSource is not TextBox)
+            {
+                UndoLastAction();
+                e.Handled = true;
+            }
         }
         else if (e.Key == Key.D && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
         {
             _viewModel.ToggleDescription();
             e.Handled = true;
         }
-        else if (e.Key == Key.Enter && !Toolbar.IsFocused)
+        else if (e.Key == Key.Enter)
         {
-            Toolbar_SubmitRequested(this, new RoutedEventArgs());
-            e.Handled = true;
+            var isTextBox = Keyboard.FocusedElement is TextBox || e.OriginalSource is TextBox;
+            if (isTextBox)
+            {
+                var tb = (Keyboard.FocusedElement as TextBox) ?? (e.OriginalSource as TextBox);
+                if (tb?.AcceptsReturn == true)
+                {
+                    if ((Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+                    {
+                        Toolbar_SubmitRequested(this, new RoutedEventArgs());
+                        e.Handled = true;
+                    }
+                }
+                else
+                {
+                    Toolbar_SubmitRequested(this, new RoutedEventArgs());
+                    e.Handled = true;
+                }
+            }
+            else
+            {
+                Toolbar_SubmitRequested(this, new RoutedEventArgs());
+                e.Handled = true;
+            }
         }
-        else if (e.OriginalSource is not TextBox && Keyboard.Modifiers == ModifierKeys.None)
+        else if (Keyboard.FocusedElement is not TextBox && e.OriginalSource is not TextBox && Keyboard.Modifiers == ModifierKeys.None)
         {
             switch (e.Key)
             {
