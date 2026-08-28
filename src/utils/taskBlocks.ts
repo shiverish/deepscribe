@@ -58,8 +58,21 @@ export function getNextTaskNumber(allBlocks: Array<{ kind?: string; task?: { tas
   return highest + 1;
 }
 
-export function createTaskMetadata(position = Date.now(), creator: TaskCreator = { type: 'user' }, taskNumber?: number): TaskMetadata {
-  return { status: 'inbox', agentTarget: 'any', position, ...(taskNumber ? { taskNumber } : {}), creator };
+export function createTaskMetadata(
+  position = Date.now(),
+  creator: TaskCreator = { type: 'user' },
+  taskNumber?: number,
+  agentTarget: TaskAgentTarget = 'any',
+  customAgentName?: string
+): TaskMetadata {
+  return {
+    status: 'inbox',
+    agentTarget,
+    position,
+    ...(taskNumber ? { taskNumber } : {}),
+    ...(agentTarget === 'custom' && customAgentName?.trim() ? { customAgentName: customAgentName.trim() } : {}),
+    creator
+  };
 }
 
 export function normalizeTaskCreator(value: unknown): TaskCreator | undefined {

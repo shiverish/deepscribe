@@ -14,9 +14,27 @@ export interface ReleaseEntry {
   items: ChangelogItem[];
 }
 
-export const CURRENT_APP_VERSION = '0.2.22';
+export const CURRENT_APP_VERSION = '0.2.23';
 
 export const CHANGELOG_ENTRIES: ReleaseEntry[] = [
+  {
+    version: '0.2.23',
+    date: 'August 2026',
+    title: 'Agent Task Assignment Target',
+    summary: 'Allow AI agents to specify an explicit target assignee when creating tasks via MCP.',
+    items: [
+      {
+        type: 'feature',
+        text: 'Assignee Target in create_task',
+        detail: 'Agents can now specify an assigneeTarget (such as Claude, Gemini, OpenAI, or custom) during task creation.'
+      },
+      {
+        type: 'improvement',
+        text: 'Clear MCP Tool Schema',
+        detail: 'Clarified distinction between creator provenance identity (agentTarget) and task assignee target (assigneeTarget).'
+      }
+    ]
+  },
   {
     version: '0.2.22',
     date: 'August 2026',

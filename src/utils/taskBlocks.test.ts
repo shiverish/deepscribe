@@ -66,4 +66,15 @@ describe('task blocks', () => {
     ];
     expect(getNextTaskNumber(blocks)).toBe(4);
   });
+
+  it('supports explicit assignee target and custom name on creation', () => {
+    const customTask = createTaskMetadata(100, { type: 'user' }, 5, 'custom', 'CodeReviewer');
+    expect(customTask.agentTarget).toBe('custom');
+    expect(customTask.customAgentName).toBe('CodeReviewer');
+    expect(customTask.status).toBe('inbox');
+
+    const claudeTask = createTaskMetadata(100, { type: 'user' }, 6, 'claude');
+    expect(claudeTask.agentTarget).toBe('claude');
+    expect(claudeTask.customAgentName).toBeUndefined();
+  });
 });

@@ -12,7 +12,7 @@ const server = new McpServer({
   name: 'deepscribe',
   version: '0.2.7'
 }, {
-  instructions: 'DeepScribe stores projects, nested knowledge blocks and user-managed tasks. Read before writing and preserve existing content. Agents may use create_task to capture concrete future work, risks or ideas after checking for duplicates; tasks can be attached directly to a project via projectId or placed into Workspace Inbox when omitted, and start in Inbox status assigned to Any agent. Never create an administrative task before performing a directly requested change. Agents must not move, organize, assign, delete or restore tasks or create inline todos. Use list_tasks/get_task to read tasks and update_task_status only to report progress. Format block content as readable Markdown with blank lines between sections and one list item per line.'
+  instructions: 'DeepScribe stores projects, nested knowledge blocks and user-managed tasks. Read before writing and preserve existing content. Agents may use create_task to capture concrete future work, risks or ideas after checking for duplicates; tasks can be attached directly to a project via projectId or placed into Workspace Inbox when omitted, and start in Inbox status assigned to Any agent (or a specified assigneeTarget). Never create an administrative task before performing a directly requested change. Agents must not move, organize, assign, delete or restore tasks or create inline todos. Use list_tasks/get_task to read tasks and update_task_status only to report progress. Format block content as readable Markdown with blank lines between sections and one list item per line.'
 });
 
 function bridgeFileCandidates() {
@@ -315,16 +315,18 @@ registerTool('create_block', {
 
 registerTool('create_task', {
   title: 'Create task',
-  description: 'Idempotently capture a concrete follow-up, risk or idea directly in a project or in Workspace Inbox. Check list_tasks for duplicates first. If projectId is omitted, it is placed in Workspace Inbox. The task starts in Inbox status assigned to Any agent. Only the user can edit it after creation. Never use this as an administrative step before a directly requested change.',
+  description: 'Idempotently capture a concrete follow-up, risk or idea directly in a project or in Workspace Inbox. Check list_tasks for duplicates first. If projectId is omitted, it is placed in Workspace Inbox. The task starts in Inbox status assigned to Any agent by default, or to a specified assigneeTarget. Only the user can edit it after creation. Never use this as an administrative step before a directly requested change.',
   inputSchema: {
-    projectId: z.string().min(1).optional(),
-    parentId: z.string().nullable().optional(),
-    title: z.string().min(1),
-    content: z.string().optional(),
-    agentId: z.string().min(1),
-    agentTarget: z.enum(['openai', 'claude', 'gemini', 'custom']),
-    customAgentName: z.string().min(1).optional(),
-    requestId: z.string().min(1)
+    projectId: z.string().min(1).optional().describe('Target project ID, or omit for Workspace Inbox'),
+    parentId: z.string().nullable().optional().describe('Parent block ID within the project'),
+    title: z.string().min(1).describe('Task title'),
+    content: z.string().optional().describe('Task body in Markdown'),
+    agentId: z.string().min(1).describe('Caller agent identity ID (creator)'),
+    agentTarget: z.enum(['openai', 'claude', 'gemini', 'custom']).describe('Caller provider identity (creator provenance)'),
+    customAgentName: z.string().min(1).optional().describe('Caller custom agent name if agentTarget is custom'),
+    assigneeTarget: z.enum(['none', 'openai', 'claude', 'gemini', 'custom', 'any']).optional().describe('Target agent assignee for this task (default: any)'),
+    assigneeCustomAgentName: z.string().min(1).optional().describe('Custom agent name if assigneeTarget is custom'),
+    requestId: z.string().min(1).describe('Unique request ID for idempotency')
   },
   annotations: write
 });

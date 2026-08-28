@@ -234,8 +234,15 @@ export function getNextTaskNumber(allBlocks) {
   return highest + 1;
 }
 
-function createTaskMetadata(position = Date.now(), creator = { type: 'user' }, taskNumber) {
-  return { status: 'inbox', agentTarget: 'any', position, ...(typeof taskNumber === 'number' && Number.isInteger(taskNumber) && taskNumber > 0 ? { taskNumber } : {}), creator };
+function createTaskMetadata(position = Date.now(), creator = { type: 'user' }, taskNumber, agentTarget = 'any', customAgentName) {
+  return {
+    status: 'inbox',
+    agentTarget,
+    position,
+    ...(typeof taskNumber === 'number' && Number.isInteger(taskNumber) && taskNumber > 0 ? { taskNumber } : {}),
+    ...(agentTarget === 'custom' && typeof customAgentName === 'string' && customAgentName.trim() ? { customAgentName: customAgentName.trim() } : {}),
+    creator
+  };
 }
 
 function normalizeTaskCreator(value) {
@@ -1592,6 +1599,21 @@ export class DirectWorkspaceStore {
         const customAgentName = optionalStr('customAgentName')?.trim();
         if (agentTarget === 'custom' && !customAgentName) throw new Error('customAgentName is required for a custom task creator.');
 
+        const rawAssigneeTarget = optionalStr('assigneeTarget') || optionalStr('assignee') || optionalStr('targetAgent');
+        const assigneeTarget = rawAssigneeTarget && TASK_AGENT_TARGETS.includes(rawAssigneeTarget)
+          ? rawAssigneeTarget
+          : 'any';
+        if (rawAssigneeTarget && !TASK_AGENT_TARGETS.includes(rawAssigneeTarget)) {
+          throw new Error('assigneeTarget is invalid.');
+        }
+        const rawAssigneeCustomName = optionalStr('assigneeCustomAgentName') || optionalStr('targetCustomAgentName');
+        const assigneeCustomName = assigneeTarget === 'custom'
+          ? (rawAssigneeCustomName || customAgentName || '')
+          : undefined;
+        if (assigneeTarget === 'custom' && !assigneeCustomName?.trim()) {
+          throw new Error('assigneeCustomAgentName is required when assigneeTarget is custom.');
+        }
+
         const requestedProjectId = optionalStr('projectId');
         const parentId = typeof params?.parentId === 'string' && params.parentId ? params.parentId : null;
         const projectId = requestedProjectId || TASK_INBOX_PROJECT_ID;
@@ -1634,7 +1656,7 @@ export class DirectWorkspaceStore {
           attachmentCount: 0,
           tags: [],
           kind: 'task',
-          task: createTaskMetadata(position, { type: 'agent', agentTarget, agentId, requestId, ...(agentTarget === 'custom' ? { customAgentName } : {}) }, taskNumber),
+          task: createTaskMetadata(position, { type: 'agent', agentTarget, agentId, requestId, ...(agentTarget === 'custom' ? { customAgentName } : {}) }, taskNumber, assigneeTarget, assigneeCustomName),
           lastAgentEditAt: now,
           isTrash: false,
           createdAt: now,

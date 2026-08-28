@@ -130,6 +130,56 @@ describe('DeepScribe MCP task blocks', () => {
       task: { status: 'inbox', agentTarget: 'any' }
     });
 
+    // Test creating task directly attached to a project and parent with explicit assigneeTarget
+    const assignedTask = await handleMcpBridgeRequest('create_task', {
+      agentTarget: 'openai',
+      agentId: 'codex-1',
+      requestId: 'assigned-task-1',
+      assigneeTarget: 'claude',
+      projectId: project.id,
+      parentId: parent.id,
+      title: 'Assigned Claude task'
+    }) as Block;
+    expect(assignedTask.task?.agentTarget).toBe('claude');
+    const storedAssignedTask = await db.blocks.get(assignedTask.id);
+    expect(storedAssignedTask?.task?.agentTarget).toBe('claude');
+    expect(storedAssignedTask?.task?.creator).toMatchObject({
+      type: 'agent',
+      agentTarget: 'openai',
+      agentId: 'codex-1',
+      requestId: 'assigned-task-1'
+    });
+
+    // Test custom assignee target with custom name
+    const customAssignedTask = await handleMcpBridgeRequest('create_task', {
+      agentTarget: 'gemini',
+      agentId: 'gemini-1',
+      requestId: 'custom-assigned-1',
+      assigneeTarget: 'custom',
+      assigneeCustomAgentName: 'ReviewerBot',
+      title: 'Custom assigned task'
+    }) as Block;
+    expect(customAssignedTask.task?.agentTarget).toBe('custom');
+    expect(customAssignedTask.task?.customAgentName).toBe('ReviewerBot');
+
+    // Test custom assignee without name fails
+    await expect(handleMcpBridgeRequest('create_task', {
+      agentTarget: 'gemini',
+      agentId: 'gemini-1',
+      requestId: 'custom-fail-1',
+      assigneeTarget: 'custom',
+      title: 'No name'
+    })).rejects.toThrow(/assigneeCustomAgentName is required/i);
+
+    // Test invalid assigneeTarget
+    await expect(handleMcpBridgeRequest('create_task', {
+      agentTarget: 'openai',
+      agentId: 'codex-1',
+      requestId: 'invalid-assignee-req',
+      assigneeTarget: 'invalid_target',
+      title: 'Task'
+    })).rejects.toThrow(/assigneeTarget is invalid/i);
+
     // Test error when projectId or parentId is invalid
     await expect(handleMcpBridgeRequest('create_task', {
       agentTarget: 'openai',

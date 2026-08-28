@@ -267,6 +267,55 @@ describe('DirectWorkspaceStore offline MCP engine', () => {
         task: { status: 'inbox', agentTarget: 'any' }
       });
 
+      // Direct project task creation with explicit assigneeTarget
+      const assignedTask = await store.handleRequest('create_task', {
+        agentTarget: 'openai',
+        agentId: 'codex-1',
+        requestId: 'assigned-offline-1',
+        assigneeTarget: 'gemini',
+        projectId: project.id,
+        parentId: parent.id,
+        title: 'Assigned Gemini Task'
+      });
+      expect(assignedTask.task.agentTarget).toBe('gemini');
+      expect(store.getBlock(assignedTask.id).task.agentTarget).toBe('gemini');
+      expect(store.getBlock(assignedTask.id).task.creator).toMatchObject({
+        type: 'agent',
+        agentTarget: 'openai',
+        agentId: 'codex-1',
+        requestId: 'assigned-offline-1'
+      });
+
+      // Custom assignee with custom name
+      const customAssigned = await store.handleRequest('create_task', {
+        agentTarget: 'claude',
+        agentId: 'claude-1',
+        requestId: 'custom-offline-1',
+        assigneeTarget: 'custom',
+        assigneeCustomAgentName: 'OfflineBot',
+        title: 'Custom Offline Task'
+      });
+      expect(customAssigned.task.agentTarget).toBe('custom');
+      expect(customAssigned.task.customAgentName).toBe('OfflineBot');
+
+      // Custom assignee without name
+      await expect(store.handleRequest('create_task', {
+        agentTarget: 'claude',
+        agentId: 'claude-1',
+        requestId: 'custom-offline-fail',
+        assigneeTarget: 'custom',
+        title: 'Fail'
+      })).rejects.toThrow(/assigneeCustomAgentName is required/i);
+
+      // Invalid assigneeTarget
+      await expect(store.handleRequest('create_task', {
+        agentTarget: 'openai',
+        agentId: 'codex-1',
+        requestId: 'invalid-assignee-req',
+        assigneeTarget: 'invalid_target',
+        title: 'Task'
+      })).rejects.toThrow(/assigneeTarget is invalid/i);
+
       // Error checks
       await expect(store.handleRequest('create_task', {
         agentTarget: 'openai',

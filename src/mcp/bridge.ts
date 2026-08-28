@@ -2,11 +2,11 @@ import { db } from '../db/db';
 import { recordActivity } from '../db/activity';
 import { recordBlockRevision, getBlockRevisions, getBlockRevision, restoreBlockRevision } from '../db/revisions';
 import { sanitizeDependsOn, detectCircularDependency, getBlockDependencyStatus, formatDependencyMarkdown } from '../utils/dependencyUtils';
-import type { Attachment, Block, ClaimantAgentTarget, Project, ActivityEntry, ActivitySource, TaskMetadata, TaskStatus } from '../types';
+import type { Attachment, Block, ClaimantAgentTarget, Project, ActivityEntry, ActivitySource, TaskAgentTarget, TaskMetadata, TaskStatus } from '../types';
 import { sanitizeTags } from '../utils/tagUtils';
 import { rankBlocksLocally } from '../utils/semanticSearch';
 import { isDescendantOrSelf, moveBlockInTree } from '../utils/dragAndDrop';
-import { canTransitionTask, createTaskClaim, createTaskInboxProject, createTaskMetadata, formatTaskDeepLink, formatTaskHumanId, getNextTaskNumber, isTaskClaimCandidate, isTaskInboxProject, normalizeLeaseSeconds, parseTaskHumanId, redactTaskClaim, taskCreatorLabel, TASK_INBOX_PROJECT_ID, validateTaskMetadata, validateTaskReady } from '../utils/taskBlocks';
+import { canTransitionTask, createTaskClaim, createTaskInboxProject, createTaskMetadata, formatTaskDeepLink, formatTaskHumanId, getNextTaskNumber, isTaskClaimCandidate, isTaskInboxProject, normalizeLeaseSeconds, parseTaskHumanId, redactTaskClaim, TASK_AGENT_TARGETS, taskCreatorLabel, TASK_INBOX_PROJECT_ID, validateTaskMetadata, validateTaskReady } from '../utils/taskBlocks';
 import { exportBlockAsHtml, exportBlockAsMarkdown, exportBlockAsText, type ExportFormat } from '../utils/exportUtils';
 import { BLOCK_PRINT_PRESETS, loadStoredPrintSettings, normalizeBlockPrintSettings, saveStoredPrintSettings } from '../utils/printDocument';
 
@@ -510,6 +510,24 @@ async function createAgentTask(params: JsonObject) {
   const rawContent = optionalString(params, 'content') || '';
   if (containsMarkdownTask(rawContent)) throw new Error('Agents cannot create inline todos inside tasks.');
 
+  const rawAssigneeTarget = optionalString(params, 'assigneeTarget')
+    || optionalString(params, 'assignee')
+    || optionalString(params, 'targetAgent');
+  const assigneeTarget: TaskAgentTarget = rawAssigneeTarget && TASK_AGENT_TARGETS.includes(rawAssigneeTarget as TaskAgentTarget)
+    ? (rawAssigneeTarget as TaskAgentTarget)
+    : 'any';
+  if (rawAssigneeTarget && !TASK_AGENT_TARGETS.includes(rawAssigneeTarget as TaskAgentTarget)) {
+    throw new Error('assigneeTarget is invalid.');
+  }
+  const rawAssigneeCustomName = optionalString(params, 'assigneeCustomAgentName')
+    || optionalString(params, 'targetCustomAgentName');
+  const assigneeCustomName = assigneeTarget === 'custom'
+    ? (rawAssigneeCustomName || customAgentName || '')
+    : undefined;
+  if (assigneeTarget === 'custom' && !assigneeCustomName?.trim()) {
+    throw new Error('assigneeCustomAgentName is required when assigneeTarget is custom.');
+  }
+
   const requestedProjectId = optionalString(params, 'projectId');
   const parentId = typeof params.parentId === 'string' && params.parentId ? params.parentId : null;
   const projectId = requestedProjectId || TASK_INBOX_PROJECT_ID;
@@ -557,7 +575,7 @@ async function createAgentTask(params: JsonObject) {
       task: createTaskMetadata(position, {
         type: 'agent', agentTarget, agentId, requestId,
         ...(agentTarget === 'custom' ? { customAgentName } : {})
-      }, taskNumber),
+      }, taskNumber, assigneeTarget, assigneeCustomName),
       lastAgentEditAt: now,
       isTrash: false,
       createdAt: now,
