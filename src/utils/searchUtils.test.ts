@@ -5,14 +5,47 @@ describe('parseSearchQuery', () => {
   it('separates free text from exact tag filters', () => {
     expect(parseSearchQuery('hoofdstuk #Concept #idee')).toEqual({
       text: 'hoofdstuk',
-      tags: ['concept', 'idee']
+      tags: ['concept', 'idee'],
+      taskNumbers: []
     });
   });
 
   it('deduplicates tags and keeps invalid tag tokens as text', () => {
     expect(parseSearchQuery('#idee #Idee #fout! woorden')).toEqual({
       text: '#fout! woorden',
-      tags: ['idee']
+      tags: ['idee'],
+      taskNumbers: []
+    });
+  });
+
+  it('recognizes task IDs such as #187, TSK-187, #TSK-187 and bare numbers', () => {
+    expect(parseSearchQuery('TSK-187')).toEqual({
+      text: 'tsk-187',
+      tags: [],
+      taskNumbers: [187]
+    });
+    expect(parseSearchQuery('#187')).toEqual({
+      text: '#187',
+      tags: [],
+      taskNumbers: [187]
+    });
+    expect(parseSearchQuery('#TSK-187')).toEqual({
+      text: '#tsk-187',
+      tags: [],
+      taskNumbers: [187]
+    });
+    expect(parseSearchQuery('187')).toEqual({
+      text: '187',
+      tags: [],
+      taskNumbers: [187]
+    });
+  });
+
+  it('handles mixed task ID, tag, and free text queries', () => {
+    expect(parseSearchQuery('#concept #187 TSK-42 fix login bug')).toEqual({
+      text: '#187 tsk-42 fix login bug',
+      tags: ['concept'],
+      taskNumbers: [187, 42]
     });
   });
 });

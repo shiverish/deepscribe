@@ -130,8 +130,29 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
   const tasks = useMemo(() => blocks
     .filter(block => !block.isTrash && block.kind === 'task' && block.task)
     .filter(block => selectedProjectIds.length === 0 || selectedProjectIds.includes(block.projectId))
-    .filter(block => statusFilter === 'all' || block.task?.status === statusFilter)
-    .filter(block => !query.trim() || `${block.title} ${block.plainText}`.toLocaleLowerCase('en-US').includes(query.trim().toLocaleLowerCase('en-US')))
+    .filter(block => {
+      const q = query.trim().toLocaleLowerCase('en-US');
+      if (!q) return true;
+      const titleAndText = `${block.title} ${block.plainText}`.toLocaleLowerCase('en-US');
+      if (titleAndText.includes(q)) return true;
+
+      const taskNum = block.task?.taskNumber;
+      if (typeof taskNum === 'number') {
+        const humanId = formatTaskHumanId(taskNum)?.toLocaleLowerCase('en-US') ?? '';
+        const plainTsk = `tsk-${taskNum}`;
+        const numStr = `${taskNum}`;
+        const hashNumStr = `#${taskNum}`;
+        if (
+          humanId.includes(q) ||
+          plainTsk.includes(q) ||
+          numStr === q ||
+          hashNumStr === q
+        ) {
+          return true;
+        }
+      }
+      return false;
+    })
     .sort((left, right) => (left.task?.position ?? left.order) - (right.task?.position ?? right.order) || left.createdAt - right.createdAt),
     [blocks, selectedProjectIds, query, statusFilter]
   );

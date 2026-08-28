@@ -2,10 +2,11 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { db } from '../../db/db';
 import type { Block, Project, SearchResultItem, PathSegment } from '../../types';
 import { TagBadge } from '../Navigation/TagBadge';
-import { Search, FileText, ChevronRight, X, Tag as TagIcon } from 'lucide-react';
+import { Search, FileText, ChevronRight, X, Tag as TagIcon, CheckSquare } from 'lucide-react';
 import { parseSearchQuery, rankTopTags, type TagCount } from '../../utils/searchUtils';
 import { sanitizeTags } from '../../utils/tagUtils';
 import { rankBlocksLocally } from '../../utils/semanticSearch';
+import { formatTaskHumanId } from '../../utils/taskBlocks';
 
 interface SearchModalProps {
   isOpen: boolean;
@@ -283,8 +284,29 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                 >
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <FileText size={15} color="#38BDF8" />
-                      {res.block.title}
+                      {res.block.kind === 'task' ? (
+                        <CheckSquare size={15} color="#A78BFA" />
+                      ) : (
+                        <FileText size={15} color="#38BDF8" />
+                      )}
+                      {res.block.kind === 'task' && formatTaskHumanId(res.block.task?.taskNumber) && (
+                        <span
+                          style={{
+                            fontSize: '0.75rem',
+                            fontFamily: 'monospace',
+                            fontWeight: 700,
+                            color: '#A78BFA',
+                            background: 'rgba(167, 139, 250, 0.15)',
+                            padding: '1px 6px',
+                            borderRadius: '4px',
+                            border: '1px solid rgba(167, 139, 250, 0.3)',
+                            letterSpacing: '0.02em'
+                          }}
+                        >
+                          {formatTaskHumanId(res.block.task?.taskNumber)}
+                        </span>
+                      )}
+                      <span>{res.block.title}</span>
                     </div>
                     {res.block.tags && res.block.tags.length > 0 && (
                       <div style={{ display: 'flex', gap: 4 }}>

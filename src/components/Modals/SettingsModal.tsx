@@ -3,6 +3,7 @@ import { X, RotateCcw, Palette, Type, Sliders, Sparkles, Eye, Check, Save, Trash
 import type { UserSettings, ThemePreset, FontFamily, ContentWidth, WorkspaceStatus } from '../../types';
 import { PRESET_PALETTES } from '../../hooks/useSettings';
 import { repository } from '../../db/repository';
+import { CURRENT_APP_VERSION } from '../../data/changelog';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -10,6 +11,7 @@ interface SettingsModalProps {
   settings: UserSettings;
   onUpdateSettings: (partial: Partial<UserSettings>) => void;
   onResetSettings: () => void;
+  onOpenWhatsNew?: () => void;
 }
 
 type TabType = 'appearance' | 'editor' | 'general' | 'ai';
@@ -33,7 +35,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose,
   settings,
   onUpdateSettings,
-  onResetSettings
+  onResetSettings,
+  onOpenWhatsNew
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('general');
   const [copiedClient, setCopiedClient] = useState<string | null>(null);
@@ -642,7 +645,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                          Current version: v{updaterState?.currentVersion || '0.1.6'}
+                          Current version: v{updaterState?.currentVersion || CURRENT_APP_VERSION}
                         </span>
                         {updaterState?.status === 'downloaded' && (
                           <span style={{
@@ -659,6 +662,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       </div>
 
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        {onOpenWhatsNew && (
+                          <button
+                            className="secondary-button"
+                            type="button"
+                            onClick={onOpenWhatsNew}
+                            style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                          >
+                            <Sparkles size={14} /> What's New
+                          </button>
+                        )}
                         {updaterState?.status === 'downloaded' ? (
                           <button
                             className="primary-button"
@@ -702,7 +715,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     )}
                   </div>
                 ) : (
-                  <span className="setting-description">In-app updates are available in the installed desktop version.</span>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                      Current version: v{CURRENT_APP_VERSION}
+                    </span>
+                    {onOpenWhatsNew && (
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={onOpenWhatsNew}
+                        style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                      >
+                        <Sparkles size={14} /> What's New
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
 

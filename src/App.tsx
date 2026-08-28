@@ -16,9 +16,11 @@ import { HotkeyHelpModal } from './components/Modals/HotkeyHelpModal';
 import { SettingsModal } from './components/Modals/SettingsModal';
 import { ContextMenu } from './components/Modals/ContextMenu';
 import { WorkspaceModal } from './components/Modals/WorkspaceModal';
+import { WhatsNewModal } from './components/Modals/WhatsNewModal';
 import { ScreenAnnotationOverlay } from './components/Overlay/ScreenAnnotationOverlay';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useSettings } from './hooks/useSettings';
+import { CURRENT_APP_VERSION, shouldAutoOpenWhatsNew } from './data/changelog';
 import { getDropPosition, isDescendantOrSelf, moveBlockInTree, reorderProject } from './utils/dragAndDrop';
 import { sanitizeTags } from './utils/tagUtils';
 import { getDeleteFallbackTarget } from './utils/selectionUtils';
@@ -50,6 +52,7 @@ function DeepScribeApp() {
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isWorkspaceOpen, setIsWorkspaceOpen] = useState(false);
+  const [isWhatsNewOpen, setIsWhatsNewOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: Project | Block; type: 'project' | 'block' } | null>(null);
 
   const [draggedItem, setDraggedItem] = useState<{ item: Project | Block; type: 'project' | 'block' } | null>(null);
@@ -58,6 +61,29 @@ function DeepScribeApp() {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>({ state: 'saved' });
   const [overlayData, setOverlayData] = useState<{ screenshotDataUrl: string } | null>(null);
   const [updaterState, setUpdaterState] = useState<UpdaterState | null>(null);
+
+  // Automatic "What's New" trigger on application update
+  useEffect(() => {
+    const currentVersion = updaterState?.currentVersion || CURRENT_APP_VERSION;
+    // On fresh install or clean state, silently record current version without interrupting user
+    if (settings.lastSeenWhatsNewVersion === undefined) {
+      void updateSettings({ lastSeenWhatsNewVersion: currentVersion });
+      return;
+    }
+
+    // When updated to a newer version than last seen, pop up What's New modal
+    if (shouldAutoOpenWhatsNew(currentVersion, settings.lastSeenWhatsNewVersion)) {
+      setIsWhatsNewOpen(true);
+    }
+  }, [updaterState?.currentVersion, settings.lastSeenWhatsNewVersion, updateSettings]);
+
+  const handleCloseWhatsNew = useCallback(() => {
+    setIsWhatsNewOpen(false);
+    const currentVersion = updaterState?.currentVersion || CURRENT_APP_VERSION;
+    if (settings.lastSeenWhatsNewVersion !== currentVersion) {
+      void updateSettings({ lastSeenWhatsNewVersion: currentVersion });
+    }
+  }, [updaterState?.currentVersion, settings.lastSeenWhatsNewVersion, updateSettings]);
 
   useEffect(() => {
     if (!window.electronAPI?.onNavigateToTarget) return;
@@ -1113,6 +1139,13 @@ function DeepScribeApp() {
         settings={settings}
         onUpdateSettings={updateSettings}
         onResetSettings={resetSettings}
+        onOpenWhatsNew={() => setIsWhatsNewOpen(true)}
+      />
+
+      <WhatsNewModal
+        isOpen={isWhatsNewOpen}
+        onClose={handleCloseWhatsNew}
+        currentAppVersion={updaterState?.currentVersion || CURRENT_APP_VERSION}
       />
 
       <WorkspaceModal

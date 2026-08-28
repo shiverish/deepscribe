@@ -236,6 +236,7 @@ export interface UserSettings {
   spellcheck: boolean;
   allowOfflineAgentAccess: boolean;
   minimizeToTray: boolean;
+  lastSeenWhatsNewVersion?: string;
 }
 
 export const DEFAULT_USER_SETTINGS: UserSettings = {

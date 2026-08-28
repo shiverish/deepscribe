@@ -12,9 +12,9 @@ function temporaryWorkspace() {
   return root;
 }
 
-function insertUserTask(store: DirectWorkspaceStore, projectId: string, parentId: string | null, title: string, options: { status?: string; agentTarget?: string; dependsOn?: string[] } = {}) {
+function insertUserTask(store: DirectWorkspaceStore, projectId: string, parentId: string | null, title: string, options: { status?: string; agentTarget?: string; dependsOn?: string[]; taskNumber?: number } = {}) {
   const now = Date.now();
-  const block = { id: `task-${crypto.randomUUID()}`, projectId, parentId, title, content: '<p>Free task notes</p>', plainText: 'Free task notes', order: 0, childCount: 0, taskCount: 0, completedTaskCount: 0, attachmentCount: 0, tags: [], dependsOn: options.dependsOn, kind: 'task', task: { status: options.status ?? 'inbox', agentTarget: options.agentTarget ?? 'none', position: now, ...(options.status === 'ready' ? { readyAt: now } : {}) }, isTrash: false, createdAt: now, updatedAt: now };
+  const block = { id: `task-${crypto.randomUUID()}`, projectId, parentId, title, content: '<p>Free task notes</p>', plainText: 'Free task notes', order: 0, childCount: 0, taskCount: 0, completedTaskCount: 0, attachmentCount: 0, tags: [], dependsOn: options.dependsOn, kind: 'task', task: { status: options.status ?? 'inbox', agentTarget: options.agentTarget ?? 'none', position: now, ...(options.status === 'ready' ? { readyAt: now } : {}), ...(options.taskNumber ? { taskNumber: options.taskNumber } : {}) }, isTrash: false, createdAt: now, updatedAt: now };
   store.saveBlock(block);
   return block;
 }
@@ -612,6 +612,62 @@ describe('DirectWorkspaceStore offline MCP engine', () => {
       const reloaded = await store.handleRequest('get_export_settings', {});
       expect(reloaded.settings.fontSize).toBe(13);
       expect(reloaded.settings.headerDivider).toBe(true);
+    } finally {
+      store.close();
+    }
+  });
+
+  it('searches, retrieves and claims tasks using human task IDs (TSK-187, #187, bare numbers)', async () => {
+    const wsPath = temporaryWorkspace();
+    const store = new DirectWorkspaceStore({ workspacePath: wsPath });
+    try {
+      const project = await store.handleRequest('create_project', { title: 'Task Search Project' });
+      const parent = await store.handleRequest('create_block', { projectId: project.id, title: 'Roadmap' });
+      const task = insertUserTask(store, project.id, parent.id, 'Implement Auth Middleware', { status: 'ready', agentTarget: 'openai', taskNumber: 187 });
+
+      // Search by TSK-187, #187, 187
+      const searchResults1 = await store.handleRequest('search', { query: 'TSK-187' });
+      expect(searchResults1.length).toBeGreaterThan(0);
+      expect(searchResults1[0].id).toBe(task.id);
+
+      const searchResults2 = await store.handleRequest('search', { query: '#187' });
+      expect(searchResults2.length).toBeGreaterThan(0);
+      expect(searchResults2[0].id).toBe(task.id);
+
+      const searchResults3 = await store.handleRequest('search', { query: '187' });
+      expect(searchResults3.length).toBeGreaterThan(0);
+      expect(searchResults3[0].id).toBe(task.id);
+
+      // get_task by TSK-187, #187, 187
+      const fetchedByTsk = await store.handleRequest('get_task', { taskId: 'TSK-187' });
+      expect(fetchedByTsk.id).toBe(task.id);
+
+      const fetchedByHash = await store.handleRequest('get_task', { taskId: '#187' });
+      expect(fetchedByHash.id).toBe(task.id);
+
+      const fetchedByNum = await store.handleRequest('get_task', { taskId: '187' });
+      expect(fetchedByNum.id).toBe(task.id);
+
+      // claim_work_item by TSK-187
+      const claim = await store.handleRequest('claim_work_item', {
+        blockId: 'TSK-187',
+        agentId: 'codex-1',
+        agentTarget: 'openai',
+        requestId: 'claim-tsk-187',
+        leaseSeconds: 120
+      });
+      expect(claim.block.id).toBe(task.id);
+      expect(claim.block.task.status).toBe('in-progress');
+
+      // transition_work_item by TSK-187
+      const done = await store.handleRequest('transition_work_item', {
+        blockId: 'TSK-187',
+        agentId: 'codex-1',
+        claimToken: claim.claimToken,
+        status: 'done'
+      });
+      expect(done.id).toBe(task.id);
+      expect(done.task.status).toBe('done');
     } finally {
       store.close();
     }

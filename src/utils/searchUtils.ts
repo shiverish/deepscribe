@@ -1,17 +1,39 @@
 import { parseTag } from './tagUtils';
+import { parseTaskHumanId } from './taskBlocks';
 
 export interface ParsedSearchQuery {
   text: string;
   tags: string[];
+  taskNumbers: number[];
 }
 
-/** Splits free text from exact #tag filters. Multiple tags use AND semantics. */
+/** Splits free text and task ID queries from exact #tag filters. Multiple tags use AND semantics. */
 export function parseSearchQuery(query: string): ParsedSearchQuery {
   const textParts: string[] = [];
   const tags = new Set<string>();
+  const taskNumbers = new Set<number>();
 
   for (const part of query.normalize('NFC').trim().split(/\s+/)) {
     if (!part) continue;
+
+    // Check if token matches a task human ID (e.g. #187, #TSK-187, TSK-187)
+    const parsedTaskId = parseTaskHumanId(part);
+    if (parsedTaskId !== null) {
+      taskNumbers.add(parsedTaskId);
+      textParts.push(part.toLowerCase());
+      continue;
+    }
+
+    // Bare numbers can also match task numbers
+    if (/^\d+$/.test(part)) {
+      const num = parseInt(part, 10);
+      if (Number.isFinite(num) && num > 0) {
+        taskNumbers.add(num);
+      }
+      textParts.push(part.toLowerCase());
+      continue;
+    }
+
     if (part.startsWith('#')) {
       const tag = parseTag(part).tag;
       if (tag) {
@@ -22,7 +44,11 @@ export function parseSearchQuery(query: string): ParsedSearchQuery {
     textParts.push(part.toLowerCase());
   }
 
-  return { text: textParts.join(' '), tags: Array.from(tags) };
+  return {
+    text: textParts.join(' '),
+    tags: Array.from(tags),
+    taskNumbers: Array.from(taskNumbers)
+  };
 }
 
 export interface TagCount {

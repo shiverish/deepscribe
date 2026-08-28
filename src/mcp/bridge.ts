@@ -38,6 +38,11 @@ export async function findTaskBlockByIdentifier(identifier: string): Promise<Blo
     const found = allBlocks.find(b => b.task?.taskNumber === parsedNum);
     if (found) return found;
   }
+  if (/^\d+$/.test(clean)) {
+    const num = parseInt(clean, 10);
+    const found = allBlocks.find(b => b.task?.taskNumber === num);
+    if (found) return found;
+  }
   return allBlocks.find(b => b.id === clean);
 }
 

@@ -653,4 +653,28 @@ describe('DeepScribe MCP export_block', () => {
     expect(reloaded.settings.pageSize).toBe('A5');
     expect(reloaded.settings.font).toBe('sans');
   });
+
+  it('retrieves and claims tasks using human task IDs in bridge (TSK-187, #187, bare numbers)', async () => {
+    const project = await handleMcpBridgeRequest('create_project', { title: 'Bridge Task ID Project' }) as Project;
+    const task = await insertUserTask(project.id, null, 'Bridge task', { status: 'ready', agentTarget: 'openai', position: 1, taskNumber: 187 });
+
+    const fetchedByTsk = await handleMcpBridgeRequest('get_task', { taskId: 'TSK-187' }) as Block;
+    expect(fetchedByTsk.id).toBe(task.id);
+
+    const fetchedByHash = await handleMcpBridgeRequest('get_task', { taskId: '#187' }) as Block;
+    expect(fetchedByHash.id).toBe(task.id);
+
+    const fetchedByNum = await handleMcpBridgeRequest('get_task', { taskId: '187' }) as Block;
+    expect(fetchedByNum.id).toBe(task.id);
+
+    const claim = await handleMcpBridgeRequest('claim_work_item', {
+      blockId: 'TSK-187',
+      agentId: 'codex-1',
+      agentTarget: 'openai',
+      requestId: 'bridge-claim-tsk-187',
+      leaseSeconds: 120
+    }) as { block: Block; claimToken: string };
+    expect(claim.block.id).toBe(task.id);
+    expect(claim.block.task?.status).toBe('in-progress');
+  });
 });

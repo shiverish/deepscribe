@@ -215,8 +215,27 @@ function containsMarkdownTask(value) {
   return /^\s*[-*+]\s+\[[ xX]\]\s+/m.test(String(value || ''));
 }
 
-function createTaskMetadata(position = Date.now(), creator = { type: 'user' }) {
-  return { status: 'inbox', agentTarget: 'any', position, creator };
+export function parseTaskHumanId(input) {
+  const match = String(input || '').trim().match(/^(?:#?TSK-|#)(\d+)$/i);
+  if (!match) return null;
+  const num = parseInt(match[1], 10);
+  return Number.isFinite(num) && num > 0 ? num : null;
+}
+
+export function getNextTaskNumber(allBlocks) {
+  let highest = 0;
+  for (const block of allBlocks) {
+    if (block.kind === 'task' && typeof block.task?.taskNumber === 'number') {
+      if (block.task.taskNumber > highest) {
+        highest = block.task.taskNumber;
+      }
+    }
+  }
+  return highest + 1;
+}
+
+function createTaskMetadata(position = Date.now(), creator = { type: 'user' }, taskNumber) {
+  return { status: 'inbox', agentTarget: 'any', position, ...(typeof taskNumber === 'number' && Number.isInteger(taskNumber) && taskNumber > 0 ? { taskNumber } : {}), creator };
 }
 
 function normalizeTaskCreator(value) {
@@ -246,8 +265,9 @@ function normalizeStoredTask(block) {
   const sourceTask = block.task || { status: legacyTag === 'agent-ready' ? 'ready' : legacyTag === 'agent-claimed' ? 'in-progress' : legacyTag === 'agent-blocked' ? 'blocked' : legacyTag === 'agent-review' ? 'review' : legacyTag === 'agent-done' ? 'done' : 'inbox', agentTarget: legacyTag === 'agent-ready' ? 'any' : 'none' };
   const legacyStatus = sourceTask.status;
   const status = legacyStatus === 'draft' ? 'inbox' : legacyStatus === 'claimed' ? 'in-progress' : legacyStatus;
+  const taskNumber = typeof sourceTask.taskNumber === 'number' && Number.isInteger(sourceTask.taskNumber) && sourceTask.taskNumber > 0 ? sourceTask.taskNumber : undefined;
   const creator = normalizeTaskCreator(sourceTask.creator);
-  const task = { ...sourceTask, status, position: Number.isFinite(sourceTask.position) ? sourceTask.position : (block.order ?? block.createdAt ?? Date.now()) };
+  const task = { ...sourceTask, status, position: Number.isFinite(sourceTask.position) ? sourceTask.position : (block.order ?? block.createdAt ?? Date.now()), ...(taskNumber ? { taskNumber } : {}) };
   if (creator) task.creator = creator;
   else delete task.creator;
   return { ...block, kind: 'task', tags: tags.filter(tag => !tag.startsWith('agent-')), task };
@@ -520,20 +540,49 @@ function trigramSimilarity(left, right) {
   return a.size + b.size ? (2 * overlap) / (a.size + b.size) : 0;
 }
 
+function extractQueryTaskNumbers(query) {
+  const numbers = new Set();
+  for (const part of String(query || '').trim().split(/\s+/)) {
+    if (!part) continue;
+    const fromId = parseTaskHumanId(part);
+    if (fromId !== null) {
+      numbers.add(fromId);
+    } else if (/^\d+$/.test(part)) {
+      const num = parseInt(part, 10);
+      if (Number.isFinite(num) && num > 0) {
+        numbers.add(num);
+      }
+    }
+  }
+  return Array.from(numbers);
+}
+
 export function rankBlocksLocally(blocks, query) {
   const queryTokens = tokens(query);
-  if (queryTokens.length === 0) return [];
+  const queryTaskNumbers = extractQueryTaskNumbers(query);
+  if (queryTokens.length === 0 && queryTaskNumbers.length === 0) return [];
   const expanded = expandQuery(queryTokens);
   const normalizedQuery = queryTokens.join(' ');
+  const singleTaskMatch = queryTaskNumbers.length === 1 && (
+    parseTaskHumanId(String(query || '').trim()) !== null || /^\d+$/.test(String(query || '').trim())
+  );
 
   return blocks.map(block => {
     const titleTokens = tokens(block.title);
     const bodyTokens = tokens(block.plainText);
     const tagTokens = (block.tags || []).flatMap(tokens);
+    const taskNumber = block.kind === 'task' && typeof block.task?.taskNumber === 'number' ? block.task.taskNumber : null;
+    const taskTokens = taskNumber ? [`tsk-${taskNumber}`, `${taskNumber}`] : [];
+
     let score = 0;
+    if (taskNumber !== null && queryTaskNumbers.includes(taskNumber)) {
+      score += singleTaskMatch ? 100 : 50;
+    }
+
     for (const token of expanded) {
       if (titleTokens.includes(token)) score += queryTokens.includes(token) ? 8 : 3;
       if (tagTokens.includes(token)) score += queryTokens.includes(token) ? 6 : 2;
+      if (taskTokens.includes(token)) score += queryTokens.includes(token) ? 8 : 3;
       const bodyHits = bodyTokens.filter(value => value === token).length;
       score += Math.min(bodyHits, 4) * (queryTokens.includes(token) ? 2 : 1);
     }
@@ -1006,6 +1055,25 @@ export class DirectWorkspaceStore {
     this.open();
     const row = this.database.prepare('SELECT json FROM blocks WHERE id = ?').get(id);
     return row ? normalizeStoredTask(JSON.parse(row.json)) : null;
+  }
+
+  findTaskBlockByIdentifier(identifier) {
+    const clean = String(identifier || '').trim();
+    const direct = this.getBlock(clean);
+    if (direct && !direct.isTrash && direct.kind === 'task') return direct;
+
+    const parsedNum = parseTaskHumanId(clean);
+    const allBlocks = this.getAllBlocks().filter(b => !b.isTrash && b.kind === 'task');
+    if (parsedNum !== null) {
+      const found = allBlocks.find(b => b.task?.taskNumber === parsedNum);
+      if (found) return found;
+    }
+    if (/^\d+$/.test(clean)) {
+      const num = parseInt(clean, 10);
+      const found = allBlocks.find(b => b.task?.taskNumber === num);
+      if (found) return found;
+    }
+    return allBlocks.find(b => b.id === clean) || null;
   }
 
   getAllAttachments() {
@@ -1554,6 +1622,7 @@ export class DirectWorkspaceStore {
         const siblingTasks = this.getAllBlocks().filter(block => !block.isTrash && block.projectId === projectId && block.kind === 'task' && block.task?.status === 'inbox');
         const position = siblingTasks.reduce((highest, block) => Math.max(highest, block.task?.position ?? -1), -1) + 1;
         const order = this.getAllBlocks().filter(block => !block.isTrash && block.projectId === projectId && block.parentId === parentId).length;
+        const taskNumber = getNextTaskNumber(this.getAllBlocks());
         const block = {
           id: `block-${crypto.randomUUID()}`,
           projectId,
@@ -1565,7 +1634,7 @@ export class DirectWorkspaceStore {
           attachmentCount: 0,
           tags: [],
           kind: 'task',
-          task: createTaskMetadata(position, { type: 'agent', agentTarget, agentId, requestId, ...(agentTarget === 'custom' ? { customAgentName } : {}) }),
+          task: createTaskMetadata(position, { type: 'agent', agentTarget, agentId, requestId, ...(agentTarget === 'custom' ? { customAgentName } : {}) }, taskNumber),
           lastAgentEditAt: now,
           isTrash: false,
           createdAt: now,
@@ -1673,9 +1742,10 @@ export class DirectWorkspaceStore {
       }
 
       case 'update_task_status': {
-        const blockId = requireString('blockId');
-        const block = this.getBlock(blockId);
+        const inputId = optionalStr('taskId') || requireString('blockId');
+        const block = this.findTaskBlockByIdentifier(inputId) || this.getBlock(inputId);
         if (!block || block.isTrash || block.kind !== 'task' || !block.task) throw new Error('Taakblok niet gevonden.');
+        const blockId = block.id;
         const task = taskMetadataFromParams(params, block.task);
         if (task.status === 'in-progress' && block.task.status !== 'in-progress') throw new Error('Use claim_work_item or claim_next_work_item to claim a task.');
         if (block.task.claim && task.status !== block.task.status) {
@@ -1710,7 +1780,8 @@ export class DirectWorkspaceStore {
       }
 
       case 'get_task': {
-        const block = this.getBlock(requireString('taskId'));
+        const inputId = optionalStr('blockId') || requireString('taskId');
+        const block = this.findTaskBlockByIdentifier(inputId) || this.getBlock(inputId);
         if (!block || block.isTrash || block.kind !== 'task' || !block.task) throw new Error('Task not found.');
         return { ...redactTaskClaim(block), projectId: block.projectId === 'proj-system-task-inbox' ? null : block.projectId };
       }
@@ -1781,7 +1852,9 @@ export class DirectWorkspaceStore {
 
       case 'claim_work_item': {
         this.open();
-        const blockId = requireString('blockId');
+        const rawBlockId = requireString('blockId');
+        const candidateBlock = this.findTaskBlockByIdentifier(rawBlockId) || this.getBlock(rawBlockId);
+        const blockId = candidateBlock?.id || rawBlockId;
         const agentId = requireString('agentId');
         const requestId = requireString('requestId');
         const agentTarget = requireString('agentTarget');
@@ -1801,7 +1874,7 @@ export class DirectWorkspaceStore {
             this.database.exec('COMMIT');
             return replayBlock ? { block: redactTaskClaim(replayBlock), claimToken: replay.token, replayed: true } : null;
           }
-          const candidate = this.getBlock(blockId);
+          const candidate = candidateBlock || this.getBlock(blockId);
           const projects = new Set(this.getAllProjects().filter(project => !project.isTrash).map(project => project.id));
           const allBlocks = this.getAllBlocks().filter(block => !block.isTrash);
           if (!candidate || !projects.has(candidate.projectId) || !isTaskClaimCandidate(candidate, allBlocks, agentTarget, customAgentName, now)) {
@@ -1825,14 +1898,16 @@ export class DirectWorkspaceStore {
 
       case 'renew_work_item_claim': {
         this.open();
-        const blockId = requireString('blockId');
+        const rawBlockId = requireString('blockId');
+        const resolvedBlock = this.findTaskBlockByIdentifier(rawBlockId) || this.getBlock(rawBlockId);
+        const blockId = resolvedBlock?.id || rawBlockId;
         const agentId = requireString('agentId');
         const token = requireString('claimToken');
         const leaseSeconds = normalizeLeaseSeconds(params.leaseSeconds);
         const now = Date.now();
         this.database.exec('BEGIN IMMEDIATE');
         try {
-          const block = this.getBlock(blockId);
+          const block = resolvedBlock || this.getBlock(blockId);
           const claim = block?.task?.claim;
           if (!block || block.kind !== 'task' || block.task?.status !== 'in-progress' || !claim) throw new Error('Actieve taakclaim niet gevonden.');
           if (claim.ownerId !== agentId || claim.token !== token) throw new Error('Claimtoken of eigenaar is ongeldig.');
@@ -1851,7 +1926,9 @@ export class DirectWorkspaceStore {
 
       case 'transition_work_item': {
         this.open();
-        const blockId = requireString('blockId');
+        const rawBlockId = requireString('blockId');
+        const resolvedBlock = this.findTaskBlockByIdentifier(rawBlockId) || this.getBlock(rawBlockId);
+        const blockId = resolvedBlock?.id || rawBlockId;
         const agentId = requireString('agentId');
         const token = requireString('claimToken');
         const status = requireString('status');
@@ -1859,7 +1936,7 @@ export class DirectWorkspaceStore {
         const now = Date.now();
         this.database.exec('BEGIN IMMEDIATE');
         try {
-          const block = this.getBlock(blockId);
+          const block = resolvedBlock || this.getBlock(blockId);
           const claim = block?.task?.claim;
           if (!block || block.kind !== 'task' || block.task?.status !== 'in-progress' || !claim) throw new Error('Actieve taakclaim niet gevonden.');
           if (claim.ownerId !== agentId || claim.token !== token) throw new Error('Claimtoken of eigenaar is ongeldig.');

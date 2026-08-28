@@ -226,7 +226,11 @@ export function useSettings() {
 
   const resetSettings = useCallback(async () => {
     setSettings(previous => {
-      const reset = { ...DEFAULT_USER_SETTINGS, savedThemes: previous.savedThemes };
+      const reset = {
+        ...DEFAULT_USER_SETTINGS,
+        savedThemes: previous.savedThemes,
+        lastSeenWhatsNewVersion: previous.lastSeenWhatsNewVersion
+      };
       if (!window.electronAPI?.workspace) localStorage.setItem(STORAGE_KEY, JSON.stringify(reset));
       db.settings.put({ key: 'user_settings', value: reset }).catch(() => {});
       return reset;
