@@ -14,9 +14,32 @@ export interface ReleaseEntry {
   items: ChangelogItem[];
 }
 
-export const CURRENT_APP_VERSION = '0.2.21';
+export const CURRENT_APP_VERSION = '0.2.22';
 
 export const CHANGELOG_ENTRIES: ReleaseEntry[] = [
+  {
+    version: '0.2.22',
+    date: 'August 2026',
+    title: 'Task Stage Quick Progression',
+    summary: 'Instantly advance task workflow stages with one-click quick action buttons on task cards and in the editor.',
+    items: [
+      {
+        type: 'feature',
+        text: 'Inbox → Ready Quick Action',
+        detail: 'Triage newly created tasks in the Workspace Inbox directly into the Ready queue with a single click on the card.'
+      },
+      {
+        type: 'feature',
+        text: 'Review → Done Quick Action',
+        detail: 'Approve agent and teammate deliverables in the Review stage and complete them immediately.'
+      },
+      {
+        type: 'improvement',
+        text: 'Task Inspector Quick Actions',
+        detail: 'Stage progression shortcuts are now directly accessible within the task inspector in the writing panel.'
+      }
+    ]
+  },
   {
     version: '0.2.21',
     date: 'August 2026',

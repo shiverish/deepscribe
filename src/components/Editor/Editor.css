@@ -67,6 +67,9 @@
 .task-inspector-heading { justify-content: space-between; font-size: .78rem; font-weight: 650; }
 .task-inspector-copy-btn { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--border-subtle); border-radius: 5px; background: var(--bg-surface); color: #38bdf8; padding: 3px 7px; font-size: .68rem; cursor: pointer; transition: all 0.15s ease; }
 .task-inspector-copy-btn:hover { background: rgba(56, 189, 248, 0.12); border-color: #38bdf8; }
+.task-inspector-advance-btn { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--border-subtle); border-radius: 5px; background: var(--bg-surface); color: var(--text-secondary); padding: 3px 7px; font-size: .68rem; cursor: pointer; transition: all 0.15s ease; }
+.task-inspector-advance-btn.ready:hover { background: rgba(56, 189, 248, 0.12); border-color: #38bdf8; color: #38bdf8; }
+.task-inspector-advance-btn.done:hover { background: rgba(34, 197, 94, 0.12); border-color: #22c55e; color: #22c55e; }
 .task-creator-details { display: flex; align-items: center; gap: 5px; margin-top: 9px; color: var(--text-secondary); font-size: .72rem; }
 .task-claim-details { display: flex; gap: 6px 12px; flex-wrap: wrap; margin: 9px 0; padding: 8px 9px; border-radius: 6px; background: rgba(245, 158, 11, .1); color: var(--text-secondary); font-size: .72rem; }
 .task-claim-details strong { color: var(--text-primary); }

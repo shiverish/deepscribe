@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
-import { Archive, Bot, Camera, CheckCheck, ChevronDown, ChevronRight, Columns3, Copy, FolderArchive, Layers, List, PanelRightClose, PanelRightOpen, Plus, Search, Trash2, User } from 'lucide-react';
+import { Archive, ArrowRight, Bot, Camera, Check, CheckCheck, ChevronDown, ChevronRight, Columns3, Copy, FolderArchive, Layers, List, PanelRightClose, PanelRightOpen, Plus, Search, Trash2, User } from 'lucide-react';
 import type { Block, Project, TaskAgentTarget, TaskStatus } from '../../types';
 import { formatTaskHumanId, taskCreatorLabel, TASK_AGENT_LABELS, TASK_AGENT_TARGETS, TASK_STATUSES, TASK_STATUS_LABELS, TASK_INBOX_PROJECT_ID } from '../../utils/taskBlocks';
 import { copyAgentReference } from '../../utils/agentReferences';
@@ -519,6 +519,34 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
           </select>
           {task.task?.claim && <span className="task-claim"><Bot size={11} /> {task.task.claim.ownerId}</span>}
           <div className="task-card-actions">
+            {task.task?.status === 'inbox' && (
+              <button
+                type="button"
+                className="task-card-advance task-card-advance-ready"
+                title="Mark as Ready"
+                aria-label={`Mark ${task.title} as Ready`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void moveTask(task, 'ready');
+                }}
+              >
+                <ArrowRight size={12} />
+              </button>
+            )}
+            {task.task?.status === 'review' && (
+              <button
+                type="button"
+                className="task-card-advance task-card-advance-done"
+                title="Approve & Mark Done"
+                aria-label={`Approve and mark ${task.title} as Done`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void moveTask(task, 'done');
+                }}
+              >
+                <Check size={12} />
+              </button>
+            )}
             <button
               type="button"
               className="task-card-copy-ref"
@@ -866,6 +894,34 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
                   </select>
                   <select disabled={Boolean(task.task?.claim)} value={task.task?.agentTarget ?? 'none'} onChange={event => void updateUserTaskAgent(task, event.target.value as TaskAgentTarget).catch(cause => setError(cause.message))}>{TASK_AGENT_TARGETS.map(target => <option key={target} value={target}>{TASK_AGENT_LABELS[target]}</option>)}</select>
                   <div className="task-list-row-actions">
+                    {task.task?.status === 'inbox' && (
+                      <button
+                        type="button"
+                        className="task-card-advance task-card-advance-ready"
+                        title="Mark as Ready"
+                        aria-label={`Mark ${task.title} as Ready`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void moveTask(task, 'ready');
+                        }}
+                      >
+                        <ArrowRight size={12} />
+                      </button>
+                    )}
+                    {task.task?.status === 'review' && (
+                      <button
+                        type="button"
+                        className="task-card-advance task-card-advance-done"
+                        title="Approve & Mark Done"
+                        aria-label={`Approve and mark ${task.title} as Done`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void moveTask(task, 'done');
+                        }}
+                      >
+                        <Check size={12} />
+                      </button>
+                    )}
                     <button
                       type="button"
                       className="task-card-copy-ref"
@@ -1012,6 +1068,34 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
                             </select>
                             <select disabled={Boolean(task.task?.claim)} value={task.task?.agentTarget ?? 'none'} onChange={event => void updateUserTaskAgent(task, event.target.value as TaskAgentTarget).catch(cause => setError(cause.message))}>{TASK_AGENT_TARGETS.map(target => <option key={target} value={target}>{TASK_AGENT_LABELS[target]}</option>)}</select>
                             <div className="task-list-row-actions">
+                              {task.task?.status === 'inbox' && (
+                                <button
+                                  type="button"
+                                  className="task-card-advance task-card-advance-ready"
+                                  title="Mark as Ready"
+                                  aria-label={`Mark ${task.title} as Ready`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void moveTask(task, 'ready');
+                                  }}
+                                >
+                                  <ArrowRight size={12} />
+                                </button>
+                              )}
+                              {task.task?.status === 'review' && (
+                                <button
+                                  type="button"
+                                  className="task-card-advance task-card-advance-done"
+                                  title="Approve & Mark Done"
+                                  aria-label={`Approve and mark ${task.title} as Done`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void moveTask(task, 'done');
+                                  }}
+                                >
+                                  <Check size={12} />
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 className="task-card-copy-ref"

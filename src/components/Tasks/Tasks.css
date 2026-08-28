@@ -104,8 +104,10 @@
 .task-card-meta { margin-top: 8px; justify-content: space-between; }
 .task-card select { min-width: 0; max-width: 130px; padding: 4px; font-size: .68rem; }
 .task-card-actions, .task-list-row-actions { display: inline-flex; align-items: center; gap: 2px; }
-.task-card-delete, .task-card-archive, .task-card-mark-read, .task-card-copy-ref { display: inline-flex; border: 0; background: transparent; color: var(--text-muted); cursor: pointer; padding: 4px; border-radius: 4px; transition: color 0.15s ease, background 0.15s ease; }
+.task-card-delete, .task-card-archive, .task-card-mark-read, .task-card-copy-ref, .task-card-advance { display: inline-flex; border: 0; background: transparent; color: var(--text-muted); cursor: pointer; padding: 4px; border-radius: 4px; transition: color 0.15s ease, background 0.15s ease; }
 .task-card-copy-ref:hover { color: #38bdf8; background: rgba(56, 189, 248, 0.1); }
+.task-card-advance-ready:hover { color: #38bdf8; background: rgba(56, 189, 248, 0.12); }
+.task-card-advance-done:hover { color: #22c55e; background: rgba(34, 197, 94, 0.12); }
 .task-card-mark-read { color: var(--agent-alert-color); }
 .task-card-mark-read:hover { color: #22c55e; background: rgba(34, 197, 94, 0.12); }
 .task-card-delete:hover { color: #fca5a5; background: rgba(252, 165, 165, 0.1); }

@@ -13,7 +13,7 @@ import { canTransitionTask, formatTaskHumanId, taskCreatorLabel, TASK_AGENT_LABE
 import { copyAgentReference } from '../../utils/agentReferences';
 import { saveProjectDraft } from '../../db/operations';
 import { PROJECT_COLOR_PALETTE, DEFAULT_PROJECT_COLOR } from '../../utils/projectColors';
-import { Check, Loader2, AlertCircle, FileText, Folder, FolderOpen, Paperclip, PanelRightClose, Edit3, Plus, Tag as TagIcon, Settings2, Trash2, Link2, ArrowUpRight, X, History, Lock, CheckCircle2, Clock, Bot, ClipboardCopy, Printer, Copy, CheckCheck } from 'lucide-react';
+import { Check, Loader2, AlertCircle, FileText, Folder, FolderOpen, Paperclip, PanelRightClose, Edit3, Plus, Tag as TagIcon, Settings2, Trash2, Link2, ArrowUpRight, ArrowRight, X, History, Lock, CheckCircle2, Clock, Bot, ClipboardCopy, Printer, Copy, CheckCheck } from 'lucide-react';
 import './Editor.css';
 
 interface WritingPanelProps {
@@ -775,6 +775,28 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                   <span>Task · {TASK_STATUS_LABELS[taskMetadata.status]}</span>
                 </span>
                 <div className="task-status-actions">
+                  {taskMetadata.status === 'inbox' && (
+                    <button
+                      type="button"
+                      className="task-inspector-advance-btn ready"
+                      title="Mark task as Ready"
+                      onClick={() => handleTaskStatus('ready')}
+                    >
+                      <ArrowRight size={12} />
+                      <span>Ready</span>
+                    </button>
+                  )}
+                  {taskMetadata.status === 'review' && (
+                    <button
+                      type="button"
+                      className="task-inspector-advance-btn done"
+                      title="Approve and mark task as Done"
+                      onClick={() => handleTaskStatus('done')}
+                    >
+                      <Check size={12} />
+                      <span>Approve</span>
+                    </button>
+                  )}
                   {activeItem && (
                     <button
                       type="button"
