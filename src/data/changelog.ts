@@ -14,9 +14,32 @@ export interface ReleaseEntry {
   items: ChangelogItem[];
 }
 
-export const CURRENT_APP_VERSION = '0.2.23';
+export const CURRENT_APP_VERSION = '0.2.24';
 
 export const CHANGELOG_ENTRIES: ReleaseEntry[] = [
+  {
+    version: '0.2.24',
+    date: 'August 2026',
+    title: 'Universal Task Stage Drag & Drop',
+    summary: 'Freely drag and drop tasks into any board stage, including empty columns, collapsed lanes, and cross-project stages.',
+    items: [
+      {
+        type: 'feature',
+        text: 'Drop onto Any Stage Column',
+        detail: 'Tasks can now be dropped anywhere onto a stage column, even when that stage has no tasks for that project yet.'
+      },
+      {
+        type: 'feature',
+        text: 'Multi-Task Drag Support',
+        detail: 'Moving any selected task now moves all selected tasks together into the target stage.'
+      },
+      {
+        type: 'improvement',
+        text: 'Precise Positioning & Collapsed Lane Dropping',
+        detail: 'Drop on the top or bottom half of cards for relative ordering, or drop onto collapsed columns like Done.'
+      }
+    ]
+  },
   {
     version: '0.2.23',
     date: 'August 2026',

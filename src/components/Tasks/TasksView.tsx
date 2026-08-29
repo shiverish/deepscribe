@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { Archive, ArrowRight, Bot, Camera, Check, CheckCheck, ChevronDown, ChevronRight, Columns3, Copy, FolderArchive, Layers, List, PanelRightClose, PanelRightOpen, Plus, Search, Trash2, User } from 'lucide-react';
 import type { Block, Project, TaskAgentTarget, TaskStatus } from '../../types';
 import { formatTaskHumanId, taskCreatorLabel, TASK_AGENT_LABELS, TASK_AGENT_TARGETS, TASK_STATUSES, TASK_STATUS_LABELS, TASK_INBOX_PROJECT_ID } from '../../utils/taskBlocks';
@@ -100,6 +100,34 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
 
   const [archiveModal, setArchiveModal] = useState<ArchiveModalState | null>(null);
   const [archiveProjectId, setArchiveProjectId] = useState<string>('');
+
+  // Drag and drop state
+  const [dragOverStatus, setDragOverStatus] = useState<TaskStatus | null>(null);
+  const dragCounterRef = useRef<Record<string, number>>({});
+
+  const resetDragState = () => {
+    dragCounterRef.current = {};
+    setDragOverStatus(null);
+  };
+
+  const handleLaneDragEnter = (e: React.DragEvent, status: TaskStatus) => {
+    e.preventDefault();
+    dragCounterRef.current[status] = (dragCounterRef.current[status] || 0) + 1;
+    setDragOverStatus(status);
+  };
+
+  const handleLaneDragLeave = (e: React.DragEvent, status: TaskStatus) => {
+    e.preventDefault();
+    dragCounterRef.current[status] = Math.max(0, (dragCounterRef.current[status] || 0) - 1);
+    if (dragCounterRef.current[status] === 0) {
+      setDragOverStatus(prev => (prev === status ? null : prev));
+    }
+  };
+
+  const handleLaneDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
 
   // Clear selection on Escape key
   useEffect(() => {
@@ -227,6 +255,59 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
       await updateUserTaskStatus(task, status, nextPosition(status));
       setError(null);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not move the task.'); }
+  };
+
+  const handleTaskDrop = async (
+    targetStatus: TaskStatus,
+    targetTask?: Block,
+    isAfter?: boolean,
+    sourceTaskId?: string
+  ) => {
+    if (!sourceTaskId) return;
+    const source = byId.get(sourceTaskId);
+    if (!source || source.kind !== 'task' || !source.task) return;
+
+    let tasksToMove: Block[] = [];
+    if (selectedTaskIds.has(source.id)) {
+      tasksToMove = selectedTasks.filter(t => t.kind === 'task' && t.task);
+      if (tasksToMove.length === 0) tasksToMove = [source];
+    } else {
+      tasksToMove = [source];
+    }
+
+    if (tasksToMove.length === 1 && targetTask && targetTask.id === source.id && source.task.status === targetStatus) {
+      return;
+    }
+
+    const claimedTasks = tasksToMove.filter(t => Boolean(t.task?.claim));
+    if (claimedTasks.length > 0) {
+      const msg = claimedTasks.length === 1
+        ? `Task “${claimedTasks[0].title}” has an active claim. Move it and release the claim?`
+        : `${claimedTasks.length} selected tasks have active claims. Move them and release claims?`;
+      if (!window.confirm(msg)) return;
+    }
+
+    try {
+      if (targetTask && targetTask.task) {
+        const targetPos = targetTask.task.position;
+        const basePos = isAfter ? targetPos + 0.001 : targetPos - 0.5;
+        for (let i = 0; i < tasksToMove.length; i++) {
+          const item = tasksToMove[i];
+          const pos = basePos + (i * 0.01);
+          await updateUserTaskStatus(item, targetStatus, pos);
+        }
+      } else {
+        const startPos = nextPosition(targetStatus);
+        for (let i = 0; i < tasksToMove.length; i++) {
+          const item = tasksToMove[i];
+          const pos = startPos + i;
+          await updateUserTaskStatus(item, targetStatus, pos);
+        }
+      }
+      setError(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not move the task.');
+    }
   };
 
   const deleteTask = async (task: Block) => {
@@ -457,14 +538,24 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
         key={task.id}
         className={`task-card ${isNew ? 'has-agent-updates' : ''} ${isSelected ? 'is-selected' : ''}`}
         draggable
-        onDragStart={event => event.dataTransfer.setData('text/deepscribe-task', task.id)}
-        onDragOver={event => event.preventDefault()}
-        onDrop={event => {
-          event.preventDefault(); event.stopPropagation();
-          const source = byId.get(event.dataTransfer.getData('text/deepscribe-task'));
-          if (!source || source.id === task.id || !task.task) return;
-          if (source.task?.claim && !window.confirm('This task has an active claim. Move it and release the claim?')) return;
-          void updateUserTaskStatus(source, task.task.status, task.task.position - 0.5).catch(cause => setError(cause.message));
+        onDragStart={event => {
+          event.dataTransfer.setData('text/deepscribe-task', task.id);
+          event.dataTransfer.effectAllowed = 'move';
+        }}
+        onDragEnd={resetDragState}
+        onDragOver={event => {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = 'move';
+        }}
+        onDrop={async event => {
+          event.preventDefault();
+          event.stopPropagation();
+          resetDragState();
+          const sourceId = event.dataTransfer.getData('text/deepscribe-task');
+          if (!sourceId || !task.task) return;
+          const rect = event.currentTarget.getBoundingClientRect();
+          const isAfter = event.clientY > rect.top + rect.height / 2;
+          await handleTaskDrop(task.task.status, task, isAfter, sourceId);
         }}
       >
         <button
@@ -748,7 +839,21 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
 
             if (isDoneLane && isDoneCollapsed) {
               return (
-                <aside key={status} className="task-lane task-lane-collapsed" onClick={toggleDoneCollapse} title="Expand Done column">
+                <aside
+                  key={status}
+                  className={`task-lane task-lane-collapsed ${dragOverStatus === status ? 'is-drag-over' : ''}`}
+                  onClick={toggleDoneCollapse}
+                  title="Expand Done column"
+                  onDragEnter={e => handleLaneDragEnter(e, status)}
+                  onDragLeave={e => handleLaneDragLeave(e, status)}
+                  onDragOver={handleLaneDragOver}
+                  onDrop={async e => {
+                    e.preventDefault();
+                    resetDragState();
+                    const sourceId = e.dataTransfer.getData('text/deepscribe-task');
+                    await handleTaskDrop(status, undefined, undefined, sourceId);
+                  }}
+                >
                   <button type="button" className="task-lane-collapsed-btn" aria-label="Expand Done column">
                     <PanelRightOpen size={16} />
                     <span className="task-lane-collapsed-label">Done</span>
@@ -762,7 +867,19 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
             const allColumnGroupKeys = groups.map(g => `${status}:${g.id}`);
 
             return (
-              <section key={status} className="task-lane">
+              <section
+                key={status}
+                className={`task-lane ${dragOverStatus === status ? 'is-drag-over' : ''}`}
+                onDragEnter={e => handleLaneDragEnter(e, status)}
+                onDragLeave={e => handleLaneDragLeave(e, status)}
+                onDragOver={handleLaneDragOver}
+                onDrop={async e => {
+                  e.preventDefault();
+                  resetDragState();
+                  const sourceId = e.dataTransfer.getData('text/deepscribe-task');
+                  await handleTaskDrop(status, undefined, undefined, sourceId);
+                }}
+              >
                 <header>
                   <div className="task-lane-header-title">
                     <span>{TASK_STATUS_LABELS[status]}</span>
@@ -783,7 +900,12 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
                   )}
                 </header>
                 <div className="task-lane-content">
-                  {groupBy === 'none' ? (
+                  {laneTasks.length === 0 ? (
+                    <div className="task-lane-empty-placeholder">
+                      <span>No tasks in this stage</span>
+                      <small>Drop tasks here</small>
+                    </div>
+                  ) : groupBy === 'none' ? (
                     laneTasks.map(task => renderTaskCard(task, laneTasks))
                   ) : (
                     groups.map(group => {
@@ -845,14 +967,24 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
                   key={task.id}
                   className={`task-list-row ${isNew ? 'has-agent-updates' : ''} ${isSelected ? 'is-selected' : ''}`}
                   draggable
-                  onDragStart={event => event.dataTransfer.setData('text/deepscribe-task', task.id)}
-                  onDragOver={event => event.preventDefault()}
-                  onDrop={event => {
-                    event.preventDefault(); event.stopPropagation();
-                    const source = byId.get(event.dataTransfer.getData('text/deepscribe-task'));
-                    if (!source || source.id === task.id || !task.task) return;
-                    if (source.task?.claim && !window.confirm('This task has an active claim. Move it and release the claim?')) return;
-                    void updateUserTaskStatus(source, task.task.status, task.task.position - 0.5).catch(cause => setError(cause.message));
+                  onDragStart={event => {
+                    event.dataTransfer.setData('text/deepscribe-task', task.id);
+                    event.dataTransfer.effectAllowed = 'move';
+                  }}
+                  onDragEnd={resetDragState}
+                  onDragOver={event => {
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = 'move';
+                  }}
+                  onDrop={async event => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    resetDragState();
+                    const sourceId = event.dataTransfer.getData('text/deepscribe-task');
+                    if (!sourceId || !task.task) return;
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    const isAfter = event.clientY > rect.top + rect.height / 2;
+                    await handleTaskDrop(task.task.status, task, isAfter, sourceId);
                   }}
                 >
                   <button onClick={(e) => handleTaskClick(e, task, tasks)}>
@@ -1019,14 +1151,24 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
                             key={task.id}
                             className={`task-list-row ${isNew ? 'has-agent-updates' : ''} ${isSelected ? 'is-selected' : ''}`}
                             draggable
-                            onDragStart={event => event.dataTransfer.setData('text/deepscribe-task', task.id)}
-                            onDragOver={event => event.preventDefault()}
-                            onDrop={event => {
-                              event.preventDefault(); event.stopPropagation();
-                              const source = byId.get(event.dataTransfer.getData('text/deepscribe-task'));
-                              if (!source || source.id === task.id || !task.task) return;
-                              if (source.task?.claim && !window.confirm('This task has an active claim. Move it and release the claim?')) return;
-                              void updateUserTaskStatus(source, task.task.status, task.task.position - 0.5).catch(cause => setError(cause.message));
+                            onDragStart={event => {
+                              event.dataTransfer.setData('text/deepscribe-task', task.id);
+                              event.dataTransfer.effectAllowed = 'move';
+                            }}
+                            onDragEnd={resetDragState}
+                            onDragOver={event => {
+                              event.preventDefault();
+                              event.dataTransfer.dropEffect = 'move';
+                            }}
+                            onDrop={async event => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              resetDragState();
+                              const sourceId = event.dataTransfer.getData('text/deepscribe-task');
+                              if (!sourceId || !task.task) return;
+                              const rect = event.currentTarget.getBoundingClientRect();
+                              const isAfter = event.clientY > rect.top + rect.height / 2;
+                              await handleTaskDrop(task.task.status, task, isAfter, sourceId);
                             }}
                           >
                             <button onClick={(e) => handleTaskClick(e, task, tasks)}>
