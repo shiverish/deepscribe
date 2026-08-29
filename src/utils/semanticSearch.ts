@@ -1,1 +1,7 @@
-export { rankBlocksLocally, rankChunksLocally, chunksForBlock, invalidateChunks } from '../../mcp/core/ranking.mjs';
+export {
+  rankBlocksLocally,
+  rankChunksLocally,
+  rankProjectsLocally,
+  chunksForBlock,
+  invalidateChunks
+} from '../../mcp/core/ranking.mjs';

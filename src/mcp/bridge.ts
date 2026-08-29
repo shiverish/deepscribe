@@ -9,7 +9,7 @@ import { recordBlockRevision, getBlockRevisions, getBlockRevision, restoreBlockR
 import { sanitizeDependsOn, detectCircularDependency, getBlockDependencyStatus, formatDependencyMarkdown } from '../utils/dependencyUtils';
 import type { Attachment, Block, ClaimantAgentTarget, Project, ActivityEntry, ActivitySource, TaskAgentTarget, TaskMetadata, TaskStatus } from '../types';
 import { sanitizeTags } from '../utils/tagUtils';
-import { rankChunksLocally } from '../utils/semanticSearch';
+import { rankChunksLocally, rankProjectsLocally } from '../utils/semanticSearch';
 import { isDescendantOrSelf, moveBlockInTree } from '../utils/dragAndDrop';
 import { canTransitionTask, createTaskClaim, createTaskInboxProject, createTaskMetadata, formatTaskDeepLink, formatTaskHumanId, getNextTaskNumber, isTaskClaimCandidate, isTaskInboxProject, normalizeLeaseSeconds, parseTaskHumanId, redactTaskClaim, TASK_AGENT_TARGETS, taskClaimWriteRefusal, taskCreatorLabel, TASK_INBOX_PROJECT_ID, taskProtectedFieldRefusal, validateTaskMetadata, validateTaskReady } from '../utils/taskBlocks';
 import { exportBlockAsHtml, exportBlockAsMarkdown, exportBlockAsText, type ExportFormat } from '../utils/exportUtils';
@@ -1266,16 +1266,37 @@ export async function handleMcpBridgeRequest(method: string, rawParams: unknown)
           .slice(0, clampLimit(params.limit))
           .map(blockSummary);
       }
-      return rankChunksLocally(blocks, query)
-        .slice(0, clampLimit(params.limit))
-        .map(hit => ({
+
+      const projects = await db.projects.filter(project => !project.isTrash && !project.systemKind
+        && (!projectId || project.id === projectId)
+        && tags.every(tag => project.tags.includes(tag))).toArray();
+
+      const results = [
+        ...rankChunksLocally(blocks, query).map(hit => ({
+          resultType: 'block',
           ...blockSummary(hit.block),
-          score: Math.round(hit.score * 10) / 10,
+          score: hit.score,
           snippet: hit.snippet,
           matchReasons: hit.matchReasons,
           heading: hit.heading || undefined,
           chunkIndex: hit.chunkIndex >= 0 ? hit.chunkIndex : undefined
-        }));
+        })),
+        ...rankProjectsLocally(projects, query).map(hit => ({
+          resultType: 'project',
+          id: hit.project.id,
+          title: hit.project.title,
+          tags: hit.project.tags || [],
+          color: hit.project.color,
+          updatedAt: hit.project.updatedAt,
+          score: hit.score,
+          snippet: hit.snippet,
+          matchReasons: hit.matchReasons,
+          heading: hit.heading || undefined
+        }))
+      ].sort((left, right) => right.score - left.score || (right.updatedAt ?? 0) - (left.updatedAt ?? 0));
+
+      return results.slice(0, clampLimit(params.limit))
+        .map(result => ({ ...result, score: Math.round(result.score * 10) / 10 }));
     }
     case 'create_project':
       return await createProject(params);

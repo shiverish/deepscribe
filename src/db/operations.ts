@@ -224,8 +224,10 @@ export async function permanentlyDeleteProject(projectId: string): Promise<void>
     await db.blocks.where('projectId').equals(projectId).delete();
     await db.projects.delete(projectId);
   });
-  // Drop the search index entries so deleted blocks leave no chunks behind.
+  // Drop the search index entries so the deleted project and its blocks leave
+  // no chunks behind.
   for (const id of blockIds) invalidateChunks(String(id));
+  invalidateChunks(projectId);
 }
 
 export function topLevelTrashedBlocks(blocks: Block[]): Block[] {

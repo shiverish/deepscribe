@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { chunksForBlock, invalidateChunks, rankChunksLocally } from './ranking.mjs';
-import type { Block } from '../../src/types';
+import { chunksForBlock, invalidateChunks, rankChunksLocally, rankProjectsLocally } from './ranking.mjs';
+import type { Block, Project } from '../../src/types';
+
+function project(overrides: Partial<Project> = {}): Project {
+  return {
+    id: 'proj-1', title: 'Project', description: '', color: '#000', order: 0,
+    tags: [], isTrash: false, createdAt: 1, updatedAt: 1, ...overrides
+  };
+}
 
 function block(overrides: Partial<Block> = {}): Block {
   const content = overrides.content ?? '<p>Leeg</p>';
@@ -75,6 +82,59 @@ describe('chunk-aware ranking', () => {
     const hits = rankChunksLocally([task], '#TSK-215');
     expect(hits[0].block.id).toBe('task-1');
     expect(hits[0].matchReasons).toContain('task-number');
+  });
+});
+
+describe('project ranking', () => {
+  const fromInside = project({
+    id: 'proj-book',
+    title: 'From Inside',
+    description: '<p>Een boek, een fictief verhaal.</p>',
+    scratchpad: '## Aanbevolen boekuitvoering\n\nRichting voor het binnenwerk: crèmekleurig papier en een rustige serif zoals Garamond of Minion op circa 10,5 pt.\n\n## Vaste hoofdstukomvang\n\nStreef naar minimaal 2.800 woorden.',
+    scratchpadUpdatedAt: 5
+  });
+
+  it('finds a decision that lives only in the scratchpad', () => {
+    const hits = rankProjectsLocally([fromInside], 'garamond papier');
+    expect(hits).toHaveLength(1);
+    expect(hits[0].project.id).toBe('proj-book');
+    expect(hits[0].snippet.toLowerCase()).toContain('garamond');
+    expect(hits[0].matchReasons).toContain('body');
+  });
+
+  it('reports the scratchpad heading the passage sits under', () => {
+    const [hit] = rankProjectsLocally([fromInside], 'garamond');
+    expect(hit.heading).toBe('Aanbevolen boekuitvoering');
+  });
+
+  it('keeps separate scratchpad sections apart', () => {
+    const [hit] = rankProjectsLocally([fromInside], 'hoofdstukomvang woorden');
+    expect(hit.heading).toBe('Vaste hoofdstukomvang');
+    expect(hit.snippet).not.toContain('Garamond');
+  });
+
+  it('matches on title, description and tags too', () => {
+    const byTitle = rankProjectsLocally([project({ id: 'proj-title', title: 'Moxxi' })], 'moxxi');
+    expect(byTitle[0].matchReasons).toContain('title');
+
+    const byTag = rankProjectsLocally([project({ id: 'proj-tag', tags: ['foodtech'] })], 'foodtech');
+    expect(byTag[0].matchReasons).toContain('tag');
+
+    const byDescription = rankProjectsLocally([project({ id: 'proj-desc', description: '<p>Receptenapp voor thuiskoks</p>' })], 'thuiskoks');
+    expect(byDescription[0].matchReasons).toContain('body');
+  });
+
+  it('picks up an edited scratchpad on the next search', () => {
+    const before = project({ id: 'proj-edit', scratchpad: 'Alpha besluit.', scratchpadUpdatedAt: 1 });
+    expect(rankProjectsLocally([before], 'alpha')).toHaveLength(1);
+
+    const after = { ...before, scratchpad: 'Beta besluit.', scratchpadUpdatedAt: 2 };
+    expect(rankProjectsLocally([after], 'alpha')).toHaveLength(0);
+    expect(rankProjectsLocally([after], 'beta')).toHaveLength(1);
+  });
+
+  it('finds nothing for an empty query', () => {
+    expect(rankProjectsLocally([fromInside], '  ')).toEqual([]);
   });
 });
 

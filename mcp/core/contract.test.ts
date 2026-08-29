@@ -64,6 +64,8 @@ describe('shared domain core', () => {
     expect(semanticSearch.rankChunksLocally).toBe(coreRanking.rankChunksLocally);
     expect(directStore.rankChunksLocally).toBe(coreRanking.rankChunksLocally);
     expect(semanticSearch.invalidateChunks).toBe(coreRanking.invalidateChunks);
+    expect(semanticSearch.rankProjectsLocally).toBe(coreRanking.rankProjectsLocally);
+    expect(directStore.rankProjectsLocally).toBe(coreRanking.rankProjectsLocally);
   });
 
   it('serves task rules to both adapters', () => {

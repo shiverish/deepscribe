@@ -12,7 +12,7 @@ import {
   isBlockCompleted,
   sanitizeDependsOn
 } from './core/dependencies.mjs';
-import { rankBlocksLocally, rankChunksLocally } from './core/ranking.mjs';
+import { rankBlocksLocally, rankChunksLocally, rankProjectsLocally } from './core/ranking.mjs';
 import {
   CLAIMANT_AGENT_TARGETS,
   canTransitionTask,
@@ -45,7 +45,7 @@ import { contentToHtml, looksLikeHtml, sanitizeHtml } from './core/html.mjs';
 
 export { normalizeTag, sanitizeTags };
 export { detectCircularDependency, formatDependencyMarkdown, getBlockDependencyStatus, isBlockCompleted, sanitizeDependsOn };
-export { rankBlocksLocally, rankChunksLocally };
+export { rankBlocksLocally, rankChunksLocally, rankProjectsLocally };
 export { getNextTaskNumber, parseTaskHumanId };
 export { contentStats, escapeHtml, htmlToPlainText, inlineMarkdown, markdownToHtml, unescapeHtml };
 export { contentToHtml, looksLikeHtml, sanitizeHtml };
@@ -1069,16 +1069,37 @@ export class DirectWorkspaceStore {
             .slice(0, clampLimit(params.limit))
             .map(b => this.blockSummary(b));
         }
-        return rankChunksLocally(blocks, query)
-          .slice(0, clampLimit(params.limit))
-          .map(hit => ({
+
+        const projects = this.getAllProjects().filter(p => !p.isTrash && !p.systemKind
+          && (!projectId || p.id === projectId)
+          && tags.every(tag => (p.tags || []).includes(tag)));
+
+        const results = [
+          ...rankChunksLocally(blocks, query).map(hit => ({
+            resultType: 'block',
             ...this.blockSummary(hit.block),
-            score: Math.round(hit.score * 10) / 10,
+            score: hit.score,
             snippet: hit.snippet,
             matchReasons: hit.matchReasons,
             heading: hit.heading || undefined,
             chunkIndex: hit.chunkIndex >= 0 ? hit.chunkIndex : undefined
-          }));
+          })),
+          ...rankProjectsLocally(projects, query).map(hit => ({
+            resultType: 'project',
+            id: hit.project.id,
+            title: hit.project.title,
+            tags: hit.project.tags || [],
+            color: hit.project.color,
+            updatedAt: hit.project.updatedAt,
+            score: hit.score,
+            snippet: hit.snippet,
+            matchReasons: hit.matchReasons,
+            heading: hit.heading || undefined
+          }))
+        ].sort((l, r) => r.score - l.score || (r.updatedAt ?? 0) - (l.updatedAt ?? 0));
+
+        return results.slice(0, clampLimit(params.limit))
+          .map(result => ({ ...result, score: Math.round(result.score * 10) / 10 }));
       }
 
       case 'create_project': {

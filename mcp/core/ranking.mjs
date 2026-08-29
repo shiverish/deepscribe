@@ -9,10 +9,12 @@
  */
 
 import { buildSnippet, chunkBlockContent } from './chunking.mjs';
+import { markdownToHtml } from './markdown.mjs';
 import { parseTaskHumanId } from './tasks.mjs';
 
 /**
  * @typedef {import('../../src/types').Block} Block
+ * @typedef {import('../../src/types').Project} Project
  * @typedef {'title' | 'tag' | 'task-number' | 'body' | 'similar-title'} MatchReason
  * @typedef {object} ChunkHit
  * @property {Block} block
@@ -21,6 +23,13 @@ import { parseTaskHumanId } from './tasks.mjs';
  * @property {MatchReason[]} matchReasons
  * @property {number} chunkIndex Index of the best-matching chunk, -1 when the hit came from metadata only.
  * @property {string} heading Heading the best-matching chunk sits under.
+ *
+ * @typedef {object} ProjectHit
+ * @property {Project} project
+ * @property {number} score
+ * @property {string} snippet
+ * @property {MatchReason[]} matchReasons
+ * @property {string} heading Heading the best-matching passage sits under.
  */
 
 const STOP_WORDS = new Set(['de', 'het', 'een', 'en', 'of', 'van', 'voor', 'met', 'in', 'op', 'aan', 'is', 'zijn', 'te', 'dit', 'dat']);
@@ -169,11 +178,26 @@ function tokenCounts(text) {
  * counts already computed. Without this every query would re-tokenize the whole
  * workspace, which dominates query cost.
  *
- * Entries are keyed by block id and invalidated on `updatedAt`, so the index
- * holds at most one entry per block and can never serve stale content.
- * @type {Map<string, { updatedAt: number; entry: BlockIndexEntry }>}
+ * Entries are keyed by record id and invalidated on a version string, so the
+ * index holds at most one entry per record and can never serve stale content.
+ * Block and project ids carry distinct prefixes, so they share this map safely.
+ * @type {Map<string, { version: string; entry: IndexEntry }>}
  */
 const indexCache = new Map();
+
+/**
+ * @param {string} id
+ * @param {string} version
+ * @param {() => IndexEntry} build
+ * @returns {IndexEntry}
+ */
+function cachedEntry(id, version, build) {
+  const cached = indexCache.get(id);
+  if (cached && cached.version === version) return cached.entry;
+  const entry = build();
+  indexCache.set(id, { version, entry });
+  return entry;
+}
 
 /**
  * @typedef {object} IndexedChunk
@@ -182,7 +206,7 @@ const indexCache = new Map();
  * @property {string} text
  * @property {Map<string, number>} counts
  *
- * @typedef {object} BlockIndexEntry
+ * @typedef {object} IndexEntry
  * @property {Set<string>} titleTokens
  * @property {Set<string>} tagTokens
  * @property {IndexedChunk[]} chunks
@@ -191,22 +215,46 @@ const indexCache = new Map();
 /**
  * Returns the index entry for a block, rebuilding it only when the block changed.
  * @param {Block} block
- * @returns {BlockIndexEntry}
+ * @returns {IndexEntry}
  */
 export function indexEntryForBlock(block) {
-  const cached = indexCache.get(block.id);
-  if (cached && cached.updatedAt === block.updatedAt) return cached.entry;
-
-  const entry = {
+  return cachedEntry(block.id, String(block.updatedAt), () => ({
     titleTokens: new Set(tokens(block.title)),
     tagTokens: new Set((block.tags || []).flatMap(tokens)),
     chunks: chunkBlockContent(block.content || '').map(chunk => ({
       ...chunk,
       counts: tokenCounts(`${chunk.heading} ${chunk.text}`)
     }))
-  };
-  indexCache.set(block.id, { updatedAt: block.updatedAt, entry });
-  return entry;
+  }));
+}
+
+/**
+ * Returns the index entry for a project.
+ *
+ * A project is not a block, but its description and scratchpad hold decisions
+ * that exist nowhere else. The scratchpad is Markdown, so it is converted first
+ * and its `##` headings become chunk headings — which is what lets a hit report
+ * the section it came from.
+ * @param {Project} project
+ * @returns {IndexEntry}
+ */
+export function indexEntryForProject(project) {
+  const version = `${project.updatedAt}:${project.scratchpadUpdatedAt ?? 0}`;
+  return cachedEntry(project.id, version, () => {
+    const segments = [
+      ...chunkBlockContent(project.description || ''),
+      ...chunkBlockContent(markdownToHtml(project.scratchpad || ''))
+    ];
+    return {
+      titleTokens: new Set(tokens(project.title)),
+      tagTokens: new Set((project.tags || []).flatMap(tokens)),
+      chunks: segments.map((chunk, index) => ({
+        ...chunk,
+        index,
+        counts: tokenCounts(`${chunk.heading} ${chunk.text}`)
+      }))
+    };
+  });
 }
 
 /**
@@ -229,6 +277,100 @@ export function invalidateChunks(blockId) {
 }
 
 /**
+ * @typedef {object} QueryState
+ * @property {string[]} queryTokens
+ * @property {Set<string>} expanded
+ * @property {number[]} queryTaskNumbers
+ * @property {boolean} singleTaskMatch
+ * @property {string} normalizedQuery
+ */
+
+/**
+ * Prepares a query once so every candidate is scored against the same state.
+ * @param {string} query
+ * @returns {QueryState | null} Null when the query carries nothing to match on.
+ */
+function buildQueryState(query) {
+  const queryTokens = tokens(query);
+  const queryTaskNumbers = extractQueryTaskNumbers(query);
+  if (queryTokens.length === 0 && queryTaskNumbers.length === 0) return null;
+  const trimmedQuery = String(query ?? '').trim();
+  return {
+    queryTokens,
+    expanded: expandQuery(queryTokens),
+    queryTaskNumbers,
+    singleTaskMatch: queryTaskNumbers.length === 1 && (
+      parseTaskHumanId(trimmedQuery) !== null || /^\d+$/.test(trimmedQuery)
+    ),
+    normalizedQuery: queryTokens.join(' ')
+  };
+}
+
+/**
+ * Scores one indexed record: metadata signals count once, and the body score
+ * comes from the single best-matching chunk rather than the whole document.
+ * @param {IndexEntry} entry
+ * @param {string} title
+ * @param {QueryState} state
+ * @param {number | null} taskNumber
+ * @returns {{ score: number; bestChunk: IndexedChunk | null; matchReasons: MatchReason[] } | null}
+ */
+function scoreEntry(entry, title, state, taskNumber) {
+  const { queryTokens, expanded, queryTaskNumbers, singleTaskMatch, normalizedQuery } = state;
+  /** @type {Set<MatchReason>} */
+  const matchReasons = new Set();
+  const taskTokens = taskNumber ? new Set([`tsk-${taskNumber}`, `${taskNumber}`]) : null;
+
+  let metadataScore = 0;
+  if (taskNumber !== null && queryTaskNumbers.includes(taskNumber)) {
+    metadataScore += singleTaskMatch ? 100 : 50;
+    matchReasons.add('task-number');
+  }
+  for (const token of expanded) {
+    const exact = queryTokens.includes(token);
+    if (entry.titleTokens.has(token)) {
+      metadataScore += exact ? 8 : 3;
+      matchReasons.add('title');
+    }
+    if (entry.tagTokens.has(token)) {
+      metadataScore += exact ? 6 : 2;
+      matchReasons.add('tag');
+    }
+    if (taskTokens?.has(token)) {
+      metadataScore += exact ? 8 : 3;
+      matchReasons.add('task-number');
+    }
+  }
+  const titleSimilarity = trigramSimilarity(normalizedQuery, normalizeToken(title)) * 4;
+  if (titleSimilarity >= 1) matchReasons.add('similar-title');
+  metadataScore += titleSimilarity;
+
+  let bestChunkScore = 0;
+  /** @type {IndexedChunk | null} */
+  let bestChunk = null;
+  for (const chunk of entry.chunks) {
+    let chunkScore = 0;
+    let distinct = 0;
+    for (const token of expanded) {
+      const hitCount = chunk.counts.get(token) ?? 0;
+      if (hitCount === 0) continue;
+      chunkScore += Math.min(hitCount, 4) * (queryTokens.includes(token) ? 2 : 1);
+      if (queryTokens.includes(token)) distinct += 1;
+    }
+    // Reward a chunk that carries several distinct query terms at once.
+    if (distinct > 1) chunkScore *= 1 + (distinct - 1) * 0.5;
+    if (chunkScore > bestChunkScore) {
+      bestChunkScore = chunkScore;
+      bestChunk = chunk;
+    }
+  }
+  if (bestChunkScore > 0) matchReasons.add('body');
+
+  const score = metadataScore + bestChunkScore;
+  return score >= 1 ? { score, bestChunk, matchReasons: [...matchReasons] } : null;
+}
+
+/**
  * Scores blocks through their chunks, so one relevant passage inside a very
  * long block still surfaces, and reports which chunk matched.
  *
@@ -239,83 +381,50 @@ export function invalidateChunks(blockId) {
  * @returns {ChunkHit[]}
  */
 export function rankChunksLocally(blocks, query) {
-  const queryTokens = tokens(query);
-  const queryTaskNumbers = extractQueryTaskNumbers(query);
-  if (queryTokens.length === 0 && queryTaskNumbers.length === 0) return [];
-  const expanded = expandQuery(queryTokens);
-  const normalizedQuery = queryTokens.join(' ');
-  const trimmedQuery = String(query ?? '').trim();
-  const singleTaskMatch = queryTaskNumbers.length === 1 && (
-    parseTaskHumanId(trimmedQuery) !== null || /^\d+$/.test(trimmedQuery)
-  );
+  const state = buildQueryState(query);
+  if (!state) return [];
 
   /** @type {ChunkHit[]} */
   const hits = [];
-
   for (const block of blocks) {
-    /** @type {Set<MatchReason>} */
-    const matchReasons = new Set();
-    const { titleTokens, tagTokens, chunks } = indexEntryForBlock(block);
     const taskNumber = block.kind === 'task' && typeof block.task?.taskNumber === 'number' ? block.task.taskNumber : null;
-    const taskTokens = taskNumber ? new Set([`tsk-${taskNumber}`, `${taskNumber}`]) : null;
-
-    let metadataScore = 0;
-    if (taskNumber !== null && queryTaskNumbers.includes(taskNumber)) {
-      metadataScore += singleTaskMatch ? 100 : 50;
-      matchReasons.add('task-number');
-    }
-    for (const token of expanded) {
-      const exact = queryTokens.includes(token);
-      if (titleTokens.has(token)) {
-        metadataScore += exact ? 8 : 3;
-        matchReasons.add('title');
-      }
-      if (tagTokens.has(token)) {
-        metadataScore += exact ? 6 : 2;
-        matchReasons.add('tag');
-      }
-      if (taskTokens?.has(token)) {
-        metadataScore += exact ? 8 : 3;
-        matchReasons.add('task-number');
-      }
-    }
-    const titleSimilarity = trigramSimilarity(normalizedQuery, normalizeToken(block.title)) * 4;
-    if (titleSimilarity >= 1) matchReasons.add('similar-title');
-    metadataScore += titleSimilarity;
-
-    let bestChunkScore = 0;
-    /** @type {IndexedChunk | null} */
-    let bestChunk = null;
-    for (const chunk of chunks) {
-      let chunkScore = 0;
-      let distinct = 0;
-      for (const token of expanded) {
-        const hitCount = chunk.counts.get(token) ?? 0;
-        if (hitCount === 0) continue;
-        chunkScore += Math.min(hitCount, 4) * (queryTokens.includes(token) ? 2 : 1);
-        if (queryTokens.includes(token)) distinct += 1;
-      }
-      // Reward a chunk that carries several distinct query terms at once.
-      if (distinct > 1) chunkScore *= 1 + (distinct - 1) * 0.5;
-      if (chunkScore > bestChunkScore) {
-        bestChunkScore = chunkScore;
-        bestChunk = chunk;
-      }
-    }
-    if (bestChunkScore > 0) matchReasons.add('body');
-
-    const score = metadataScore + bestChunkScore;
-    if (score < 1) continue;
-
+    const scored = scoreEntry(indexEntryForBlock(block), block.title, state, taskNumber);
+    if (!scored) continue;
     hits.push({
       block,
-      score,
-      snippet: buildSnippet(bestChunk ? bestChunk.text : block.plainText, queryTokens),
-      matchReasons: [...matchReasons],
-      chunkIndex: bestChunk ? bestChunk.index : -1,
-      heading: bestChunk ? bestChunk.heading : ''
+      score: scored.score,
+      snippet: buildSnippet(scored.bestChunk ? scored.bestChunk.text : block.plainText, state.queryTokens),
+      matchReasons: scored.matchReasons,
+      chunkIndex: scored.bestChunk ? scored.bestChunk.index : -1,
+      heading: scored.bestChunk ? scored.bestChunk.heading : ''
     });
   }
-
   return hits.sort((a, b) => b.score - a.score || b.block.updatedAt - a.block.updatedAt);
+}
+
+/**
+ * Scores projects on their title, tags, description and scratchpad, so the
+ * decisions recorded there are findable rather than effectively non-existent.
+ * @param {Project[]} projects
+ * @param {string} query
+ * @returns {ProjectHit[]}
+ */
+export function rankProjectsLocally(projects, query) {
+  const state = buildQueryState(query);
+  if (!state) return [];
+
+  /** @type {ProjectHit[]} */
+  const hits = [];
+  for (const project of projects) {
+    const scored = scoreEntry(indexEntryForProject(project), project.title, state, null);
+    if (!scored) continue;
+    hits.push({
+      project,
+      score: scored.score,
+      snippet: buildSnippet(scored.bestChunk ? scored.bestChunk.text : project.title, state.queryTokens),
+      matchReasons: scored.matchReasons,
+      heading: scored.bestChunk ? scored.bestChunk.heading : ''
+    });
+  }
+  return hits.sort((a, b) => b.score - a.score || b.project.updatedAt - a.project.updatedAt);
 }

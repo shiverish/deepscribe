@@ -100,6 +100,47 @@ describe('DirectWorkspaceStore HTML content entry', () => {
   });
 });
 
+describe('DirectWorkspaceStore search over projects and blocks', () => {
+  it('finds a decision recorded only in a project scratchpad', async () => {
+    const store = new DirectWorkspaceStore({ workspacePath: temporaryWorkspace() });
+    try {
+      const project = await store.handleRequest('create_project', {
+        title: 'From Inside',
+        scratchpad: '## Aanbevolen boekuitvoering\n\nCremekleurig papier en een serif zoals Garamond.'
+      });
+      await store.handleRequest('create_block', { projectId: project.id, title: 'Hoofdstuk 1', content: 'Zij liep de kamer in.' });
+
+      const results = await store.handleRequest('search', { query: 'garamond' });
+      const hit = results.find((result: { resultType: string }) => result.resultType === 'project');
+      expect(hit).toMatchObject({ resultType: 'project', id: project.id, title: 'From Inside', heading: 'Aanbevolen boekuitvoering' });
+      expect(hit.snippet.toLowerCase()).toContain('garamond');
+      expect(typeof hit.score).toBe('number');
+      expect(hit.matchReasons).toContain('body');
+    } finally {
+      store.close();
+    }
+  });
+
+  it('marks block hits as blocks and honours the project filter', async () => {
+    const store = new DirectWorkspaceStore({ workspacePath: temporaryWorkspace() });
+    try {
+      const wanted = await store.handleRequest('create_project', { title: 'Gewenst', scratchpad: 'Zoekterm alpha.' });
+      const other = await store.handleRequest('create_project', { title: 'Ander', scratchpad: 'Zoekterm alpha.' });
+      await store.handleRequest('create_block', { projectId: wanted.id, title: 'Blok', content: 'Zoekterm alpha in een blok.' });
+
+      const all = await store.handleRequest('search', { query: 'alpha' });
+      expect(all.filter((result: { resultType: string }) => result.resultType === 'project')).toHaveLength(2);
+      expect(all.some((result: { resultType: string }) => result.resultType === 'block')).toBe(true);
+
+      const scoped = await store.handleRequest('search', { query: 'alpha', projectId: wanted.id });
+      expect(scoped.every((result: { id: string; projectId?: string }) => result.id === wanted.id || result.projectId === wanted.id)).toBe(true);
+      expect(scoped.some((result: { id: string }) => result.id === other.id)).toBe(false);
+    } finally {
+      store.close();
+    }
+  });
+});
+
 describe('DirectWorkspaceStore offline MCP engine', () => {
   it('uses the same leased claim and idempotency rules offline', async () => {
     const store = new DirectWorkspaceStore({ workspacePath: temporaryWorkspace() });

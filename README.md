@@ -37,6 +37,14 @@ De desktop-app bevat een lokale bridge waarmee Codex en andere MCP-clients proje
 
 Beschikbare acties zijn onder andere projecten en blokken tonen, zoeken op tekst of tags, gewone kennisblokken aanmaken of aanvullen, gebruikerstaakblokken lezen, taakstatus bijwerken en gekoppelde bestanden lezen. Agents kunnen taken aanmaken met `create_task`; zulke taken komen in Inbox terecht met de aanmakende agent als herkomst. Agents kunnen ook de inhoud en tags van een taak bijwerken, bij voorkeur met `append_to_block`, bijvoorbeeld om een opleververslag achter te laten. De titel, afhankelijkheden, toewijzing, positie en status van een taak blijven van de gebruiker en lopen uitsluitend via `update_task_status` en de claimtools. Zolang een andere agent een geldige claim op een taak heeft, worden schrijfacties geweigerd tenzij de eigen `agentId` en `claimToken` worden meegegeven. Inline todo's kunnen agents niet aanmaken of afvinken. Door agents aangeleverde Markdown wordt veilig omgezet naar echte koppen, alinea's, links, code en lijsten in de editor; enkele betekenisvolle regeleinden blijven zichtbaar. Bijlagen worden aangeboden als `deepscribe://attachment/<id>` MCP-resources; lokale bestandspaden worden niet gedeeld. Tekstuele bestanden worden als tekst doorgegeven en andere formaten als base64-gecodeerde binaire resource. Schrijfacties verwijderen niets en de toolbeschrijvingen sturen agents aan om eerst te lezen en bestaande inhoud zo veel mogelijk te behouden.
 
+## Zoeken voor agents
+
+De MCP-tool `search` scoort op passageniveau in plaats van op hele documenten, zodat één relevante alinea in een lang blok ook gevonden wordt. Ieder resultaat bevat een snippet, een score, de kop waaronder de treffer staat en de reden van de match.
+
+Naast blokken worden ook projecten doorzocht: titel, beschrijving en scratchpad. Projecttreffers zijn te herkennen aan `resultType: 'project'`; bloktreffers dragen `resultType: 'block'`. De filters `projectId` en `tags` gelden voor beide.
+
+Het zoekvenster in de app gebruikt voorlopig nog de oudere ranking op blokniveau en toont geen projecttreffers; dit betreft uitsluitend de MCP-zoekopdracht.
+
 ## Uitgaande webhooks
 
 DeepScribe kan taak- en blokgebeurtenissen als JSON naar externe automatiseringen sturen, bijvoorbeeld n8n, Discord of Home Assistant. Endpoints worden beheerd onder **Instellingen → Agents → Outgoing Webhooks**.
