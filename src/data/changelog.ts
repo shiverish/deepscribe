@@ -14,9 +14,47 @@ export interface ReleaseEntry {
   items: ChangelogItem[];
 }
 
-export const CURRENT_APP_VERSION = '0.2.25';
+export const CURRENT_APP_VERSION = '0.2.26';
 
 export const CHANGELOG_ENTRIES: ReleaseEntry[] = [
+  {
+    version: '0.2.26',
+    date: 'August 2026',
+    title: 'Outgoing Webhooks & Sharper Agent Search',
+    summary: 'DeepScribe now pushes task and block events to external automations, agents can leave their results on a task, and search finds the passage instead of the document.',
+    items: [
+      {
+        type: 'feature',
+        text: 'Outgoing Webhooks',
+        detail: 'Configure webhook endpoints under Settings → Agents and pick which events they receive. Task status changes, new tasks and block edits are posted as JSON to n8n, Discord, Home Assistant or any HTTP endpoint, with optional bearer or HMAC signing and a five-second timeout.'
+      },
+      {
+        type: 'feature',
+        text: 'Passage-Level Search',
+        detail: 'Search now scores individual passages instead of whole documents, so a single relevant paragraph inside a long chapter surfaces. Results carry a snippet, a score, the heading the match sits under, and why it matched.'
+      },
+      {
+        type: 'feature',
+        text: 'Agents Can Report Back On Tasks',
+        detail: 'Agents may now write a delivery report into a task instead of only changing its status. Title, dependencies, assignment, position and status stay user-owned, and a task claimed by another agent is protected from being overwritten.'
+      },
+      {
+        type: 'improvement',
+        text: 'Agent HTML Is Accepted And Sanitised',
+        detail: 'Content sent as HTML is stored as real headings and paragraphs rather than visible escaped tags, reduced to the tags the editor supports so scripts, event handlers and unsafe links cannot get in.'
+      },
+      {
+        type: 'improvement',
+        text: 'One Rule Set For Online And Offline Agents',
+        detail: 'The live bridge and the standalone MCP server now share a single domain core, so agent behaviour no longer depends on whether DeepScribe is running.'
+      },
+      {
+        type: 'fix',
+        text: 'Task Pickup Corrections',
+        detail: 'Tasks assigned to nobody, and tasks whose dependency was deleted or moved to the trash, are no longer handed out to offline agents.'
+      }
+    ]
+  },
   {
     version: '0.2.25',
     date: 'August 2026',

@@ -37,6 +37,17 @@ De desktop-app bevat een lokale bridge waarmee Codex en andere MCP-clients proje
 
 Beschikbare acties zijn onder andere projecten en blokken tonen, zoeken op tekst of tags, gewone kennisblokken aanmaken of aanvullen, gebruikerstaakblokken lezen, taakstatus bijwerken en gekoppelde bestanden lezen. Agents kunnen taken aanmaken met `create_task`; zulke taken komen in Inbox terecht met de aanmakende agent als herkomst. Agents kunnen ook de inhoud en tags van een taak bijwerken, bij voorkeur met `append_to_block`, bijvoorbeeld om een opleververslag achter te laten. De titel, afhankelijkheden, toewijzing, positie en status van een taak blijven van de gebruiker en lopen uitsluitend via `update_task_status` en de claimtools. Zolang een andere agent een geldige claim op een taak heeft, worden schrijfacties geweigerd tenzij de eigen `agentId` en `claimToken` worden meegegeven. Inline todo's kunnen agents niet aanmaken of afvinken. Door agents aangeleverde Markdown wordt veilig omgezet naar echte koppen, alinea's, links, code en lijsten in de editor; enkele betekenisvolle regeleinden blijven zichtbaar. Bijlagen worden aangeboden als `deepscribe://attachment/<id>` MCP-resources; lokale bestandspaden worden niet gedeeld. Tekstuele bestanden worden als tekst doorgegeven en andere formaten als base64-gecodeerde binaire resource. Schrijfacties verwijderen niets en de toolbeschrijvingen sturen agents aan om eerst te lezen en bestaande inhoud zo veel mogelijk te behouden.
 
+## Uitgaande webhooks
+
+DeepScribe kan taak- en blokgebeurtenissen als JSON naar externe automatiseringen sturen, bijvoorbeeld n8n, Discord of Home Assistant. Endpoints worden beheerd onder **Instellingen → Agents → Outgoing Webhooks**.
+
+- Per endpoint kies je zelf welke gebeurtenissen worden verstuurd: `task.status_changed`, `task.created`, `block.created` en `block.updated`.
+- De payload bevat `event`, `timestamp`, `projectId`, `blockId`, `taskId`, `oldStatus`, `newStatus`, `title`, `tags` en `metadata`.
+- Verzending gebeurt asynchroon en blokkeert de interface niet; een traag of onbereikbaar endpoint vertraagt het opslaan niet.
+- Authenticatie is optioneel: een `Authorization: Bearer`-header of een `X-DeepScribe-Signature` met een HMAC-SHA256 over de body.
+- Alleen `http`- en `https`-URL's worden geaccepteerd, met een time-out van vijf seconden. Een mislukte levering wordt gelogd en heeft geen gevolgen voor de andere endpoints.
+- Blokken in de prullenbak versturen geen gebeurtenissen.
+
 Blokken die via MCP door een agent zijn aangemaakt of gewijzigd krijgen een badge **Nieuw van agent** totdat het blok geopend en kort zichtbaar is geweest. Ongelezen wijzigingen druppelen met een teller omhoog door alle bovenliggende blokken tot aan het project. De rand, badge en optionele glow gebruiken een aparte, globale agent-alertkleur die onder **Instellingen → Uiterlijk** kan worden aangepast.
 
 Registreer de lokale STDIO-server eenmalig bij Codex vanuit deze projectmap:

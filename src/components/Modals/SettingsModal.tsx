@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { X, RotateCcw, Palette, Type, Sliders, Sparkles, Eye, Check, Save, Trash2, FolderOpen, FolderInput, Database, Bot, Copy, CheckCheck, RefreshCw, ArrowUpCircle } from 'lucide-react';
+import { X, RotateCcw, Palette, Type, Sliders, Sparkles, Eye, Check, Save, Trash2, FolderOpen, FolderInput, Database, Bot, Copy, CheckCheck, RefreshCw, ArrowUpCircle, Webhook, Plus } from 'lucide-react';
 import type { UserSettings, ThemePreset, FontFamily, ContentWidth, WorkspaceStatus } from '../../types';
 import { PRESET_PALETTES } from '../../hooks/useSettings';
 import { repository } from '../../db/repository';
 import { CURRENT_APP_VERSION } from '../../data/changelog';
+import { WEBHOOK_EVENTS } from '../../utils/webhooks';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -183,6 +184,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     } finally {
       setIsMovingWorkspace(false);
     }
+  };
+
+  const updateWebhook = (id: string, partial: Partial<UserSettings['webhooks'][number]>) => {
+    onUpdateSettings({ webhooks: settings.webhooks.map(webhook => webhook.id === id ? { ...webhook, ...partial } : webhook) });
+  };
+
+  const addWebhook = () => {
+    onUpdateSettings({
+      webhooks: [...settings.webhooks, {
+        id: `webhook-${crypto.randomUUID()}`,
+        name: 'New webhook',
+        url: '',
+        enabled: true,
+        events: WEBHOOK_EVENTS.map(event => event.id),
+        authMode: 'none',
+        secret: ''
+      }]
+    });
+  };
+
+  const removeWebhook = (id: string, name: string) => {
+    if (!window.confirm(`Delete webhook “${name || 'Untitled webhook'}”?`)) return;
+    onUpdateSettings({ webhooks: settings.webhooks.filter(webhook => webhook.id !== id) });
   };
 
   if (!isOpen) return null;
@@ -1077,6 +1101,97 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     )}
                   </button>
                 </div>
+              </div>
+
+              {/* Best practices note */}
+              <div className="setting-item">
+                <div className="setting-info" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                  <div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '7px' }}><Webhook size={15} /> Outgoing Webhooks</label>
+                    <span className="setting-description">Send task and block events to n8n or another HTTP endpoint.</span>
+                  </div>
+                  <button type="button" className="secondary-button" onClick={addWebhook} style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0 }}>
+                    <Plus size={13} /> Add webhook
+                  </button>
+                </div>
+
+                {settings.webhooks.length === 0 ? (
+                  <div style={{ padding: '14px', border: '1px dashed var(--border-subtle)', borderRadius: 'var(--radius-sm)', color: 'var(--text-secondary)', fontSize: '12px' }}>
+                    No webhook endpoints configured.
+                  </div>
+                ) : settings.webhooks.map(webhook => (
+                  <div key={webhook.id} style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '14px', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', background: 'rgba(0, 0, 0, 0.12)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <input
+                        aria-label="Webhook name"
+                        value={webhook.name}
+                        onChange={event => updateWebhook(webhook.id, { name: event.target.value })}
+                        placeholder="Webhook name"
+                        style={{ flex: 1, minWidth: 0, padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-subtle)', background: 'var(--bg-dark)', color: 'var(--text-primary)' }}
+                      />
+                      <label className="toggle-switch" title={webhook.enabled ? 'Disable webhook' : 'Enable webhook'}>
+                        <input type="checkbox" checked={webhook.enabled} onChange={event => updateWebhook(webhook.id, { enabled: event.target.checked })} />
+                        <span className="toggle-slider"></span>
+                      </label>
+                      <button type="button" className="icon-button" title="Delete webhook" onClick={() => removeWebhook(webhook.id, webhook.name)}>
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+
+                    <input
+                      aria-label="Webhook URL"
+                      type="url"
+                      value={webhook.url}
+                      onChange={event => updateWebhook(webhook.id, { url: event.target.value })}
+                      placeholder="https://example.com/webhook"
+                      style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-subtle)', background: 'var(--bg-dark)', color: 'var(--text-primary)', fontFamily: 'var(--font-code)', fontSize: '12px' }}
+                    />
+
+                    <div>
+                      <span className="setting-description" style={{ display: 'block', marginBottom: '6px' }}>Events</span>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                        {WEBHOOK_EVENTS.map(event => {
+                          const selected = webhook.events.includes(event.id);
+                          return (
+                            <button
+                              key={event.id}
+                              type="button"
+                              className={`setting-chip ${selected ? 'active' : ''}`}
+                              onClick={() => updateWebhook(webhook.id, { events: selected ? webhook.events.filter(item => item !== event.id) : [...webhook.events, event.id] })}
+                            >
+                              {event.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(130px, 0.7fr) minmax(180px, 1.3fr)', gap: '8px' }}>
+                      <select
+                        aria-label="Webhook authentication"
+                        value={webhook.authMode}
+                        onChange={event => updateWebhook(webhook.id, { authMode: event.target.value as typeof webhook.authMode })}
+                        style={{ padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-subtle)', background: 'var(--bg-dark)', color: 'var(--text-primary)' }}
+                      >
+                        <option value="none">No authentication</option>
+                        <option value="bearer">Bearer token</option>
+                        <option value="hmac">HMAC signature</option>
+                      </select>
+                      {webhook.authMode !== 'none' && (
+                        <input
+                          aria-label={webhook.authMode === 'bearer' ? 'Bearer token' : 'HMAC secret'}
+                          type="password"
+                          value={webhook.secret}
+                          onChange={event => updateWebhook(webhook.id, { secret: event.target.value })}
+                          placeholder={webhook.authMode === 'bearer' ? 'Bearer token' : 'Signing secret'}
+                          autoComplete="off"
+                          style={{ minWidth: 0, padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-subtle)', background: 'var(--bg-dark)', color: 'var(--text-primary)' }}
+                        />
+                      )}
+                    </div>
+                    {webhook.authMode === 'hmac' && <span className="setting-description">Sent as <code>X-DeepScribe-Signature: sha256=…</code>.</span>}
+                  </div>
+                ))}
               </div>
 
               {/* Best practices note */}

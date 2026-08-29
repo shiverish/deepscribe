@@ -64,6 +64,26 @@ describe('DirectWorkspaceStore HTML content entry', () => {
     }
   });
 
+  it('creates a task from HTML without showing the tags to the user', async () => {
+    const store = new DirectWorkspaceStore({ workspacePath: temporaryWorkspace() });
+    try {
+      const project = await store.handleRequest('create_project', { title: 'Taken' });
+      const task = await store.handleRequest('create_task', {
+        projectId: project.id,
+        title: 'Taak uit HTML',
+        content: '<h2>Doel</h2><p>Inhoud</p>',
+        agentId: 'claude-1',
+        agentTarget: 'claude',
+        requestId: 'html-task-1'
+      });
+      expect(task.content).toBe('<h2>Doel</h2><p>Inhoud</p>');
+      expect(task.plainText).toBe('Doel Inhoud');
+      expect(task.taskCount).toBe(0);
+    } finally {
+      store.close?.();
+    }
+  });
+
   it('still escapes Markdown that only mentions a tag', async () => {
     const store = new DirectWorkspaceStore({ workspacePath: temporaryWorkspace() });
     try {

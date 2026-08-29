@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { db } from '../db/db';
 import { type UserSettings, DEFAULT_USER_SETTINGS } from '../types';
 import { repository } from '../db/repository';
+import { normalizeWebhookEndpoints } from '../utils/webhooks';
 
 const STORAGE_KEY = 'deepscribe_settings';
 
@@ -107,6 +108,7 @@ export function mergeStoredSettings(value: Partial<UserSettings>): UserSettings 
     ...value,
     minimizeToTray: typeof value.minimizeToTray === 'boolean' ? value.minimizeToTray : DEFAULT_USER_SETTINGS.minimizeToTray,
     savedThemes: Array.isArray(value.savedThemes) ? value.savedThemes : [],
+    webhooks: normalizeWebhookEndpoints(value.webhooks),
     atmosphereColor: value.atmosphereColor || palette?.atmosphere || DEFAULT_USER_SETTINGS.atmosphereColor,
     selectedCardColor: value.selectedCardColor || palette?.selected || value.customBgColor || DEFAULT_USER_SETTINGS.selectedCardColor,
     agentAlertColor: value.agentAlertColor || palette?.agentAlert || DEFAULT_USER_SETTINGS.agentAlertColor,

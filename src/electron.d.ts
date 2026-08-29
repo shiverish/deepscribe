@@ -1,4 +1,5 @@
-import type { WorkspaceSnapshot, WorkspaceStatus } from './types';
+import type { WebhookEndpoint, WorkspaceSnapshot, WorkspaceStatus } from './types';
+import type { WebhookPayload } from './utils/webhooks';
 
 export {};
 
@@ -47,6 +48,14 @@ declare global {
         save: (snapshot: WorkspaceSnapshot) => Promise<void>;
         openFolder: () => Promise<void>;
         chooseAndMove: () => Promise<WorkspaceStatus | null>;
+      };
+      webhooks?: {
+        dispatch: (input: { endpoints: WebhookEndpoint[]; payload: WebhookPayload }) => Promise<Array<{
+          endpointId: string;
+          ok: boolean;
+          status?: number;
+          error?: string;
+        }>>;
       };
       updater?: {
         getState: () => Promise<{

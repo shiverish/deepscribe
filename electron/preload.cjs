@@ -47,6 +47,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     openFolder: () => ipcRenderer.invoke('deepscribe:workspace:open'),
     chooseAndMove: () => ipcRenderer.invoke('deepscribe:workspace:choose-and-move')
   },
+  webhooks: {
+    dispatch: payload => ipcRenderer.invoke('deepscribe:webhooks:dispatch', payload)
+  },
   updater: {
     getState: () => ipcRenderer.invoke('deepscribe:updater:get-state'),
     check: () => ipcRenderer.invoke('deepscribe:updater:check'),

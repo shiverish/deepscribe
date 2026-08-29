@@ -34,6 +34,7 @@ import { buildBlockPrintDocument, type BlockPrintDraft, type BlockPrintSettings 
 import { repository } from './db/repository';
 import { canTransitionTask, convertContentToTask, createTaskMetadata, getNextTaskNumber, parseTaskHumanId, taskWithoutActiveClaim, TASK_INBOX_PROJECT_ID, validateTaskReady } from './utils/taskBlocks';
 import { relocateUserTask } from './utils/taskManagement';
+import { startWebhookObserver } from './utils/webhooks';
 import './styles/theme.css';
 import './components/Navigation/Navigation.css';
 
@@ -191,8 +192,10 @@ function DeepScribeApp() {
   }, []);
 
   useEffect(() => {
+    let stopWebhookObserver = () => {};
     void requestPersistentStorage();
     repository.initialize().then(() => seedDemoDataIfEmpty()).then(async () => {
+      stopWebhookObserver = await startWebhookObserver();
       const projs = await db.projects.filter(project => !project.isTrash && !project.systemKind).toArray();
       if (projs.length > 0) {
         setActiveProjectId(projs[0].id);
@@ -203,6 +206,7 @@ function DeepScribeApp() {
         }
       }
     }).catch((error: unknown) => console.error('Workspace initialiseren is mislukt.', error));
+    return () => stopWebhookObserver();
   }, []);
 
   useEffect(() => {

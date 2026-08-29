@@ -209,6 +209,37 @@ function registerAttachmentIpc() {
   });
 }
 
+function registerWebhookIpc() {
+  ipcMain.handle('deepscribe:webhooks:dispatch', async (_event, input) => {
+    const payload = input?.payload;
+    const endpoints = Array.isArray(input?.endpoints) ? input.endpoints.slice(0, 50) : [];
+    if (!payload || typeof payload.event !== 'string') throw new Error('Invalid webhook payload.');
+    const body = JSON.stringify(payload);
+    if (Buffer.byteLength(body, 'utf8') > 1024 * 1024) throw new Error('Webhook payload is too large.');
+
+    return Promise.all(endpoints.map(async endpoint => {
+      const endpointId = typeof endpoint?.id === 'string' ? endpoint.id : '';
+      try {
+        const url = new URL(String(endpoint?.url || ''));
+        if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Only HTTP and HTTPS webhook URLs are supported.');
+        const headers = { 'Content-Type': 'application/json', 'User-Agent': 'DeepScribe-Webhook/1.0' };
+        const secret = typeof endpoint?.secret === 'string' ? endpoint.secret : '';
+        if (endpoint?.authMode === 'bearer' && secret) headers.Authorization = `Bearer ${secret}`;
+        if (endpoint?.authMode === 'hmac' && secret) {
+          headers['X-DeepScribe-Signature'] = `sha256=${crypto.createHmac('sha256', secret).update(body).digest('hex')}`;
+        }
+        const response = await fetch(url, { method: 'POST', headers, body, signal: AbortSignal.timeout(5000) });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return { endpointId, ok: true, status: response.status };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(`Webhook delivery failed for ${endpointId || 'unknown endpoint'}: ${message}`);
+        return { endpointId, ok: false, error: message };
+      }
+    }));
+  });
+}
+
 function registerScreenCaptureIpc() {
   ipcMain.handle('deepscribe:seescribe:capture', async (_event, command) => {
     return launchSeeScribe(typeof command === 'string' ? command : 'capture');
@@ -1121,6 +1152,7 @@ if (!gotTheLock) {
   app.quit();
 } else {
   registerAttachmentIpc();
+  registerWebhookIpc();
   registerWorkspaceIpc();
   registerPrintIpc();
   registerUpdaterIpc();

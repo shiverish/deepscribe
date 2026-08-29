@@ -245,7 +245,21 @@ export interface UserSettings {
   spellcheck: boolean;
   allowOfflineAgentAccess: boolean;
   minimizeToTray: boolean;
+  webhooks: WebhookEndpoint[];
   lastSeenWhatsNewVersion?: string;
+}
+
+export type WebhookEventName = 'task.status_changed' | 'task.created' | 'block.created' | 'block.updated';
+export type WebhookAuthMode = 'none' | 'bearer' | 'hmac';
+
+export interface WebhookEndpoint {
+  id: string;
+  name: string;
+  url: string;
+  enabled: boolean;
+  events: WebhookEventName[];
+  authMode: WebhookAuthMode;
+  secret: string;
 }
 
 export const DEFAULT_USER_SETTINGS: UserSettings = {
@@ -271,5 +285,6 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
   columnWidth: 320,
   spellcheck: true,
   allowOfflineAgentAccess: true,
-  minimizeToTray: true
+  minimizeToTray: true,
+  webhooks: []
 };
