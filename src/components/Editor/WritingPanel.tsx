@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useReducer, useMemo } from 'react';
 import type { Project, Block, Attachment, SaveStatus, PathSegment, TaskMetadata, TaskStatus } from '../../types';
+import type { BlockReferences } from '../../utils/references';
 import { TipTapEditor, type TipTapEditorHandle } from './TipTapEditor';
 import { TagBadge } from '../Navigation/TagBadge';
 import { TagManagerModal } from '../Modals/TagManagerModal';
@@ -50,7 +51,7 @@ interface WritingPanelProps {
   onOpenAttachment?: (attachment: Attachment) => Promise<void>;
   onRemoveAttachment?: (attachment: Attachment) => Promise<void>;
   onShowAttachmentsFolder?: (projectId: string) => Promise<void>;
-  references?: { outgoing: Block[]; backlinks: Block[] };
+  references?: BlockReferences;
   onOpenReferencedBlock?: (blockId: string) => void;
   onUploadImage?: (file: File) => Promise<string>;
   onPrintBlock?: (blockId: string, draft: { title: string; content: string }, settings: BlockPrintSettings) => Promise<{ status: 'printed' | 'cancelled' }>;
@@ -1287,9 +1288,15 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
               {references.outgoing.length > 0 && (
                 <div className="references-group">
                   <span>References</span>
-                  <div>{references.outgoing.map(block => (
-                    <button key={block.id} onClick={() => onOpenReferencedBlock?.(block.id)} title={`Open ${block.title}`}>
-                      {block.title}<ArrowUpRight size={11} />
+                  <div>{references.outgoing.map(reference => (
+                    <button
+                      key={reference.block.id}
+                      onClick={() => onOpenReferencedBlock?.(reference.block.id)}
+                      title={`Open ${reference.block.title}${reference.crossProject ? ' (other project)' : ''} — ${reference.type}`}
+                    >
+                      {reference.block.title}
+                      {reference.crossProject && <span className="reference-cross-project">↗</span>}
+                      <ArrowUpRight size={11} />
                     </button>
                   ))}</div>
                 </div>
@@ -1297,9 +1304,15 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
               {references.backlinks.length > 0 && (
                 <div className="references-group">
                   <span>Referenced by</span>
-                  <div>{references.backlinks.map(block => (
-                    <button key={block.id} onClick={() => onOpenReferencedBlock?.(block.id)} title={`Open ${block.title}`}>
-                      {block.title}<ArrowUpRight size={11} />
+                  <div>{references.backlinks.map(reference => (
+                    <button
+                      key={reference.block.id}
+                      onClick={() => onOpenReferencedBlock?.(reference.block.id)}
+                      title={`Open ${reference.block.title}${reference.crossProject ? ' (other project)' : ''} — ${reference.type}`}
+                    >
+                      {reference.block.title}
+                      {reference.crossProject && <span className="reference-cross-project">↗</span>}
+                      <ArrowUpRight size={11} />
                     </button>
                   ))}</div>
                 </div>

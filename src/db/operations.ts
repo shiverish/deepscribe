@@ -3,6 +3,7 @@ import type { Block, Project, TaskMetadata } from '../types';
 import { parseTag, sanitizeTags } from '../utils/tagUtils';
 import { sanitizeDependsOn } from '../utils/dependencyUtils';
 import { invalidateChunks } from '../utils/semanticSearch';
+import { linkIdsTouchingBlocks, syncWikiLinksForBlock } from '../../mcp/core/links.mjs';
 
 async function removeLocalAttachmentFiles(blockIds: string[]): Promise<void> {
   if (typeof window === 'undefined' || !window.electronAPI?.removeAttachment || blockIds.length === 0) return;
@@ -31,6 +32,25 @@ export async function saveBlockDraft(blockId: string, draft: BlockDraftUpdate): 
     task: draft.task ? { ...draft.task } : undefined,
     updatedAt: Date.now()
   });
+  await syncBlockWikiLinks(blockId);
+}
+
+/**
+ * Resolves the `[[Title]]` references a block carries into stored relations.
+ *
+ * Resolution happens here, on save, rather than at render time: a relation that
+ * points at a block id survives a rename, while title matching did not.
+ */
+export async function syncBlockWikiLinks(blockId: string): Promise<void> {
+  const [block, allBlocks, links] = await Promise.all([
+    db.blocks.get(blockId),
+    db.blocks.toArray(),
+    db.links.toArray()
+  ]);
+  if (!block) return;
+  const { added, removedIds } = syncWikiLinksForBlock(block, allBlocks, links, 'user');
+  if (added.length > 0) await db.links.bulkAdd(added);
+  if (removedIds.length > 0) await db.links.bulkDelete(removedIds);
 }
 
 export interface ProjectDraftUpdate {
@@ -213,6 +233,14 @@ export async function permanentlyDeleteBlock(blockId: string): Promise<void> {
   });
   // Drop the search index entries so deleted blocks leave no chunks behind.
   for (const id of ids) invalidateChunks(id);
+  await removeLinksTouching(ids);
+}
+
+/** Removes every relation that points at one of these blocks. */
+async function removeLinksTouching(blockIds: readonly string[]): Promise<void> {
+  if (blockIds.length === 0) return;
+  const stale = linkIdsTouchingBlocks(await db.links.toArray(), blockIds);
+  if (stale.length > 0) await db.links.bulkDelete(stale);
 }
 
 export async function permanentlyDeleteProject(projectId: string): Promise<void> {
@@ -228,6 +256,7 @@ export async function permanentlyDeleteProject(projectId: string): Promise<void>
   // no chunks behind.
   for (const id of blockIds) invalidateChunks(String(id));
   invalidateChunks(projectId);
+  await removeLinksTouching(blockIds.map(String));
 }
 
 export function topLevelTrashedBlocks(blocks: Block[]): Block[] {

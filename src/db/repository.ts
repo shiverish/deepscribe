@@ -43,11 +43,11 @@ function normalizeSnapshotBlock(block: Block): Block {
 }
 
 async function createSnapshot(): Promise<WorkspaceSnapshot> {
-  const [projects, blocks, attachments, settings, activities, templates, revisions] = await Promise.all([
+  const [projects, blocks, attachments, settings, activities, templates, revisions, links] = await Promise.all([
     db.projects.toArray(), db.blocks.toArray(), db.attachments.toArray(), db.settings.toArray(),
-    db.activities.toArray(), db.templates.toArray(), db.revisions.toArray()
+    db.activities.toArray(), db.templates.toArray(), db.revisions.toArray(), db.links.toArray()
   ]);
-  return { projects, blocks, attachments, settings, activities, templates, revisions };
+  return { projects, blocks, attachments, settings, activities, templates, revisions, links };
 }
 
 async function migrateAttachment(attachment: Attachment, projectId: string): Promise<Attachment> {
@@ -75,8 +75,8 @@ async function applySnapshot(snapshot: WorkspaceSnapshot): Promise<void> {
       ? snapshot.projects
       : [...snapshot.projects, createTaskInboxProject()];
     const blocks = snapshot.blocks.map(normalizeSnapshotBlock);
-    await db.transaction('rw', [db.projects, db.blocks, db.attachments, db.settings, db.activities, db.templates, db.revisions], async () => {
-      await Promise.all([db.revisions.clear(), db.attachments.clear(), db.activities.clear(), db.templates.clear(), db.settings.clear(), db.blocks.clear(), db.projects.clear()]);
+    await db.transaction('rw', [db.projects, db.blocks, db.attachments, db.settings, db.activities, db.templates, db.revisions, db.links], async () => {
+      await Promise.all([db.links.clear(), db.revisions.clear(), db.attachments.clear(), db.activities.clear(), db.templates.clear(), db.settings.clear(), db.blocks.clear(), db.projects.clear()]);
       if (projects.length) await db.projects.bulkAdd(projects);
       if (blocks.length) await db.blocks.bulkAdd(blocks);
       if (snapshot.attachments.length) await db.attachments.bulkAdd(snapshot.attachments);
@@ -84,6 +84,7 @@ async function applySnapshot(snapshot: WorkspaceSnapshot): Promise<void> {
       if (snapshot.activities.length) await db.activities.bulkAdd(snapshot.activities);
       if (snapshot.templates.length) await db.templates.bulkAdd(snapshot.templates);
       if (snapshot.revisions?.length) await db.revisions.bulkAdd(snapshot.revisions);
+      if (snapshot.links?.length) await db.links.bulkAdd(snapshot.links);
     });
   } finally {
     applyingSnapshot = false;

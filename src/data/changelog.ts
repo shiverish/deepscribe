@@ -14,9 +14,42 @@ export interface ReleaseEntry {
   items: ChangelogItem[];
 }
 
-export const CURRENT_APP_VERSION = '0.2.26';
+export const CURRENT_APP_VERSION = '0.2.27';
 
 export const CHANGELOG_ENTRIES: ReleaseEntry[] = [
+  {
+    version: '0.2.27',
+    date: 'August 2026',
+    title: 'Knowledge Graph & Findable Scratchpads',
+    summary: 'Block references became real relations that survive renames and cross projects, and the decisions recorded in project scratchpads are finally searchable.',
+    items: [
+      {
+        type: 'feature',
+        text: 'Typed, Cross-Project Relations',
+        detail: 'References are stored as relations pointing at blocks rather than matched by title, so renaming a block no longer breaks them and a reference can point into another project. Alongside the neutral relation you can express supports, contradicts, derived-from and source-of.'
+      },
+      {
+        type: 'feature',
+        text: 'Agents Can Traverse The Graph',
+        detail: 'New link_blocks and get_related tools let an agent walk outward from a block instead of searching again. Backlinks count as a step, and every result reports direction, relation type, distance and whether it crosses a project.'
+      },
+      {
+        type: 'feature',
+        text: 'Project Scratchpads Are Searchable',
+        detail: 'Search now covers project titles, descriptions and scratchpads, so the decisions recorded there can actually be found. Project hits carry the same snippet, score and heading as block hits.'
+      },
+      {
+        type: 'improvement',
+        text: 'References Panel Shows Relation Type And Origin',
+        detail: 'Outgoing references and backlinks now show what kind of relation they are and mark the ones that live in another project.'
+      },
+      {
+        type: 'improvement',
+        text: 'Ambiguous References Stay Honest',
+        detail: 'A reference to a title that does not exist, or that two blocks share, is left unresolved instead of being pointed at the wrong block.'
+      }
+    ]
+  },
   {
     version: '0.2.26',
     date: 'August 2026',

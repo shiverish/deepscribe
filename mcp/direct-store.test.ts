@@ -141,6 +141,98 @@ describe('DirectWorkspaceStore search over projects and blocks', () => {
   });
 });
 
+describe('DirectWorkspaceStore knowledge graph', () => {
+  it('links blocks across projects and traverses the graph in both directions', async () => {
+    const store = new DirectWorkspaceStore({ workspacePath: temporaryWorkspace() });
+    try {
+      const research = await store.handleRequest('create_project', { title: 'Onderzoek' });
+      const product = await store.handleRequest('create_project', { title: 'Product' });
+      const finding = await store.handleRequest('create_block', { projectId: research.id, title: 'Bevinding' });
+      const decision = await store.handleRequest('create_block', { projectId: product.id, title: 'Besluit' });
+      const followUp = await store.handleRequest('create_block', { projectId: product.id, title: 'Vervolg' });
+
+      const link = await store.handleRequest('link_blocks', {
+        sourceBlockId: decision.id, targetBlockId: finding.id, type: 'derived-from'
+      });
+      expect(link).toMatchObject({ created: true, type: 'derived-from' });
+
+      // Repeating the same relation is idempotent.
+      const again = await store.handleRequest('link_blocks', {
+        sourceBlockId: decision.id, targetBlockId: finding.id, type: 'derived-from'
+      });
+      expect(again).toMatchObject({ created: false, id: link.id });
+
+      await store.handleRequest('link_blocks', { sourceBlockId: followUp.id, targetBlockId: decision.id });
+
+      // A backlink counts as a step, so the finding reaches the decision.
+      const direct = await store.handleRequest('get_related', { blockId: finding.id });
+      expect(direct.related).toHaveLength(1);
+      expect(direct.related[0]).toMatchObject({
+        id: decision.id, direction: 'incoming', type: 'derived-from', distance: 1, crossProject: true, projectTitle: 'Product'
+      });
+
+      const deeper = await store.handleRequest('get_related', { blockId: finding.id, depth: 2 });
+      expect(deeper.related.map((entry: { id: string }) => entry.id)).toEqual([decision.id, followUp.id]);
+      expect(deeper.related[1]).toMatchObject({ distance: 2, crossProject: true });
+
+      const filtered = await store.handleRequest('get_related', { blockId: finding.id, depth: 2, types: ['derived-from'] });
+      expect(filtered.related.map((entry: { id: string }) => entry.id)).toEqual([decision.id]);
+    } finally {
+      store.close();
+    }
+  });
+
+  it('keeps a relation intact when the target block is renamed', async () => {
+    const store = new DirectWorkspaceStore({ workspacePath: temporaryWorkspace() });
+    try {
+      const project = await store.handleRequest('create_project', { title: 'Hernoemen' });
+      const target = await store.handleRequest('create_block', { projectId: project.id, title: 'Oude titel' });
+      const source = await store.handleRequest('create_block', { projectId: project.id, title: 'Bron' });
+      await store.handleRequest('link_blocks', { sourceBlockId: source.id, targetBlockId: target.id });
+
+      const renamed = { ...store.getBlock(target.id), title: 'Heel andere titel', updatedAt: Date.now() };
+      store.saveBlock(renamed);
+
+      const related = await store.handleRequest('get_related', { blockId: source.id });
+      expect(related.related[0]).toMatchObject({ id: target.id, title: 'Heel andere titel' });
+    } finally {
+      store.close();
+    }
+  });
+
+  it('refuses a link to itself or to a block that does not exist', async () => {
+    const store = new DirectWorkspaceStore({ workspacePath: temporaryWorkspace() });
+    try {
+      const project = await store.handleRequest('create_project', { title: 'Weigeringen' });
+      const block = await store.handleRequest('create_block', { projectId: project.id, title: 'Blok' });
+
+      await expect(store.handleRequest('link_blocks', { sourceBlockId: block.id, targetBlockId: block.id }))
+        .rejects.toThrow(/cannot be linked to itself/i);
+      await expect(store.handleRequest('link_blocks', { sourceBlockId: block.id, targetBlockId: 'block-bestaat-niet' }))
+        .rejects.toThrow(/not found/i);
+    } finally {
+      store.close();
+    }
+  });
+
+  it('creates a relation from a wiki link written by an agent', async () => {
+    const store = new DirectWorkspaceStore({ workspacePath: temporaryWorkspace() });
+    try {
+      const project = await store.handleRequest('create_project', { title: 'Wiki' });
+      const target = await store.handleRequest('create_block', { projectId: project.id, title: 'Doelblok' });
+      const source = await store.handleRequest('create_block', { projectId: project.id, title: 'Bron' });
+
+      await store.handleRequest('update_block', { blockId: source.id, content: 'Zie [[Doelblok]] voor details.' });
+
+      const related = await store.handleRequest('get_related', { blockId: source.id });
+      expect(related.related.map((entry: { id: string }) => entry.id)).toEqual([target.id]);
+      expect(related.related[0]).toMatchObject({ direction: 'outgoing', type: 'relates-to' });
+    } finally {
+      store.close();
+    }
+  });
+});
+
 describe('DirectWorkspaceStore offline MCP engine', () => {
   it('uses the same leased claim and idempotency rules offline', async () => {
     const store = new DirectWorkspaceStore({ workspacePath: temporaryWorkspace() });

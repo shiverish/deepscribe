@@ -309,9 +309,11 @@ function DeepScribeApp() {
       document.removeEventListener('visibilitychange', scheduleMarkSeen);
     };
   }, [activeBlockId, isWritingPanelOpen]);
+  // Relations are stored edges now, so references reach across projects.
+  const allLinks = useLiveQuery(() => db.links.toArray(), [], []);
   const blockReferences = useMemo(() => activeBlock
-    ? resolveBlockReferences(activeBlock, allBlocks.filter(block => block.projectId === activeBlock.projectId))
-    : { outgoing: [], backlinks: [] }, [activeBlock, allBlocks]);
+    ? resolveBlockReferences(activeBlock, allBlocks, allLinks)
+    : { outgoing: [], backlinks: [] }, [activeBlock, allBlocks, allLinks]);
 
   const handlePrintBlock = useCallback(async (blockId: string, draft: BlockPrintDraft, settings: BlockPrintSettings) => {
     if (!window.electronAPI?.printBlockDocument) {

@@ -474,6 +474,29 @@ registerTool('append_to_block', {
   annotations: write
 });
 
+registerTool('link_blocks', {
+  title: 'Twee blokken aan elkaar relateren',
+  description: 'Leg een relatie vast tussen twee blokken, ook over projectgrenzen heen. Relaties wijzen naar blok-id, dus ze blijven intact als een blok wordt hernoemd. Herhalen met dezelfde bron, doel en type maakt geen tweede relatie aan.',
+  inputSchema: {
+    sourceBlockId: z.string().min(1),
+    targetBlockId: z.string().min(1),
+    type: z.enum(['relates-to', 'supports', 'contradicts', 'derived-from', 'source-of']).optional()
+  },
+  annotations: write
+});
+
+registerTool('get_related', {
+  title: 'Verwante blokken ophalen',
+  description: 'Loop vanaf een blok door de kennisgraaf in plaats van opnieuw te zoeken. Zowel uitgaande links als backlinks tellen als stap. Ieder resultaat meldt richting, relatietype, afstand en of het in een ander project ligt.',
+  inputSchema: {
+    blockId: z.string().min(1),
+    depth: z.number().int().min(1).max(5).optional(),
+    types: z.array(z.enum(['relates-to', 'supports', 'contradicts', 'derived-from', 'source-of'])).max(5).optional(),
+    limit: z.number().int().min(1).max(100).optional()
+  },
+  annotations: readOnly
+});
+
 registerTool('list_todos', {
   title: 'Todo’s tonen',
   description: 'Toon todo-items uit één blok, één project of heel DeepScribe. taskIndex identificeert een todo binnen zijn blok.',

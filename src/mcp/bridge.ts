@@ -7,9 +7,10 @@ export { contentToHtml, looksLikeHtml, sanitizeHtml } from '../../mcp/core/html.
 import { recordActivity } from '../db/activity';
 import { recordBlockRevision, getBlockRevisions, getBlockRevision, restoreBlockRevision } from '../db/revisions';
 import { sanitizeDependsOn, detectCircularDependency, getBlockDependencyStatus, formatDependencyMarkdown } from '../utils/dependencyUtils';
-import type { Attachment, Block, ClaimantAgentTarget, Project, ActivityEntry, ActivitySource, TaskAgentTarget, TaskMetadata, TaskStatus } from '../types';
+import type { Attachment, Block, BlockLinkType, ClaimantAgentTarget, Project, ActivityEntry, ActivitySource, TaskAgentTarget, TaskMetadata, TaskStatus } from '../types';
 import { sanitizeTags } from '../utils/tagUtils';
 import { rankChunksLocally, rankProjectsLocally } from '../utils/semanticSearch';
+import { BLOCK_LINK_TYPES, collectRelatedBlocks, createBlockLink, linkKey, linkRefusal, normalizeLinkType, syncWikiLinksForBlock } from '../../mcp/core/links.mjs';
 import { isDescendantOrSelf, moveBlockInTree } from '../utils/dragAndDrop';
 import { canTransitionTask, createTaskClaim, createTaskInboxProject, createTaskMetadata, formatTaskDeepLink, formatTaskHumanId, getNextTaskNumber, isTaskClaimCandidate, isTaskInboxProject, normalizeLeaseSeconds, parseTaskHumanId, redactTaskClaim, TASK_AGENT_TARGETS, taskClaimWriteRefusal, taskCreatorLabel, TASK_INBOX_PROJECT_ID, taskProtectedFieldRefusal, validateTaskMetadata, validateTaskReady } from '../utils/taskBlocks';
 import { exportBlockAsHtml, exportBlockAsMarkdown, exportBlockAsText, type ExportFormat } from '../utils/exportUtils';
@@ -337,6 +338,7 @@ async function createBlock(params: JsonObject) {
     if (parentId) await db.blocks.update(parentId, { childCount: await db.blocks.filter(item => item.parentId === parentId && !item.isTrash).count(), updatedAt: now });
   });
   await recordBlockRevision(block, 'agent', 'Initial creation by agent');
+  await syncBlockLinks(block);
   await recordActivity({
     projectId,
     blockId: block.id,
@@ -716,6 +718,17 @@ export async function createWorkItem(params: JsonObject) {
   });
 }
 
+/**
+ * Brings the stored relations in line with the `[[links]]` a block carries.
+ * Only untyped wiki links are touched; a deliberate typed relation survives.
+ */
+async function syncBlockLinks(block: Block, createdBy: 'user' | 'agent' = 'agent') {
+  const [allBlocks, links] = await Promise.all([db.blocks.toArray(), db.links.toArray()]);
+  const { added, removedIds } = syncWikiLinksForBlock(block, allBlocks, links, createdBy);
+  if (added.length > 0) await db.links.bulkAdd(added);
+  if (removedIds.length > 0) await db.links.bulkDelete(removedIds);
+}
+
 async function updateBlock(params: JsonObject) {
   const blockId = requiredString(params, 'blockId');
   const block = await db.blocks.get(blockId);
@@ -743,6 +756,7 @@ async function updateBlock(params: JsonObject) {
   await db.blocks.update(blockId, update);
   const updated = await db.blocks.get(blockId);
   if (updated) await recordBlockRevision(updated, 'agent', `Agent changed “${updated.title}”`);
+  if (updated) await syncBlockLinks(updated);
   await recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'block-updated', summary: `Agent changed “${updated?.title ?? block.title}”` });
   return updated ? redactTaskClaim(updated) : updated;
 }
@@ -776,6 +790,7 @@ async function appendToBlock(params: JsonObject) {
   await db.blocks.update(blockId, { ...stats, updatedAt: now, lastAgentEditAt: now });
   const updated = await db.blocks.get(blockId);
   if (updated) await recordBlockRevision(updated, 'agent', `Agent appended text`);
+  if (updated) await syncBlockLinks(updated);
   await recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'block-appended', summary: `Agent appended text to “${block.title}”` });
   return updated ? redactTaskClaim(updated) : updated;
 }
@@ -1382,6 +1397,62 @@ export async function handleMcpBridgeRequest(method: string, rawParams: unknown)
       return await updateBlock(params);
     case 'append_to_block':
       return await appendToBlock(params);
+    case 'link_blocks': {
+      const sourceBlockId = requiredString(params, 'sourceBlockId');
+      const targetBlockId = requiredString(params, 'targetBlockId');
+      const byId = new Map((await db.blocks.toArray()).map(block => [block.id, block]));
+      const refusal = linkRefusal(sourceBlockId, targetBlockId, byId);
+      if (refusal) throw new Error(refusal);
+
+      const type = normalizeLinkType(params.type);
+      const wanted = linkKey(sourceBlockId, targetBlockId, type);
+      const existing = (await db.links.toArray())
+        .find(link => linkKey(link.sourceBlockId, link.targetBlockId, link.type) === wanted);
+      if (existing) return { ...existing, created: false };
+
+      const link = createBlockLink({ sourceBlockId, targetBlockId, type, createdBy: 'agent' });
+      await db.links.add(link);
+      const source = byId.get(sourceBlockId)!;
+      const target = byId.get(targetBlockId)!;
+      await recordActivity({
+        projectId: source.projectId,
+        blockId: sourceBlockId,
+        source: 'agent',
+        action: 'block-linked',
+        summary: `Agent linked “${source.title}” to “${target.title}” as ${type}`
+      });
+      return { ...link, created: true };
+    }
+
+    case 'get_related': {
+      const blockId = requiredString(params, 'blockId');
+      const blocks = await db.blocks.toArray();
+      const byId = new Map(blocks.map(block => [block.id, block]));
+      const block = byId.get(blockId);
+      if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
+
+      const types = Array.isArray(params.types)
+        ? params.types.filter((value): value is BlockLinkType => typeof value === 'string' && BLOCK_LINK_TYPES.includes(value as BlockLinkType))
+        : undefined;
+      const related = collectRelatedBlocks(blockId, await db.links.toArray(), byId, {
+        depth: typeof params.depth === 'number' ? params.depth : undefined,
+        types
+      });
+      const projects = new Map((await db.projects.toArray()).map(project => [project.id, project]));
+
+      return {
+        blockId,
+        related: related.slice(0, clampLimit(params.limit)).map(entry => ({
+          ...blockSummary(entry.block),
+          distance: entry.distance,
+          direction: entry.direction,
+          type: entry.type,
+          projectTitle: projects.get(entry.block.projectId)?.title ?? null,
+          crossProject: entry.block.projectId !== block.projectId
+        }))
+      };
+    }
+
     case 'list_todos': {
       const projectId = optionalString(params, 'projectId');
       const blockId = optionalString(params, 'blockId');

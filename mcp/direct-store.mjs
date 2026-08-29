@@ -14,6 +14,15 @@ import {
 } from './core/dependencies.mjs';
 import { rankBlocksLocally, rankChunksLocally, rankProjectsLocally } from './core/ranking.mjs';
 import {
+  BLOCK_LINK_TYPES,
+  collectRelatedBlocks,
+  createBlockLink,
+  linkKey,
+  linkRefusal,
+  normalizeLinkType,
+  syncWikiLinksForBlock
+} from './core/links.mjs';
+import {
   CLAIMANT_AGENT_TARGETS,
   canTransitionTask,
   createTaskMetadata,
@@ -582,6 +591,14 @@ export class DirectWorkspaceStore {
         block_id TEXT NOT NULL REFERENCES blocks(id) ON DELETE CASCADE,
         json TEXT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS links (
+        id TEXT PRIMARY KEY,
+        source_block_id TEXT NOT NULL REFERENCES blocks(id) ON DELETE CASCADE,
+        target_block_id TEXT NOT NULL REFERENCES blocks(id) ON DELETE CASCADE,
+        json TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS links_source ON links(source_block_id);
+      CREATE INDEX IF NOT EXISTS links_target ON links(target_block_id);
       CREATE INDEX IF NOT EXISTS blocks_project_id ON blocks(project_id);
       CREATE INDEX IF NOT EXISTS blocks_parent_id ON blocks(parent_id);
       CREATE INDEX IF NOT EXISTS attachments_block_id ON attachments(block_id);
@@ -690,6 +707,37 @@ export class DirectWorkspaceStore {
     this.open();
     this.database.prepare('INSERT INTO blocks (id, project_id, parent_id, json) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET project_id = excluded.project_id, parent_id = excluded.parent_id, json = excluded.json')
       .run(block.id, block.projectId, block.parentId ?? null, JSON.stringify(block));
+  }
+
+  /**
+   * Brings the stored relations in line with the `[[links]]` a block carries.
+   * Only the untyped links this owns are touched; a deliberate typed relation
+   * is never removed because prose changed.
+   */
+  syncBlockLinks(block, createdBy = 'agent') {
+    const links = this.getAllLinks();
+    const { added, removedIds } = syncWikiLinksForBlock(block, this.getAllBlocks(), links, createdBy);
+    for (const link of added) this.saveLink(link);
+    this.deleteLinks(removedIds);
+    return { added, removedIds };
+  }
+
+  getAllLinks() {
+    this.open();
+    return this.database.prepare('SELECT json FROM links').all().map(row => JSON.parse(row.json));
+  }
+
+  saveLink(link) {
+    this.open();
+    this.database.prepare('INSERT INTO links (id, source_block_id, target_block_id, json) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET source_block_id = excluded.source_block_id, target_block_id = excluded.target_block_id, json = excluded.json')
+      .run(link.id, link.sourceBlockId, link.targetBlockId, JSON.stringify(link));
+  }
+
+  deleteLinks(ids) {
+    if (ids.length === 0) return;
+    this.open();
+    const statement = this.database.prepare('DELETE FROM links WHERE id = ?');
+    for (const id of ids) statement.run(id);
   }
 
   saveRevision(revision) {
@@ -1171,6 +1219,7 @@ export class DirectWorkspaceStore {
           }
         }
         this.recordBlockRevision(block, 'agent', 'Initial creation by agent');
+        this.syncBlockLinks(block);
         this.recordActivity({
           projectId,
           blockId: block.id,
@@ -1624,6 +1673,7 @@ export class DirectWorkspaceStore {
         }
         this.saveBlock(updated);
         this.recordBlockRevision(updated, 'agent', `Agent changed “${updated.title}”`);
+        this.syncBlockLinks(updated);
         this.recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'block-updated', summary: `Agent changed “${updated.title}”` });
         return redactTaskClaim(updated);
       }
@@ -1644,8 +1694,62 @@ export class DirectWorkspaceStore {
         const updated = { ...block, ...stats, updatedAt: now, lastAgentEditAt: now };
         this.saveBlock(updated);
         this.recordBlockRevision(updated, 'agent', `Agent appended text`);
+        this.syncBlockLinks(updated);
         this.recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'block-appended', summary: `Agent appended text to “${block.title}”` });
         return redactTaskClaim(updated);
+      }
+
+      case 'link_blocks': {
+        const sourceBlockId = requireString('sourceBlockId');
+        const targetBlockId = requireString('targetBlockId');
+        const byId = new Map(this.getAllBlocks().map(b => [b.id, b]));
+        const refusal = linkRefusal(sourceBlockId, targetBlockId, byId);
+        if (refusal) throw new Error(refusal);
+
+        const type = normalizeLinkType(params.type);
+        const existing = this.getAllLinks()
+          .find(link => linkKey(link.sourceBlockId, link.targetBlockId, link.type) === linkKey(sourceBlockId, targetBlockId, type));
+        if (existing) return { ...existing, created: false };
+
+        const link = createBlockLink({ sourceBlockId, targetBlockId, type, createdBy: 'agent' });
+        this.saveLink(link);
+        const source = byId.get(sourceBlockId);
+        const target = byId.get(targetBlockId);
+        this.recordActivity({
+          projectId: source.projectId,
+          blockId: sourceBlockId,
+          source: 'agent',
+          action: 'block-linked',
+          summary: `Agent linked “${source.title}” to “${target.title}” as ${type}`
+        });
+        return { ...link, created: true };
+      }
+
+      case 'get_related': {
+        const blockId = requireString('blockId');
+        const blocks = this.getAllBlocks();
+        const byId = new Map(blocks.map(b => [b.id, b]));
+        const block = byId.get(blockId);
+        if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
+
+        const types = Array.isArray(params.types)
+          ? params.types.filter(t => typeof t === 'string' && BLOCK_LINK_TYPES.includes(t))
+          : undefined;
+        const links = this.getAllLinks();
+        const related = collectRelatedBlocks(blockId, links, byId, { depth: params.depth, types });
+        const projects = new Map(this.getAllProjects().map(p => [p.id, p]));
+
+        return {
+          blockId,
+          related: related.slice(0, clampLimit(params.limit)).map(entry => ({
+            ...this.blockSummary(entry.block),
+            distance: entry.distance,
+            direction: entry.direction,
+            type: entry.type,
+            projectTitle: projects.get(entry.block.projectId)?.title ?? null,
+            crossProject: entry.block.projectId !== block.projectId
+          }))
+        };
       }
 
       case 'list_todos': {

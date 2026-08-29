@@ -96,6 +96,21 @@ export interface Block {
   updatedAt: number;
 }
 
+export type BlockLinkType = 'relates-to' | 'supports' | 'contradicts' | 'derived-from' | 'source-of';
+
+/**
+ * An edge in the knowledge graph. Relations point at block ids rather than
+ * titles, so they survive a rename and may cross project boundaries.
+ */
+export interface BlockLink {
+  id: string;
+  sourceBlockId: string;
+  targetBlockId: string;
+  type: BlockLinkType;
+  createdBy: 'user' | 'agent';
+  createdAt: number;
+}
+
 export interface BlockDependencyStatus {
   isBlocked: boolean;
   pendingDependencies: Block[];
@@ -133,6 +148,7 @@ export interface WorkspaceSnapshot {
   activities: ActivityEntry[];
   templates: BlockTemplate[];
   revisions?: BlockRevision[];
+  links?: BlockLink[];
 }
 
 export type ActivitySource = 'user' | 'agent' | 'system';

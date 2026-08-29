@@ -1,7 +1,8 @@
 import Dexie, { type Table } from 'dexie';
-import type { Project, Block, Attachment, ActivityEntry, BlockTemplate, BlockRevision } from '../types';
+import type { Project, Block, Attachment, ActivityEntry, BlockTemplate, BlockRevision, BlockLink } from '../types';
 import { sanitizeTags } from '../utils/tagUtils';
 import { createTaskInboxProject, normalizeTaskMetadata, TASK_INBOX_PROJECT_ID } from '../utils/taskBlocks';
+import { linkKey, syncWikiLinksForBlock } from '../../mcp/core/links.mjs';
 
 const LEGACY_AGENT_STATUSES = ['agent-ready', 'agent-claimed', 'agent-blocked', 'agent-review', 'agent-done'] as const;
 
@@ -31,6 +32,7 @@ export class DeepScribeDatabase extends Dexie {
   activities!: Table<ActivityEntry, string>;
   templates!: Table<BlockTemplate, string>;
   revisions!: Table<BlockRevision, string>;
+  links!: Table<BlockLink, string>;
 
   constructor() {
     super('DeepScribeDB');
@@ -142,6 +144,39 @@ export class DeepScribeDatabase extends Dexie {
           block.tags = tags;
         }
       });
+    });
+
+    // Knowledge graph edges. Relations point at block ids so a rename cannot
+    // break them, and they are free to cross project boundaries.
+    this.version(13).stores({
+      projects: 'id, title, isTrash, *tags, createdAt, updatedAt',
+      blocks: 'id, projectId, parentId, order, isTrash, kind, task.status, task.position, *tags, *dependsOn, plainText, updatedAt',
+      attachments: 'id, blockId, fileName, createdAt',
+      settings: 'key',
+      activities: 'id, projectId, blockId, source, action, createdAt',
+      templates: 'id, name, createdAt',
+      revisions: 'id, blockId, projectId, source, createdAt',
+      links: 'id, sourceBlockId, targetBlockId, type, createdAt'
+    }).upgrade(async transaction => {
+      // Resolve the `[[Title]]` references that were until now only matched at
+      // render time. Resolution is by title across the whole workspace; a title
+      // carried by more than one block stays unresolved rather than guessed at,
+      // so it shows up as an unresolved reference instead of a wrong link.
+      const blocks = await transaction.table<Block>('blocks').toArray();
+      const links = transaction.table<BlockLink>('links');
+      /** @see syncWikiLinksForBlock — the same rule that keeps them in step later. */
+      const created: BlockLink[] = [];
+      const seen = new Set<string>();
+      for (const block of blocks) {
+        if (block.isTrash) continue;
+        for (const link of syncWikiLinksForBlock(block, blocks, created).added) {
+          const key = linkKey(link.sourceBlockId, link.targetBlockId, link.type);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          created.push(link);
+        }
+      }
+      if (created.length > 0) await links.bulkAdd(created);
     });
   }
 }

@@ -45,6 +45,16 @@ Naast blokken worden ook projecten doorzocht: titel, beschrijving en scratchpad.
 
 Het zoekvenster in de app gebruikt voorlopig nog de oudere ranking op blokniveau en toont geen projecttreffers; dit betreft uitsluitend de MCP-zoekopdracht.
 
+## Relaties tussen blokken
+
+Blokken kunnen aan elkaar gerelateerd worden, ook over projectgrenzen heen. Relaties worden opgeslagen als verwijzingen naar blok-id, niet naar titel, dus een blok hernoemen breekt ze niet.
+
+- In de editor schrijf je een verwijzing als `[[Bloktitel]]`. Bij opslaan wordt die eenmalig omgezet naar een relatie. Een titel die niet bestaat, of die door meerdere blokken wordt gedragen, blijft bewust onopgelost in plaats van naar het verkeerde blok te wijzen.
+- Naast het neutrale `relates-to` bestaan de typen `supports`, `contradicts`, `derived-from` en `source-of`. Een getypeerde relatie die bewust is gelegd, verdwijnt niet wanneer de tekst verandert.
+- Het referentiepaneel toont uitgaande verwijzingen en backlinks, met het relatietype en een markering wanneer het andere blok in een ander project staat.
+- Agents gebruiken `link_blocks` om een relatie te leggen en `get_related` om vanaf een blok door de graaf te lopen. Zowel uitgaande links als backlinks tellen als stap; ieder resultaat meldt richting, type, afstand en of het cross-project is.
+- Bij het definitief verwijderen van een blok of project worden de bijbehorende relaties opgeruimd.
+
 ## Uitgaande webhooks
 
 DeepScribe kan taak- en blokgebeurtenissen als JSON naar externe automatiseringen sturen, bijvoorbeeld n8n, Discord of Home Assistant. Endpoints worden beheerd onder **Instellingen → Agents → Outgoing Webhooks**.

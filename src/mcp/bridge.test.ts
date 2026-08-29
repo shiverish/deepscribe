@@ -111,6 +111,58 @@ describe('DeepScribe MCP HTML content entry', () => {
   });
 });
 
+describe('DeepScribe MCP knowledge graph', () => {
+  it('links across projects and reports direction, type and distance', async () => {
+    const research = await handleMcpBridgeRequest('create_project', { title: 'Onderzoek' }) as Project;
+    const product = await handleMcpBridgeRequest('create_project', { title: 'Product' }) as Project;
+    const finding = await handleMcpBridgeRequest('create_block', { projectId: research.id, title: 'Bevinding' }) as Block;
+    const decision = await handleMcpBridgeRequest('create_block', { projectId: product.id, title: 'Besluit' }) as Block;
+
+    const link = await handleMcpBridgeRequest('link_blocks', {
+      sourceBlockId: decision.id, targetBlockId: finding.id, type: 'supports'
+    }) as { created: boolean; id: string };
+    expect(link.created).toBe(true);
+
+    const replay = await handleMcpBridgeRequest('link_blocks', {
+      sourceBlockId: decision.id, targetBlockId: finding.id, type: 'supports'
+    }) as { created: boolean; id: string };
+    expect(replay).toMatchObject({ created: false, id: link.id });
+
+    const related = await handleMcpBridgeRequest('get_related', { blockId: finding.id }) as {
+      related: Array<{ id: string; direction: string; type: string; distance: number; crossProject: boolean; projectTitle: string }>;
+    };
+    expect(related.related).toHaveLength(1);
+    expect(related.related[0]).toMatchObject({
+      id: decision.id, direction: 'incoming', type: 'supports', distance: 1, crossProject: true, projectTitle: 'Product'
+    });
+  });
+
+  it('turns an agent wiki link into a stored relation that survives a rename', async () => {
+    const project = await handleMcpBridgeRequest('create_project', { title: 'Wiki' }) as Project;
+    const target = await handleMcpBridgeRequest('create_block', { projectId: project.id, title: 'Doelblok' }) as Block;
+    const source = await handleMcpBridgeRequest('create_block', { projectId: project.id, title: 'Bron' }) as Block;
+
+    await handleMcpBridgeRequest('update_block', { blockId: source.id, content: 'Zie [[Doelblok]] voor details.' });
+    expect(await db.links.count()).toBe(1);
+
+    await db.blocks.update(target.id, { title: 'Heel andere titel' });
+    const related = await handleMcpBridgeRequest('get_related', { blockId: source.id }) as { related: Array<{ id: string; title: string }> };
+    expect(related.related[0]).toMatchObject({ id: target.id, title: 'Heel andere titel' });
+  });
+
+  it('drops the relation again when the wiki link is removed from the text', async () => {
+    const project = await handleMcpBridgeRequest('create_project', { title: 'Wiki' }) as Project;
+    await handleMcpBridgeRequest('create_block', { projectId: project.id, title: 'Doelblok' });
+    const source = await handleMcpBridgeRequest('create_block', { projectId: project.id, title: 'Bron' }) as Block;
+
+    await handleMcpBridgeRequest('update_block', { blockId: source.id, content: 'Zie [[Doelblok]].' });
+    expect(await db.links.count()).toBe(1);
+
+    await handleMcpBridgeRequest('update_block', { blockId: source.id, content: 'Geen verwijzing meer.' });
+    expect(await db.links.count()).toBe(0);
+  });
+});
+
 describe('DeepScribe MCP task blocks', () => {
   it('creates attributed tasks idempotently in Workspace Inbox or in specified project', async () => {
     const project = await handleMcpBridgeRequest('create_project', { title: 'Target Project' }) as Project;

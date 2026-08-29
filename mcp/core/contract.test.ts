@@ -3,6 +3,9 @@ import { describe, expect, it } from 'vitest';
 
 import * as coreDependencies from './dependencies.mjs';
 import * as coreHtml from './html.mjs';
+import * as coreLinks from './links.mjs';
+import * as coreWikiLinks from './wikiLinks.mjs';
+import * as references from '../../src/utils/references';
 import * as coreMarkdown from './markdown.mjs';
 import * as coreRanking from './ranking.mjs';
 import * as coreTags from './tags.mjs';
@@ -66,6 +69,15 @@ describe('shared domain core', () => {
     expect(semanticSearch.invalidateChunks).toBe(coreRanking.invalidateChunks);
     expect(semanticSearch.rankProjectsLocally).toBe(coreRanking.rankProjectsLocally);
     expect(directStore.rankProjectsLocally).toBe(coreRanking.rankProjectsLocally);
+  });
+
+  it('serves the graph rules to both adapters', () => {
+    // Both paths resolve, validate and traverse relations with one implementation,
+    // so a link made offline behaves exactly like one made through the app.
+    expect(references.extractWikiLinks).toBe(coreWikiLinks.extractWikiLinks);
+    for (const name of ['createBlockLink', 'linkRefusal', 'normalizeLinkType', 'syncWikiLinksForBlock', 'collectRelatedBlocks'] as const) {
+      expect(typeof coreLinks[name]).toBe('function');
+    }
   });
 
   it('serves task rules to both adapters', () => {
