@@ -1,0 +1,187 @@
+/* Knowledge graph neighbourhood view. Every colour comes from a theme variable
+   so the view follows the active preset in both light and dark. */
+
+.graph-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg-primary);
+}
+
+.graph-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+}
+
+.graph-center-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  min-width: 0;
+}
+
+.graph-center-label strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 40ch;
+}
+
+.graph-center-label span {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.graph-controls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+}
+
+.graph-controls label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.graph-controls select {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+}
+
+.graph-toggle {
+  cursor: pointer;
+  user-select: none;
+}
+
+.graph-type-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 18px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.graph-type-chip {
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.graph-type-chip.active {
+  border-color: var(--accent-color);
+  color: var(--text-primary);
+  background: var(--bg-card-active);
+}
+
+.graph-canvas {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+
+.graph-edge {
+  stroke: var(--border-strong, #64748b);
+  stroke-width: 1.4;
+  opacity: 0.65;
+}
+
+.graph-edge.cross-project {
+  stroke: var(--accent-color);
+  stroke-width: 2;
+  opacity: 0.9;
+}
+
+.graph-node rect {
+  fill: var(--bg-card);
+  stroke: var(--border-subtle);
+  stroke-width: 1;
+}
+
+.graph-node.center rect {
+  fill: var(--bg-card-active);
+  stroke: var(--accent-color);
+  stroke-width: 2;
+}
+
+.graph-node.cross-project rect {
+  stroke-dasharray: 4 3;
+}
+
+.graph-node-title {
+  fill: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.graph-node-project {
+  fill: var(--text-muted);
+  font-size: 9px;
+}
+
+.graph-node-actions {
+  display: flex;
+  gap: 2px;
+  justify-content: flex-end;
+}
+
+.graph-node-actions button {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 1px;
+  line-height: 0;
+}
+
+.graph-node-actions button:hover {
+  color: var(--accent-color);
+}
+
+.graph-empty {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 40px 24px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.graph-empty p {
+  margin: 0;
+  max-width: 52ch;
+}
+
+.graph-empty-help {
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.graph-empty code {
+  background: var(--bg-card);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+}

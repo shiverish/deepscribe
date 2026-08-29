@@ -14,9 +14,37 @@ export interface ReleaseEntry {
   items: ChangelogItem[];
 }
 
-export const CURRENT_APP_VERSION = '0.2.27';
+export const CURRENT_APP_VERSION = '0.2.28';
 
 export const CHANGELOG_ENTRIES: ReleaseEntry[] = [
+  {
+    version: '0.2.28',
+    date: 'August 2026',
+    title: 'Graph View & Search That Matches The Agents',
+    summary: 'A new graph view shows what the block you are reading hangs together with, and the search window finally ranks passages the way agents already did.',
+    items: [
+      {
+        type: 'feature',
+        text: 'Graph View',
+        detail: 'A fourth view (Ctrl + 4) draws the neighbourhood around the block you have open: which blocks it connects to, in which direction and through which kind of relation. Depth 1 to 3, filters per relation type, and dependencies drawn as their own dashed edge. Deliberately a readable neighbourhood rather than a cloud of the whole workspace.'
+      },
+      {
+        type: 'feature',
+        text: 'Cross-Project Connections Stand Out',
+        detail: 'Nodes from another project carry that project name and colour, and their edges are highlighted — those are exactly the connections the column view cannot show.'
+      },
+      {
+        type: 'improvement',
+        text: 'Search Window Matches The Agent Search',
+        detail: 'The search window now scores passages instead of whole documents, shows the heading a match sits under, and lists project hits alongside block hits. It uses the same ranking and snippets as the agent tools, so both find the same thing.'
+      },
+      {
+        type: 'fix',
+        text: 'Search No Longer Hangs On A Circular Parent Chain',
+        detail: 'Building a result breadcrumb walked parents without cycle protection; a looping chain could lock the window.'
+      }
+    ]
+  },
   {
     version: '0.2.27',
     date: 'August 2026',

@@ -3,6 +3,7 @@ import type { PathSegment, ActiveView } from '../../types';
 import type { UpdaterState } from './UpdateNotification';
 import {
   Bot,
+  Network,
   ChevronRight,
   Search,
   Trash2,
@@ -122,6 +123,16 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
           >
             <BarChart3 size={13} />
             <span>Stats</span>
+          </button>
+
+          <button
+            type="button"
+            className={`view-switch-btn ${activeView === 'graph' ? 'active' : ''}`}
+            onClick={() => onViewChange('graph')}
+            title="Graph View (Ctrl+4)"
+          >
+            <Network size={13} />
+            <span>Graph</span>
           </button>
         </div>
       </div>
