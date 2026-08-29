@@ -1,36 +1,10 @@
-export const TAG_MAX_LENGTH = 48;
+import { normalizeTag, parseTag } from '../../mcp/core/tags.mjs';
+
+export { TAG_MAX_LENGTH, normalizeTag, parseTag, sanitizeTags, mergeTags } from '../../mcp/core/tags.mjs';
 
 export interface TagValidationResult {
   tag: string | null;
   error: string | null;
-}
-
-/** Produces the canonical representation used in storage and comparisons. */
-export function normalizeTag(tag: string): string {
-  return tag.normalize('NFC').trim().replace(/^#+/, '').trim().toLowerCase();
-}
-
-/** Validates user or imported input and returns its canonical representation. */
-export function parseTag(input: string): TagValidationResult {
-  const tag = normalizeTag(input);
-  if (!tag) return { tag: null, error: 'Enter a tag.' };
-  if (tag.length > TAG_MAX_LENGTH) {
-    return { tag: null, error: `A tag can contain no more than ${TAG_MAX_LENGTH} characters.` };
-  }
-  if (!/^[\p{L}\p{N}][\p{L}\p{N}_-]*$/u.test(tag)) {
-    return { tag: null, error: 'Use only letters, numbers, hyphens, and underscores.' };
-  }
-  return { tag, error: null };
-}
-
-/** Normalizes, validates and deduplicates a list while preserving its order. */
-export function sanitizeTags(tags: readonly string[] = []): string[] {
-  const result = new Set<string>();
-  for (const candidate of tags) {
-    const parsed = parseTag(candidate);
-    if (parsed.tag) result.add(parsed.tag);
-  }
-  return Array.from(result);
 }
 
 const SEMANTIC_TAG_PALETTES: Record<string, { bg: string; text: string; border: string }> = {
@@ -129,9 +103,4 @@ export function extractHashtags(contentHtmlOrText: string): string[] {
     if (parsed.tag) result.add(parsed.tag);
   }
   return Array.from(result);
-}
-
-/** Merges tag arrays using the same validation as manual input and imports. */
-export function mergeTags(existing: readonly string[] = [], additions: readonly string[] = []): string[] {
-  return sanitizeTags([...existing, ...additions]);
 }

@@ -34,6 +34,52 @@ describe('DirectWorkspaceStore Markdown formatting', () => {
   });
 });
 
+describe('DirectWorkspaceStore HTML content entry', () => {
+  it('stores agent HTML as real nodes and keeps injected markup out', async () => {
+    const store = new DirectWorkspaceStore({ workspacePath: temporaryWorkspace() });
+    try {
+      const project = await store.handleRequest('create_project', { title: 'HTML invoer' });
+      const created = await store.handleRequest('create_block', {
+        projectId: project.id,
+        title: 'Blok',
+        content: '<h2>Doel</h2><p>Inhoud</p>'
+      });
+      expect(created.content).toBe('<h2>Doel</h2><p>Inhoud</p>');
+      expect(created.content).not.toContain('&lt;');
+
+      const updated = await store.handleRequest('update_block', {
+        blockId: created.id,
+        content: '<p>Bijgewerkt<script>alert(1)</script></p>'
+      });
+      expect(updated.content).toBe('<p>Bijgewerkt</p>');
+      expect(updated.taskCount).toBe(0);
+
+      const appended = await store.handleRequest('append_to_block', {
+        blockId: created.id,
+        text: '<p>Nagekomen <a href="javascript:alert(1)">link</a></p>'
+      });
+      expect(appended.content).toBe('<p>Bijgewerkt</p><p>Nagekomen <a>link</a></p>');
+    } finally {
+      store.close?.();
+    }
+  });
+
+  it('still escapes Markdown that only mentions a tag', async () => {
+    const store = new DirectWorkspaceStore({ workspacePath: temporaryWorkspace() });
+    try {
+      const project = await store.handleRequest('create_project', { title: 'Markdown invoer' });
+      const created = await store.handleRequest('create_block', {
+        projectId: project.id,
+        title: 'Blok',
+        content: '**Status:** <script>alert(1)</script> klaar.'
+      });
+      expect(created.content).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+    } finally {
+      store.close?.();
+    }
+  });
+});
+
 describe('DirectWorkspaceStore offline MCP engine', () => {
   it('uses the same leased claim and idempotency rules offline', async () => {
     const store = new DirectWorkspaceStore({ workspacePath: temporaryWorkspace() });
@@ -241,7 +287,9 @@ describe('DirectWorkspaceStore offline MCP engine', () => {
       expect(replay.id).toBe(created[0].id);
       expect(store.getBlock(created[0].id).title).toBe('Offline agent task 1');
       expect(store.getBlock(created[0].id).content).toContain('<strong>notes</strong>');
-      await expect(store.handleRequest('update_block', { blockId: created[0].id, content: 'No edit' })).rejects.toThrow(/only read task content/i);
+      const edited = await store.handleRequest('update_block', { blockId: created[0].id, content: 'Agent report' });
+      expect(edited.content).toContain('Agent report');
+      await expect(store.handleRequest('update_block', { blockId: created[0].id, title: 'Renamed by agent' })).rejects.toThrow(/cannot rename a task/i);
       const completed = await store.handleRequest('update_task_status', { blockId: created[0].id, status: 'done' });
       expect(completed.task.creator).toMatchObject({ type: 'agent', agentTarget: 'openai', agentId: 'codex-1', requestId: 'same-request' });
       expect((await store.handleRequest('list_projects', {})).some(project => project.id === 'proj-system-task-inbox')).toBe(false);
@@ -350,7 +398,14 @@ describe('DirectWorkspaceStore offline MCP engine', () => {
       expect(ready.task.status).toBe('ready');
       const done = await store.handleRequest('update_task_status', { blockId: task.id, status: 'done' });
       expect(done.task.status).toBe('done');
-      await expect(store.handleRequest('update_block', { blockId: task.id, content: 'No' })).rejects.toThrow(/only read task content/i);
+      const changed = await store.handleRequest('update_block', { blockId: task.id, content: 'Agent notes' });
+      expect(changed.content).toContain('Agent notes');
+      const appended = await store.handleRequest('append_to_block', { blockId: task.id, text: 'Delivery report' });
+      expect(appended.content).toContain('Agent notes');
+      expect(appended.content).toContain('Delivery report');
+      await expect(store.handleRequest('update_block', { blockId: task.id, title: 'Renamed' })).rejects.toThrow(/cannot rename a task/i);
+      await expect(store.handleRequest('update_block', { blockId: task.id, status: 'ready' })).rejects.toThrow(/status, assignment or position/i);
+      expect(store.getBlock(task.id).title).toBe('Offline taak');
     } finally {
       store.close();
     }

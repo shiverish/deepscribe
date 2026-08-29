@@ -4,20 +4,53 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
+import { normalizeTag, sanitizeTags } from './core/tags.mjs';
+import {
+  detectCircularDependency,
+  formatDependencyMarkdown,
+  getBlockDependencyStatus,
+  isBlockCompleted,
+  sanitizeDependsOn
+} from './core/dependencies.mjs';
+import { rankBlocksLocally, rankChunksLocally } from './core/ranking.mjs';
+import {
+  CLAIMANT_AGENT_TARGETS,
+  canTransitionTask,
+  createTaskMetadata,
+  getNextTaskNumber,
+  isTaskClaimCandidate,
+  normalizeLeaseSeconds,
+  normalizeTaskCreator,
+  parseTaskHumanId,
+  redactTaskClaim,
+  taskClaimWriteRefusal,
+  taskProtectedFieldRefusal,
+  TASK_AGENT_TARGETS,
+  TASK_INBOX_PROJECT_ID,
+  taskCreatorLabel,
+  taskWithoutActiveClaim,
+  validateTaskMetadata,
+  validateTaskReady
+} from './core/tasks.mjs';
+import {
+  containsMarkdownTask,
+  contentStatsFromHtml as contentStats,
+  escapeHtml,
+  htmlToPlainText,
+  inlineMarkdown,
+  markdownToHtml,
+  unescapeHtml
+} from './core/markdown.mjs';
+import { contentToHtml, looksLikeHtml, sanitizeHtml } from './core/html.mjs';
+
+export { normalizeTag, sanitizeTags };
+export { detectCircularDependency, formatDependencyMarkdown, getBlockDependencyStatus, isBlockCompleted, sanitizeDependsOn };
+export { rankBlocksLocally, rankChunksLocally };
+export { getNextTaskNumber, parseTaskHumanId };
+export { contentStats, escapeHtml, htmlToPlainText, inlineMarkdown, markdownToHtml, unescapeHtml };
+export { contentToHtml, looksLikeHtml, sanitizeHtml };
 
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
-const STOP_WORDS = new Set(['de', 'het', 'een', 'en', 'of', 'van', 'voor', 'met', 'in', 'op', 'aan', 'is', 'zijn', 'te', 'dit', 'dat']);
-const CONCEPT_GROUPS = [
-  ['todo', 'taak', 'taken', 'actie', 'werk'],
-  ['idee', 'concept', 'gedachte', 'voorstel'],
-  ['agent', 'agents', 'ai', 'assistent', 'automatisering'],
-  ['bestand', 'bestanden', 'document', 'bijlage', 'file'],
-  ['zoeken', 'zoekfunctie', 'vinden', 'search'],
-  ['app', 'applicatie', 'software', 'programma'],
-  ['fout', 'bug', 'probleem', 'issue'],
-  ['ontwerp', 'design', 'ui', 'interface']
-];
-
 export function resolveWorkspacePath(customPath) {
   if (customPath) return path.resolve(customPath);
   if (process.env.DEEPSCRIBE_WORKSPACE_DIR) return path.resolve(process.env.DEEPSCRIBE_WORKSPACE_DIR);
@@ -45,222 +78,7 @@ export function resolveWorkspacePath(customPath) {
   return path.resolve(path.join(documentsPath, 'DeepScribe', 'Workspace'));
 }
 
-export function escapeHtml(value) {
-  return String(value || '').replace(/[&<>"']/g, character => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-  })[character]);
-}
-
-export function inlineMarkdown(value) {
-  const pattern = /(`[^`\n]+`|\*\*[^*\n]+\*\*|__[^_\n]+__|~~[^~\n]+~~|\*[^*\n]+\*|_[^_\n]+_|\[[^\]\n]+\]\([^\s)]+\))/g;
-  let result = '';
-  let cursor = 0;
-  for (const match of value.matchAll(pattern)) {
-    const token = match[0];
-    const index = match.index ?? 0;
-    result += escapeHtml(value.slice(cursor, index));
-    if (token.startsWith('`')) result += `<code>${escapeHtml(token.slice(1, -1))}</code>`;
-    else if (token.startsWith('**') || token.startsWith('__')) result += `<strong>${escapeHtml(token.slice(2, -2))}</strong>`;
-    else if (token.startsWith('~~')) result += `<s>${escapeHtml(token.slice(2, -2))}</s>`;
-    else if (token.startsWith('*') || token.startsWith('_')) result += `<em>${escapeHtml(token.slice(1, -1))}</em>`;
-    else {
-      const link = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(token);
-      const href = link?.[2] || '';
-      result += link && /^(https?:\/\/|mailto:)/i.test(href)
-        ? `<a href="${escapeHtml(href)}">${escapeHtml(link[1])}</a>`
-        : escapeHtml(token);
-    }
-    cursor = index + token.length;
-  }
-  return result + escapeHtml(value.slice(cursor));
-}
-
-export function markdownToHtml(text) {
-  const lines = String(text || '').replace(/\r\n?/g, '\n').split('\n');
-  const output = [];
-  let paragraph = [];
-  let list = null;
-  let pendingBlankLines = 0;
-
-  const flushParagraph = () => {
-    if (paragraph.length === 0) return;
-    output.push(`<p>${paragraph.map(line => inlineMarkdown(line.trim())).join('<br>')}</p>`);
-    paragraph = [];
-  };
-  const flushList = () => {
-    if (!list) return;
-    if (list.type === 'task') {
-      output.push(`<ul data-type="taskList">${list.items.map(item => `<li data-type="taskItem" data-checked="${item.checked === true}"><label><input type="checkbox"${item.checked ? ' checked' : ''}><span></span></label><div><p>${inlineMarkdown(item.text)}</p></div></li>`).join('')}</ul>`);
-    } else {
-      const tag = list.type === 'ordered' ? 'ol' : 'ul';
-      const start = tag === 'ol' && list.start && list.start !== 1 ? ` start="${list.start}"` : '';
-      output.push(`<${tag}${start}>${list.items.map(item => `<li><p>${inlineMarkdown(item.text)}</p></li>`).join('')}</${tag}>`);
-    }
-    list = null;
-  };
-  const addListItem = (type, item, start) => {
-    flushParagraph();
-    if (!list || list.type !== type) {
-      flushList();
-      list = { type, start, items: [] };
-    }
-    list.items.push(item);
-  };
-  const flushIntentionalBlankLines = () => {
-    if (output.length > 0 && pendingBlankLines > 1) {
-      output.push(...Array.from({ length: pendingBlankLines - 1 }, () => '<p></p>'));
-    }
-    pendingBlankLines = 0;
-  };
-
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index];
-    if (!line.trim()) {
-      flushParagraph();
-      flushList();
-      pendingBlankLines += 1;
-      continue;
-    }
-    flushIntentionalBlankLines();
-    if (/^```/.test(line.trim())) {
-      flushParagraph();
-      flushList();
-      const language = line.trim().slice(3).trim();
-      const code = [];
-      while (index + 1 < lines.length && !/^```\s*$/.test(lines[index + 1])) code.push(lines[++index]);
-      if (index + 1 < lines.length) index += 1;
-      const className = language && /^[a-z0-9_-]+$/i.test(language) ? ` class="language-${language}"` : '';
-      output.push(`<pre><code${className}>${escapeHtml(code.join('\n'))}</code></pre>`);
-      continue;
-    }
-    const heading = /^(#{1,6})\s+(.+)$/.exec(line.trim());
-    if (heading) {
-      flushParagraph();
-      flushList();
-      const level = heading[1].length;
-      output.push(`<h${level}>${inlineMarkdown(heading[2])}</h${level}>`);
-      continue;
-    }
-    if (/^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/.test(line)) {
-      flushParagraph();
-      flushList();
-      output.push('<hr>');
-      continue;
-    }
-    const task = /^\s*[-*+]\s+\[([ xX])\]\s+(.+)$/.exec(line);
-    if (task) {
-      addListItem('task', { text: task[2], checked: task[1].toLowerCase() === 'x' });
-      continue;
-    }
-    const bullet = /^\s*[-*+]\s+(.+)$/.exec(line);
-    if (bullet) {
-      addListItem('bullet', { text: bullet[1] });
-      continue;
-    }
-    const ordered = /^\s*(\d+)[.)]\s+(.+)$/.exec(line);
-    if (ordered) {
-      addListItem('ordered', { text: ordered[2] }, Number(ordered[1]));
-      continue;
-    }
-    const quote = /^\s*>\s?(.*)$/.exec(line);
-    if (quote) {
-      flushParagraph();
-      flushList();
-      output.push(`<blockquote><p>${inlineMarkdown(quote[1])}</p></blockquote>`);
-      continue;
-    }
-    flushList();
-    paragraph.push(line);
-  }
-  flushParagraph();
-  flushList();
-  return output.join('') || '<p></p>';
-}
-
-export function contentStats(content) {
-  const taskMatches = [...(content || '').matchAll(/<li\s+[^>]*data-type="taskItem"[^>]*>/gi)];
-  const completedMatches = [...(content || '').matchAll(/<li\s+[^>]*data-type="taskItem"[^>]*data-checked="true"[^>]*>/gi)];
-  return {
-    content: content || '<p></p>',
-    plainText: (content || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim(),
-    taskCount: taskMatches.length,
-    completedTaskCount: completedMatches.length
-  };
-}
-
-export function normalizeTag(tag) {
-  return String(tag || '').normalize('NFC').trim().replace(/^#+/, '').trim().toLowerCase();
-}
-
-export function sanitizeTags(tags = []) {
-  const result = new Set();
-  for (const candidate of tags) {
-    const normalized = normalizeTag(candidate);
-    if (normalized && normalized.length <= 48 && /^[\p{L}\p{N}][\p{L}\p{N}_-]*$/u.test(normalized)) {
-      result.add(normalized);
-    }
-  }
-  return Array.from(result);
-}
-
-const TASK_AGENT_TARGETS = ['none', 'openai', 'claude', 'gemini', 'custom', 'any'];
-const TASK_STATUSES = ['inbox', 'ready', 'in-progress', 'blocked', 'review', 'done'];
-const CLAIMANT_AGENT_TARGETS = ['openai', 'claude', 'gemini', 'custom'];
-const TASK_INBOX_PROJECT_ID = 'proj-system-task-inbox';
-const TASK_CREATOR_LABELS = { openai: 'Codex/ChatGPT', claude: 'Claude', gemini: 'Gemini', custom: 'Other' };
 const CLAIM_RECEIPTS_KEY = 'task_claim_receipts';
-const DEFAULT_LEASE_SECONDS = 15 * 60;
-
-function containsMarkdownTask(value) {
-  return /^\s*[-*+]\s+\[[ xX]\]\s+/m.test(String(value || ''));
-}
-
-export function parseTaskHumanId(input) {
-  const match = String(input || '').trim().match(/^(?:#?TSK-|#)(\d+)$/i);
-  if (!match) return null;
-  const num = parseInt(match[1], 10);
-  return Number.isFinite(num) && num > 0 ? num : null;
-}
-
-export function getNextTaskNumber(allBlocks) {
-  let highest = 0;
-  for (const block of allBlocks) {
-    if (block.kind === 'task' && typeof block.task?.taskNumber === 'number') {
-      if (block.task.taskNumber > highest) {
-        highest = block.task.taskNumber;
-      }
-    }
-  }
-  return highest + 1;
-}
-
-function createTaskMetadata(position = Date.now(), creator = { type: 'user' }, taskNumber, agentTarget = 'any', customAgentName) {
-  return {
-    status: 'inbox',
-    agentTarget,
-    position,
-    ...(typeof taskNumber === 'number' && Number.isInteger(taskNumber) && taskNumber > 0 ? { taskNumber } : {}),
-    ...(agentTarget === 'custom' && typeof customAgentName === 'string' && customAgentName.trim() ? { customAgentName: customAgentName.trim() } : {}),
-    creator
-  };
-}
-
-function normalizeTaskCreator(value) {
-  if (!value || typeof value !== 'object') return undefined;
-  if (value.type === 'user') return { type: 'user' };
-  const agentId = typeof value.agentId === 'string' ? value.agentId.trim() : '';
-  const requestId = typeof value.requestId === 'string' ? value.requestId.trim() : '';
-  const agentTarget = value.agentTarget;
-  const customAgentName = typeof value.customAgentName === 'string' ? value.customAgentName.trim() : '';
-  if (value.type !== 'agent' || !agentId || !requestId || !CLAIMANT_AGENT_TARGETS.includes(agentTarget) || (agentTarget === 'custom' && !customAgentName)) return undefined;
-  return { type: 'agent', agentTarget, agentId, requestId, ...(agentTarget === 'custom' ? { customAgentName } : {}) };
-}
-
-function taskCreatorLabel(task) {
-  const creator = task?.creator;
-  if (!creator || creator.type !== 'agent') return null;
-  return creator.agentTarget === 'custom' ? creator.customAgentName || TASK_CREATOR_LABELS.custom : TASK_CREATOR_LABELS[creator.agentTarget];
-}
 
 function normalizeStoredTask(block) {
   if (!block) return block;
@@ -280,15 +98,6 @@ function normalizeStoredTask(block) {
   return { ...block, kind: 'task', tags: tags.filter(tag => !tag.startsWith('agent-')), task };
 }
 
-function validateTaskMetadata(task) {
-  const errors = [];
-  if (!TASK_STATUSES.includes(task.status)) errors.push('The task status is invalid.');
-  if (!TASK_AGENT_TARGETS.includes(task.agentTarget)) errors.push('The agent target is invalid.');
-  if (!Number.isFinite(task.position)) errors.push('The task position is invalid.');
-  if (task.agentTarget === 'custom' && !String(task.customAgentName || '').trim()) errors.push('Enter a name for the other agent.');
-  return errors;
-}
-
 function taskMetadataFromParams(params, current = createTaskMetadata()) {
   const status = typeof params.status === 'string' ? params.status : current.status;
   const task = {
@@ -299,147 +108,6 @@ function taskMetadataFromParams(params, current = createTaskMetadata()) {
   const errors = validateTaskMetadata(task);
   if (errors.length) throw new Error(errors.join(' '));
   return task;
-}
-
-function normalizeLeaseSeconds(value) {
-  const parsed = typeof value === 'number' && Number.isFinite(value) ? Math.floor(value) : DEFAULT_LEASE_SECONDS;
-  return Math.max(60, Math.min(3600, parsed));
-}
-
-function redactTaskClaim(block) {
-  if (!block?.task?.claim) return block;
-  return { ...block, task: { ...block.task, claim: { ...block.task.claim, token: '[redacted]' } } };
-}
-
-function taskWithoutActiveClaim(task, fallbackStatus = 'ready', now = Date.now()) {
-  if (!task?.claim && task?.status !== 'in-progress') return task ? { ...task } : task;
-  return { ...task, status: fallbackStatus, claim: undefined, ...(fallbackStatus === 'ready' ? { readyAt: task.readyAt ?? now } : {}) };
-}
-
-function taskTargetMatches(task, agentTarget, customAgentName) {
-  if (task.agentTarget === 'any') return true;
-  if (task.agentTarget !== agentTarget) return false;
-  if (agentTarget !== 'custom') return true;
-  return String(task.customAgentName || '').trim().toLocaleLowerCase() === String(customAgentName || '').trim().toLocaleLowerCase();
-}
-
-function isTaskClaimCandidate(block, allBlocks, agentTarget, customAgentName, now) {
-  if (block.kind !== 'task' || !block.task || block.isTrash || !taskTargetMatches(block.task, agentTarget, customAgentName)) return false;
-  const available = block.task.status === 'ready' || (block.task.status === 'in-progress' && block.task.claim && block.task.claim.expiresAt <= now);
-  if (!available) return false;
-  return !getBlockDependencyStatus(block, allBlocks).isBlocked;
-}
-
-function validateTaskReady(title, content, task) {
-  void content;
-  const errors = validateTaskMetadata(task);
-  if (!String(title || '').trim()) errors.push('Enter a title.');
-  return errors;
-}
-
-function canTransitionTask(from, to) {
-  if (from === to) return true;
-  const transitions = {
-    inbox: ['ready', 'in-progress', 'blocked', 'review', 'done'], ready: ['inbox', 'in-progress', 'blocked', 'review', 'done'],
-    'in-progress': ['inbox', 'ready', 'blocked', 'review', 'done'], blocked: ['inbox', 'ready', 'in-progress', 'review', 'done'],
-    review: ['inbox', 'ready', 'in-progress', 'blocked', 'done'], done: ['inbox', 'ready', 'in-progress', 'blocked', 'review']
-  };
-  return Boolean(transitions[from]?.includes(to));
-}
-
-export function isBlockCompleted(block) {
-  if (block.isTrash) return false;
-  if (block.kind === 'task' && block.task) return block.task.status === 'done';
-  const tags = (block.tags || []).map(t => String(t).toLowerCase().trim());
-  if (tags.some(t => t === 'done' || t === 'agent-done' || t === 'completed' || t === 'klaar' || t === 'afgerond')) {
-    return true;
-  }
-  if (block.taskCount > 0 && block.completedTaskCount >= block.taskCount) {
-    return true;
-  }
-  return false;
-}
-
-export function sanitizeDependsOn(raw) {
-  if (!Array.isArray(raw)) return [];
-  const unique = new Set();
-  for (const item of raw) {
-    if (typeof item === 'string') {
-      const trimmed = item.trim();
-      if (trimmed.length > 0) unique.add(trimmed);
-    }
-  }
-  return Array.from(unique);
-}
-
-export function detectCircularDependency(allBlocks, blockId, candidateDependencyId) {
-  if (blockId === candidateDependencyId) return true;
-  const byId = new Map(allBlocks.filter(b => !b.isTrash).map(b => [b.id, b]));
-  const visited = new Set();
-  const queue = [candidateDependencyId];
-
-  while (queue.length > 0) {
-    const currentId = queue.shift();
-    if (currentId === blockId) return true;
-    if (visited.has(currentId)) continue;
-    visited.add(currentId);
-
-    const currentBlock = byId.get(currentId);
-    if (currentBlock && Array.isArray(currentBlock.dependsOn)) {
-      for (const nextId of currentBlock.dependsOn) {
-        if (!visited.has(nextId)) queue.push(nextId);
-      }
-    }
-  }
-  return false;
-}
-
-export function getBlockDependencyStatus(block, allBlocks) {
-  const activeBlocks = allBlocks.filter(b => !b.isTrash);
-  const byId = new Map(activeBlocks.map(b => [b.id, b]));
-
-  const dependsOnIds = sanitizeDependsOn(block.dependsOn);
-  const pendingDependencies = [];
-  const completedDependencies = [];
-  const missingDependencyIds = [];
-
-  for (const depId of dependsOnIds) {
-    const targetBlock = byId.get(depId);
-    if (!targetBlock) {
-      missingDependencyIds.push(depId);
-      continue;
-    }
-    if (isBlockCompleted(targetBlock)) {
-      completedDependencies.push(targetBlock);
-    } else {
-      pendingDependencies.push(targetBlock);
-    }
-  }
-
-  const blocking = activeBlocks.filter(other => {
-    if (other.id === block.id) return false;
-    const otherDepends = sanitizeDependsOn(other.dependsOn);
-    return otherDepends.includes(block.id);
-  });
-
-  return {
-    isBlocked: pendingDependencies.length > 0,
-    pendingDependencies,
-    completedDependencies,
-    missingDependencyIds,
-    blocking
-  };
-}
-
-export function formatDependencyMarkdown(dependencies) {
-  if (!dependencies || dependencies.length === 0) return '';
-  const lines = dependencies.map(dep => {
-    const completed = isBlockCompleted(dep);
-    const check = completed ? '[x]' : '[ ]';
-    const statusText = completed ? 'Done' : 'Pending';
-    return `- ${check} [[${dep.title}]] (\`${dep.id}\`) — *${statusText}*`;
-  });
-  return `## Dependencies\n\n${lines.join('\n')}`;
 }
 
 export function formatWorkItemContent(goal, context, acceptanceCriteria, dependencyBlocks = []) {
@@ -513,116 +181,6 @@ export function todosFromBlock(block) {
       completed
     };
   });
-}
-
-function normalizeToken(token) {
-  return token.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLocaleLowerCase().replace(/[^\p{L}\p{N}_-]/gu, '');
-}
-
-function tokens(text) {
-  return String(text || '').split(/\s+/).map(normalizeToken).filter(token => token.length > 1 && !STOP_WORDS.has(token));
-}
-
-function expandQuery(queryTokens) {
-  const expanded = new Set(queryTokens);
-  for (const token of queryTokens) {
-    const group = CONCEPT_GROUPS.find(values => values.includes(token));
-    group?.forEach(value => expanded.add(value));
-  }
-  return expanded;
-}
-
-function trigrams(value) {
-  const padded = `  ${value} `;
-  const result = new Set();
-  for (let index = 0; index <= padded.length - 3; index += 1) result.add(padded.slice(index, index + 3));
-  return result;
-}
-
-function trigramSimilarity(left, right) {
-  const a = trigrams(left);
-  const b = trigrams(right);
-  let overlap = 0;
-  for (const value of a) if (b.has(value)) overlap += 1;
-  return a.size + b.size ? (2 * overlap) / (a.size + b.size) : 0;
-}
-
-function extractQueryTaskNumbers(query) {
-  const numbers = new Set();
-  for (const part of String(query || '').trim().split(/\s+/)) {
-    if (!part) continue;
-    const fromId = parseTaskHumanId(part);
-    if (fromId !== null) {
-      numbers.add(fromId);
-    } else if (/^\d+$/.test(part)) {
-      const num = parseInt(part, 10);
-      if (Number.isFinite(num) && num > 0) {
-        numbers.add(num);
-      }
-    }
-  }
-  return Array.from(numbers);
-}
-
-export function rankBlocksLocally(blocks, query) {
-  const queryTokens = tokens(query);
-  const queryTaskNumbers = extractQueryTaskNumbers(query);
-  if (queryTokens.length === 0 && queryTaskNumbers.length === 0) return [];
-  const expanded = expandQuery(queryTokens);
-  const normalizedQuery = queryTokens.join(' ');
-  const singleTaskMatch = queryTaskNumbers.length === 1 && (
-    parseTaskHumanId(String(query || '').trim()) !== null || /^\d+$/.test(String(query || '').trim())
-  );
-
-  return blocks.map(block => {
-    const titleTokens = tokens(block.title);
-    const bodyTokens = tokens(block.plainText);
-    const tagTokens = (block.tags || []).flatMap(tokens);
-    const taskNumber = block.kind === 'task' && typeof block.task?.taskNumber === 'number' ? block.task.taskNumber : null;
-    const taskTokens = taskNumber ? [`tsk-${taskNumber}`, `${taskNumber}`] : [];
-
-    let score = 0;
-    if (taskNumber !== null && queryTaskNumbers.includes(taskNumber)) {
-      score += singleTaskMatch ? 100 : 50;
-    }
-
-    for (const token of expanded) {
-      if (titleTokens.includes(token)) score += queryTokens.includes(token) ? 8 : 3;
-      if (tagTokens.includes(token)) score += queryTokens.includes(token) ? 6 : 2;
-      if (taskTokens.includes(token)) score += queryTokens.includes(token) ? 8 : 3;
-      const bodyHits = bodyTokens.filter(value => value === token).length;
-      score += Math.min(bodyHits, 4) * (queryTokens.includes(token) ? 2 : 1);
-    }
-    score += trigramSimilarity(normalizedQuery, normalizeToken(block.title)) * 4;
-    return { block, score };
-  }).filter(result => result.score >= 1).sort((a, b) => b.score - a.score || b.block.updatedAt - a.block.updatedAt);
-}
-
-export function unescapeHtml(value) {
-  return String(value || '')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#039;/g, "'")
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, ' ');
-}
-
-export function htmlToPlainText(html) {
-  if (!html) return '';
-  return unescapeHtml(
-    String(html)
-      .replace(/<br\s*\/?>/gi, '\n')
-      .replace(/<\/p>/gi, '\n\n')
-      .replace(/<\/h[1-6]>/gi, '\n\n')
-      .replace(/<\/li>/gi, '\n')
-      .replace(/<\/tr>/gi, '\n')
-      .replace(/<[^>]+>/g, '')
-  )
-    .replace(/[ \t]+/g, ' ')
-    .replace(/\n\s*\n\s*\n+/g, '\n\n')
-    .trim();
 }
 
 export function htmlToMarkdown(html) {
@@ -1506,10 +1064,21 @@ export class DirectWorkspaceStore {
         const blocks = this.getAllBlocks().filter(b => !b.isTrash
           && (!projectId || b.projectId === projectId)
           && tags.every(tag => (b.tags || []).includes(tag)));
-        const ranked = query
-          ? rankBlocksLocally(blocks, query).map(r => r.block)
-          : blocks.sort((l, r) => (r.updatedAt ?? 0) - (l.updatedAt ?? 0));
-        return ranked.slice(0, clampLimit(params.limit)).map(b => this.blockSummary(b));
+        if (!query) {
+          return blocks.sort((l, r) => (r.updatedAt ?? 0) - (l.updatedAt ?? 0))
+            .slice(0, clampLimit(params.limit))
+            .map(b => this.blockSummary(b));
+        }
+        return rankChunksLocally(blocks, query)
+          .slice(0, clampLimit(params.limit))
+          .map(hit => ({
+            ...this.blockSummary(hit.block),
+            score: Math.round(hit.score * 10) / 10,
+            snippet: hit.snippet,
+            matchReasons: hit.matchReasons,
+            heading: hit.heading || undefined,
+            chunkIndex: hit.chunkIndex >= 0 ? hit.chunkIndex : undefined
+          }));
       }
 
       case 'create_project': {
@@ -1549,7 +1118,7 @@ export class DirectWorkspaceStore {
 
         const rawContent = optionalStr('content') || '';
         if (containsMarkdownTask(rawContent)) throw new Error('Agents cannot create inline todos.');
-        const stats = contentStats(markdownToHtml(rawContent));
+        const stats = contentStats(contentToHtml(rawContent));
         const siblingCount = this.getAllBlocks().filter(b => b.projectId === projectId && b.parentId === parentId && !b.isTrash).length;
         const now = Date.now();
         const rawDependsOn = sanitizeDependsOn(params.dependsOn);
@@ -1650,7 +1219,7 @@ export class DirectWorkspaceStore {
           projectId,
           parentId,
           title: requireString('title'),
-          ...contentStats(markdownToHtml(rawContent)),
+          ...contentStats(contentToHtml(rawContent)),
           order,
           childCount: 0,
           attachmentCount: 0,
@@ -2013,13 +1582,14 @@ export class DirectWorkspaceStore {
         const blockId = requireString('blockId');
         const block = this.getBlock(blockId);
         if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
-        if (block.kind === 'task') throw new Error('Agents can only read task content. Use update_task_status for progress.');
+        const updateRefusal = taskProtectedFieldRefusal(block, params) ?? taskClaimWriteRefusal(block, params);
+        if (updateRefusal) throw new Error(updateRefusal);
         if (typeof params.content === 'string' && (block.taskCount > 0 || containsMarkdownTask(params.content))) throw new Error('Agents cannot create or edit inline todos.');
         this.recordBlockRevision(block, 'user', 'State before agent edit');
         const now = Date.now();
         const updated = { ...block, updatedAt: now, lastAgentEditAt: now };
-        if (typeof params.title === 'string' && params.title.trim()) updated.title = params.title.trim();
-        if (typeof params.content === 'string') Object.assign(updated, contentStats(markdownToHtml(params.content)));
+        if (block.kind !== 'task' && typeof params.title === 'string' && params.title.trim()) updated.title = params.title.trim();
+        if (typeof params.content === 'string') Object.assign(updated, contentStats(contentToHtml(params.content)));
         if (Array.isArray(params.tags)) updated.tags = sanitizeTags(params.tags.filter(t => typeof t === 'string'));
         if (Array.isArray(params.dependsOn)) {
           const sanitized = sanitizeDependsOn(params.dependsOn);
@@ -2034,7 +1604,7 @@ export class DirectWorkspaceStore {
         this.saveBlock(updated);
         this.recordBlockRevision(updated, 'agent', `Agent changed “${updated.title}”`);
         this.recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'block-updated', summary: `Agent changed “${updated.title}”` });
-        return updated;
+        return redactTaskClaim(updated);
       }
 
       case 'append_to_block': {
@@ -2042,10 +1612,11 @@ export class DirectWorkspaceStore {
         const text = requireString('text');
         const block = this.getBlock(blockId);
         if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
-        if (block.kind === 'task') throw new Error('Agents can only read task content. Use update_task_status for progress.');
+        const appendRefusal = taskClaimWriteRefusal(block, params);
+        if (appendRefusal) throw new Error(appendRefusal);
         if (containsMarkdownTask(text)) throw new Error('Agents cannot create inline todos.');
         this.recordBlockRevision(block, 'user', 'State before agent addition');
-        const addition = markdownToHtml(text);
+        const addition = contentToHtml(text);
         const newContent = `${block.content || '<p></p>'}${addition}`;
         const stats = contentStats(newContent);
         const now = Date.now();
@@ -2053,7 +1624,7 @@ export class DirectWorkspaceStore {
         this.saveBlock(updated);
         this.recordBlockRevision(updated, 'agent', `Agent appended text`);
         this.recordActivity({ projectId: block.projectId, blockId, source: 'agent', action: 'block-appended', summary: `Agent appended text to “${block.title}”` });
-        return updated;
+        return redactTaskClaim(updated);
       }
 
       case 'list_todos': {

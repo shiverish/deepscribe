@@ -24,6 +24,19 @@ describe('unseen agent edits', () => {
     ], 'project-1')).toBe(1);
   });
 
+  it('surfaces an agent edit on a task and rolls it up like any other block', () => {
+    const task = block({
+      id: 'task', parentId: 'parent', kind: 'task',
+      task: { status: 'ready', agentTarget: 'any', position: 0 },
+      lastAgentEditAt: 20
+    });
+    const blocks = [block({ id: 'root' }), block({ id: 'parent', parentId: 'root' }), task];
+    expect(hasUnseenAgentEdits(task)).toBe(true);
+    const counts = calculateAgentEditCounts(blocks);
+    expect(counts.byBlock).toMatchObject({ task: 1, parent: 1, root: 1 });
+    expect(counts.byProject['project-1']).toBe(1);
+  });
+
   it('propagates a deep edit through every ancestor and the project', () => {
     const blocks = [
       block({ id: 'root' }),

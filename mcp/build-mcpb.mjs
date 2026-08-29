@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { copyFile, cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -25,6 +25,11 @@ await rm(outputDirectory, { recursive: true, force: true });
 await mkdir(serverDirectory, { recursive: true });
 await copyFile(path.join(mcpDirectory, 'server.mjs'), path.join(serverDirectory, 'server.mjs'));
 await copyFile(path.join(mcpDirectory, 'direct-store.mjs'), path.join(serverDirectory, 'direct-store.mjs'));
+// The shared domain core the server imports at runtime; tests stay out of the bundle.
+await cp(path.join(mcpDirectory, 'core'), path.join(serverDirectory, 'core'), {
+  recursive: true,
+  filter: source => !source.endsWith('.test.ts')
+});
 await copyFile(path.join(templateDirectory, 'README.md'), path.join(bundleDirectory, 'README.md'));
 await copyFile(path.join(templateDirectory, 'icon.png'), path.join(bundleDirectory, 'icon.png'));
 await writeFile(path.join(bundleDirectory, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);

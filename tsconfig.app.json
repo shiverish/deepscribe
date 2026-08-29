@@ -6,6 +6,10 @@
     "module": "esnext",
     "types": ["vite/client"],
     "allowArbitraryExtensions": true,
+    /* The shared MCP domain core in mcp/core is authored as JSDoc-typed ESM so
+       that `node mcp/server.mjs` keeps working without a build step. */
+    "allowJs": true,
+    "checkJs": true,
     "skipLibCheck": true,
 
     /* Bundler mode */

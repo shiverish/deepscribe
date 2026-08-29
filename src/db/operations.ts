@@ -2,6 +2,7 @@ import { db } from './db';
 import type { Block, Project, TaskMetadata } from '../types';
 import { parseTag, sanitizeTags } from '../utils/tagUtils';
 import { sanitizeDependsOn } from '../utils/dependencyUtils';
+import { invalidateChunks } from '../utils/semanticSearch';
 
 async function removeLocalAttachmentFiles(blockIds: string[]): Promise<void> {
   if (typeof window === 'undefined' || !window.electronAPI?.removeAttachment || blockIds.length === 0) return;
@@ -210,6 +211,8 @@ export async function permanentlyDeleteBlock(blockId: string): Promise<void> {
     await db.blocks.where('id').anyOf(ids).delete();
     await refreshChildCount(root.parentId);
   });
+  // Drop the search index entries so deleted blocks leave no chunks behind.
+  for (const id of ids) invalidateChunks(id);
 }
 
 export async function permanentlyDeleteProject(projectId: string): Promise<void> {
@@ -221,6 +224,8 @@ export async function permanentlyDeleteProject(projectId: string): Promise<void>
     await db.blocks.where('projectId').equals(projectId).delete();
     await db.projects.delete(projectId);
   });
+  // Drop the search index entries so deleted blocks leave no chunks behind.
+  for (const id of blockIds) invalidateChunks(String(id));
 }
 
 export function topLevelTrashedBlocks(blocks: Block[]): Block[] {

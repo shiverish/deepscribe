@@ -77,6 +77,40 @@ describe('DeepScribe MCP work items', () => {
   });
 });
 
+describe('DeepScribe MCP HTML content entry', () => {
+  it('accepts the HTML it hands back without showing the tags to the user', async () => {
+    const project = await handleMcpBridgeRequest('create_project', { title: 'HTML invoer' }) as Project;
+    const created = await handleMcpBridgeRequest('create_block', {
+      projectId: project.id,
+      title: 'Blok',
+      content: '<h2>Doel</h2><p>Inhoud</p>'
+    }) as Block;
+    expect(created.content).toBe('<h2>Doel</h2><p>Inhoud</p>');
+    expect(created.content).not.toContain('&lt;');
+
+    const updated = await handleMcpBridgeRequest('update_block', {
+      blockId: created.id,
+      content: '<p>Bijgewerkt<script>alert(1)</script></p>'
+    }) as Block;
+    expect(updated.content).toBe('<p>Bijgewerkt</p>');
+  });
+
+  it('refuses an inline todo whether it arrives as Markdown or as HTML', async () => {
+    const project = await handleMcpBridgeRequest('create_project', { title: 'Todo invoer' }) as Project;
+    await expect(handleMcpBridgeRequest('create_block', {
+      projectId: project.id, title: 'Markdown todo', content: '- [ ] koop melk'
+    })).rejects.toThrow(/inline todos/i);
+
+    const created = await handleMcpBridgeRequest('create_block', {
+      projectId: project.id,
+      title: 'HTML todo',
+      content: '<ul data-type="taskList"><li data-type="taskItem" data-checked="false"><label><input type="checkbox"><span></span></label><div><p>koop melk</p></div></li></ul>'
+    }) as Block;
+    expect(created.content).not.toContain('taskItem');
+    expect(created.taskCount).toBe(0);
+  });
+});
+
 describe('DeepScribe MCP task blocks', () => {
   it('creates attributed tasks idempotently in Workspace Inbox or in specified project', async () => {
     const project = await handleMcpBridgeRequest('create_project', { title: 'Target Project' }) as Project;
@@ -104,7 +138,9 @@ describe('DeepScribe MCP task blocks', () => {
     const replay = await handleMcpBridgeRequest('create_task', { ...providers[0], title: 'Changed retry title' }) as Block;
     expect(replay.id).toBe(created[0].id);
     expect((await db.blocks.get(created[0].id))?.title).toBe('Agent task 1');
-    await expect(handleMcpBridgeRequest('update_block', { blockId: created[0].id, content: 'No edit' })).rejects.toThrow(/only read task content/i);
+    const edited = await handleMcpBridgeRequest('update_block', { blockId: created[0].id, content: 'Agent report' }) as Block;
+    expect(edited.content).toContain('Agent report');
+    await expect(handleMcpBridgeRequest('update_block', { blockId: created[0].id, title: 'Renamed by agent' })).rejects.toThrow(/cannot rename a task/i);
     const completed = await handleMcpBridgeRequest('update_task_status', { blockId: created[0].id, status: 'done' }) as Block;
     expect(completed.task?.creator).toMatchObject({ type: 'agent', agentTarget: 'openai', agentId: 'codex-1', requestId: 'create-1' });
     expect(await db.activities.where('action').equals('task-created').count()).toBe(4);
@@ -199,7 +235,7 @@ describe('DeepScribe MCP task blocks', () => {
     })).rejects.toThrow(/Bovenliggend blok niet gevonden/i);
   });
 
-  it('keeps task content user-owned after creation while allowing reads and status updates', async () => {
+  it('lets agents write task content while identity, assignment and status stay user-owned', async () => {
     const project = await handleMcpBridgeRequest('create_project', { title: 'Taken' }) as Project;
     const parent = await handleMcpBridgeRequest('create_block', { projectId: project.id, title: 'Planning' }) as Block;
     await expect(handleMcpBridgeRequest('create_task_block', { projectId: project.id, parentId: parent.id, title: 'No' })).rejects.toThrow(/cannot create or edit tasks/i);
@@ -207,7 +243,15 @@ describe('DeepScribe MCP task blocks', () => {
     const task = await insertUserTask(project.id, parent.id, 'Bouw taakflow', { ...createTaskMetadata(), agentTarget: 'openai' });
     const listed = await handleMcpBridgeRequest('list_tasks', { projectId: project.id }) as Block[];
     expect(listed[0]).toMatchObject({ id: task.id, content: '<p>Free task notes</p>' });
-    await expect(handleMcpBridgeRequest('update_block', { blockId: task.id, content: 'Changed' })).rejects.toThrow(/only read task content/i);
+    const changed = await handleMcpBridgeRequest('update_block', { blockId: task.id, content: 'Changed' }) as Block;
+    expect(changed.content).toContain('Changed');
+    const appended = await handleMcpBridgeRequest('append_to_block', { blockId: task.id, text: 'Delivery report' }) as Block;
+    expect(appended.content).toContain('Changed');
+    expect(appended.content).toContain('Delivery report');
+    await expect(handleMcpBridgeRequest('update_block', { blockId: task.id, title: 'Renamed' })).rejects.toThrow(/cannot rename a task/i);
+    await expect(handleMcpBridgeRequest('update_block', { blockId: task.id, status: 'done' })).rejects.toThrow(/status, assignment or position/i);
+    await expect(handleMcpBridgeRequest('update_block', { blockId: task.id, dependsOn: ['block-other'] })).rejects.toThrow(/task dependencies/i);
+    expect((await db.blocks.get(task.id))?.title).toBe('Bouw taakflow');
     const ready = await handleMcpBridgeRequest('update_task_status', { blockId: task.id, status: 'ready' }) as Block;
     expect(ready.task?.status).toBe('ready');
     const done = await handleMcpBridgeRequest('update_task_status', { blockId: task.id, status: 'done' }) as Block;
@@ -231,6 +275,16 @@ describe('DeepScribe MCP task blocks', () => {
     }) as { claimToken: string; replayed: boolean };
     expect(replay).toMatchObject({ claimToken: claim.claimToken, replayed: true });
     expect(JSON.stringify(await handleMcpBridgeRequest('get_block', { blockId: task.id }))).not.toContain(claim.claimToken);
+
+    await expect(handleMcpBridgeRequest('append_to_block', { blockId: task.id, text: 'Sneaky note' }))
+      .rejects.toThrow(/claimed by another agent/i);
+    await expect(handleMcpBridgeRequest('append_to_block', { blockId: task.id, text: 'Sneaky note', agentId: 'gemini-9', claimToken: 'guess' }))
+      .rejects.toThrow(/claimed by another agent/i);
+    const reported = await handleMcpBridgeRequest('append_to_block', {
+      blockId: task.id, text: '## Delivery report', agentId: 'codex-1', claimToken: claim.claimToken
+    }) as Block;
+    expect(reported.content).toContain('Delivery report');
+    expect(JSON.stringify(reported)).not.toContain(claim.claimToken);
 
     const done = await handleMcpBridgeRequest('transition_work_item', {
       blockId: task.id, agentId: 'codex-1', claimToken: claim.claimToken, status: 'done', acceptanceChecksPassed: true

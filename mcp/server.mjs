@@ -12,7 +12,7 @@ const server = new McpServer({
   name: 'deepscribe',
   version: '0.2.7'
 }, {
-  instructions: 'DeepScribe stores projects, nested knowledge blocks and user-managed tasks. Read before writing and preserve existing content. Agents may use create_task to capture concrete future work, risks or ideas after checking for duplicates; tasks can be attached directly to a project via projectId or placed into Workspace Inbox when omitted, and start in Inbox status assigned to Any agent (or a specified assigneeTarget). Never create an administrative task before performing a directly requested change. Agents must not move, organize, assign, delete or restore tasks or create inline todos. Use list_tasks/get_task to read tasks and update_task_status only to report progress. Format block content as readable Markdown with blank lines between sections and one list item per line.'
+  instructions: 'DeepScribe stores projects, nested knowledge blocks and user-managed tasks. Read before writing and preserve existing content. Agents may use create_task to capture concrete future work, risks or ideas after checking for duplicates; tasks can be attached directly to a project via projectId or placed into Workspace Inbox when omitted, and start in Inbox status assigned to Any agent (or a specified assigneeTarget). Never create an administrative task before performing a directly requested change. Agents must not move, organize, assign, delete or restore tasks or create inline todos. Use list_tasks/get_task to read tasks. When the user asks you to work on a specific task, claim it with claim_work_item before you start: that is the only way a task reaches In progress, and it takes the lease that keeps other agents off it. Renew the lease on long work and finish with transition_work_item to review, done or blocked, including a real summary. Report progress on an unclaimed task with update_task_status. Drive these status changes yourself; do not ask the user for permission to move a task you were told to work on. A task still in Inbox cannot be claimed, so say so and let the user set it to Ready. Agents may write a task body with append_to_block (preferred, it preserves what is already there) or update_block, for example to leave a delivery report; a task title, its dependencies, its assignment, its position and its status stay user-owned. While another agent holds an active claim on a task, writing to it requires the agentId and claimToken of that claim. Format block content as readable Markdown with blank lines between sections and one list item per line.'
 });
 
 function bridgeFileCandidates() {
@@ -440,13 +440,15 @@ registerTool('update_project', {
 
 registerTool('update_block', {
   title: 'Blok bijwerken',
-  description: 'Werk titel, volledige inhoud, tags en/of afhankelijkheden van een blok bij. content ondersteunt veilige Markdown voor koppen, alinea’s, links, code en lijsten. Gebruik twee lege regels om bewust één zichtbare lege alinea in de editor te behouden. Gebruik append_to_block wanneer bestaande inhoud behouden moet blijven.',
+  description: 'Werk titel, volledige inhoud, tags en/of afhankelijkheden van een blok bij. content ondersteunt veilige Markdown voor koppen, alinea’s, links, code en lijsten. Gebruik twee lege regels om bewust één zichtbare lege alinea in de editor te behouden. Gebruik append_to_block wanneer bestaande inhoud behouden moet blijven. Op een taak mag je inhoud en tags bijwerken, maar niet de titel, afhankelijkheden, toewijzing, positie of status; gebruik daarvoor update_task_status of de claimtools. Draagt de taak een actieve claim, geef dan je eigen agentId en claimToken mee.',
   inputSchema: {
     blockId: z.string().min(1),
     title: z.string().min(1).optional(),
     content: z.string().optional(),
     tags: z.array(z.string()).max(20).optional(),
-    dependsOn: z.array(z.string()).max(20).optional()
+    dependsOn: z.array(z.string()).max(20).optional(),
+    agentId: z.string().min(1).optional(),
+    claimToken: z.string().min(1).optional()
   },
   annotations: write
 });
@@ -462,8 +464,13 @@ registerTool('get_block_dependencies', {
 
 registerTool('append_to_block', {
   title: 'Tekst aan blok toevoegen',
-  description: 'Voeg veilige Markdown toe zonder bestaande blokinhoud te vervangen. Gebruik één lege regel voor een normale alineascheiding en twee lege regels voor één zichtbare lege alinea. Zet ieder lijstitem op een eigen regel.',
-  inputSchema: { blockId: z.string().min(1), text: z.string().min(1) },
+  description: 'Voeg veilige Markdown toe zonder bestaande blokinhoud te vervangen. Gebruik één lege regel voor een normale alineascheiding en twee lege regels voor één zichtbare lege alinea. Zet ieder lijstitem op een eigen regel. Dit is ook het aanbevolen pad om een verslag of resultaat onder een taak te zetten. Draagt de taak een actieve claim, geef dan je eigen agentId en claimToken mee.',
+  inputSchema: {
+    blockId: z.string().min(1),
+    text: z.string().min(1),
+    agentId: z.string().min(1).optional(),
+    claimToken: z.string().min(1).optional()
+  },
   annotations: write
 });
 
