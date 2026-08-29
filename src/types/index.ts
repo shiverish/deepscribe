@@ -196,12 +196,26 @@ export interface PathSegment {
   parentId?: string | null;
 }
 
-export interface SearchResultItem {
+interface SearchResultBase {
+  snippet: string;
+  score: number;
+  /** Heading the matching passage sits under, when it has one. */
+  heading?: string;
+}
+
+export interface BlockSearchResult extends SearchResultBase {
+  kind: 'block';
   block: Block;
   projectTitle: string;
   pathSegments: PathSegment[];
-  snippet: string;
 }
+
+export interface ProjectSearchResult extends SearchResultBase {
+  kind: 'project';
+  project: Project;
+}
+
+export type SearchResultItem = BlockSearchResult | ProjectSearchResult;
 
 export type DropPosition = 'above' | 'below' | 'inside';
 

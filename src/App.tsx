@@ -970,6 +970,14 @@ function DeepScribeApp() {
     openBlockById(blockId);
   };
 
+  /** A project hit opens the project itself, at its top level. */
+  const handleSelectSearchProject = useCallback((projectId: string) => {
+    setActiveProjectId(projectId);
+    setSelectedBlockPath([]);
+    setFocusedLevel(0);
+    setIsWritingPanelOpen(false);
+  }, []);
+
   const handleApplyTemplate = async (template: BlockTemplate) => {
     if (!activeProjectId) throw new Error('Open eerst een project.');
     const parentId = activeBlock?.parentId ?? null;
@@ -1120,6 +1128,7 @@ function DeepScribeApp() {
         isOpen={isSearchOpen}
         onClose={() => setIsSearchOpen(false)}
         onSelectResult={handleSelectSearchResult}
+        onSelectProject={handleSelectSearchProject}
       />
 
       <TrashModal

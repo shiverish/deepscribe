@@ -1,23 +1,25 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { db } from '../../db/db';
-import type { Block, Project, SearchResultItem, PathSegment } from '../../types';
+import type { Block, SearchResultItem } from '../../types';
 import { TagBadge } from '../Navigation/TagBadge';
-import { Search, FileText, ChevronRight, X, Tag as TagIcon, CheckSquare } from 'lucide-react';
+import { Search, FileText, ChevronRight, X, Tag as TagIcon, CheckSquare, FolderOpen } from 'lucide-react';
 import { parseSearchQuery, rankTopTags, type TagCount } from '../../utils/searchUtils';
 import { sanitizeTags } from '../../utils/tagUtils';
-import { rankBlocksLocally } from '../../utils/semanticSearch';
+import { buildSearchResults } from '../../utils/searchResults';
 import { formatTaskHumanId } from '../../utils/taskBlocks';
 
 interface SearchModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSelectResult: (blockId: string, projectId: string, pathSegmentIds: string[]) => void;
+  onSelectProject: (projectId: string) => void;
 }
 
 export const SearchModal: React.FC<SearchModalProps> = ({
   isOpen,
   onClose,
-  onSelectResult
+  onSelectResult,
+  onSelectProject
 }) => {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResultItem[]>([]);
@@ -70,57 +72,16 @@ export const SearchModal: React.FC<SearchModalProps> = ({
         parsed.tags.length > 0 ? db.blocks.filter(b => !b.isTrash).toArray() : Promise.resolve(allBlocks)
       ]);
       if (requestId !== searchRequestRef.current) return;
-      const projectMap = new Map<string, Project>(allProjects.map(p => [p.id, p]));
-      const blockMap = new Map<string, Block>(navigationBlocks.map(b => [b.id, b]));
-
-      const matchedResults: SearchResultItem[] = [];
-      const rankedBlocks = parsed.text ? rankBlocksLocally(allBlocks, parsed.text).map(result => result.block) : allBlocks;
-
-      for (const block of rankedBlocks) {
-          const project = projectMap.get(block.projectId);
-          const projectTitle = project?.title || 'Unknown Project';
-
-          const pathSegments: PathSegment[] = [];
-          if (project) {
-            pathSegments.push({ id: project.id, title: project.title, type: 'project' });
-          }
-
-          const ancestors: Block[] = [];
-          let currParentId = block.parentId;
-          while (currParentId) {
-            const parentBlock = blockMap.get(currParentId);
-            if (parentBlock) {
-              ancestors.unshift(parentBlock);
-              currParentId = parentBlock.parentId;
-            } else {
-              break;
-            }
-          }
-
-          ancestors.forEach(anc => {
-            pathSegments.push({ id: anc.id, title: anc.title, type: 'block' });
-          });
-
-          let snippet = block.plainText;
-          const idx = parsed.text ? block.plainText.toLowerCase().indexOf(parsed.text) : -1;
-          if (idx !== -1) {
-            const start = Math.max(0, idx - 40);
-            const end = Math.min(block.plainText.length, idx + parsed.text.length + 60);
-            snippet = (start > 0 ? '...' : '') + block.plainText.substring(start, end) + (end < block.plainText.length ? '...' : '');
-          } else {
-            snippet = snippet.substring(0, 100);
-          }
-
-        matchedResults.push({
-            block,
-            projectTitle,
-            pathSegments,
-            snippet
-        });
-      }
+      const matchedResults = buildSearchResults({
+        blocks: allBlocks,
+        projects: allProjects,
+        navigationBlocks,
+        text: parsed.text,
+        tags: parsed.tags
+      });
 
       if (requestId === searchRequestRef.current) {
-        setResults(matchedResults.slice(0, 20));
+        setResults(matchedResults);
         setSelectedIndex(0);
       }
     };
@@ -132,6 +93,12 @@ export const SearchModal: React.FC<SearchModalProps> = ({
     };
   }, [query]);
 
+  const openResult = (item: SearchResultItem) => {
+    if (item.kind === 'project') onSelectProject(item.project.id);
+    else onSelectResult(item.block.id, item.block.projectId, item.pathSegments.map(segment => segment.id));
+    onClose();
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -142,10 +109,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (results[selectedIndex]) {
-        const item = results[selectedIndex];
-        const pathSegmentIds = item.pathSegments.map(s => s.id);
-        onSelectResult(item.block.id, item.block.projectId, pathSegmentIds);
-        onClose();
+        openResult(results[selectedIndex]);
       }
     } else if (e.key === 'Escape') {
       onClose();
@@ -260,14 +224,46 @@ export const SearchModal: React.FC<SearchModalProps> = ({
           ) : (
             results.map((res, index) => {
               const isSelected = index === selectedIndex;
+              if (res.kind === 'project') {
+                return (
+                  <div
+                    key={res.project.id}
+                    onClick={() => openResult(res)}
+                    onMouseEnter={() => setSelectedIndex(index)}
+                    style={{
+                      padding: '12px 16px',
+                      borderRadius: 'var(--radius-sm)',
+                      background: isSelected ? 'var(--bg-card-active)' : 'transparent',
+                      border: isSelected ? '1px solid var(--neon-cyan)' : '1px solid transparent',
+                      borderLeft: `3px solid ${res.project.color || 'var(--accent-color)'}`,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 6,
+                      marginBottom: 4,
+                      transition: 'all 0.15s'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                      <FolderOpen size={15} color={res.project.color || '#A78BFA'} />
+                      <span>{res.project.title}</span>
+                      <span style={{ fontSize: '0.7rem', fontWeight: 500, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        Project
+                      </span>
+                    </div>
+                    {res.heading && (
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{res.heading}</div>
+                    )}
+                    <div style={{ fontSize: '0.775rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                      {res.snippet}
+                    </div>
+                  </div>
+                );
+              }
               return (
                 <div
                   key={res.block.id}
-                  onClick={() => {
-                    const pathSegmentIds = res.pathSegments.map(s => s.id);
-                    onSelectResult(res.block.id, res.block.projectId, pathSegmentIds);
-                    onClose();
-                  }}
+                  onClick={() => openResult(res)}
                   onMouseEnter={() => setSelectedIndex(index)}
                   style={{
                     padding: '12px 16px',
@@ -324,6 +320,12 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                         <span>{seg.title}</span>
                       </React.Fragment>
                     ))}
+                    {res.heading && (
+                      <>
+                        <ChevronRight size={12} color="#64748B" />
+                        <span style={{ fontStyle: 'italic' }}>{res.heading}</span>
+                      </>
+                    )}
                   </div>
 
                   <div style={{ fontSize: '0.775rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
