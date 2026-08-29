@@ -213,6 +213,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       selectedCardColor: palette?.selected ?? settings.selectedCardColor,
       backgroundColor: palette?.bg ?? settings.customBgColor ?? '#141312',
       textColor: palette?.text ?? settings.customTextColor ?? '#faf6ee',
+      surfaceBgColor: palette?.surface ?? settings.customSurfaceBgColor ?? '#1a1816',
+      headerBgColor: palette?.headerBg ?? settings.customHeaderBgColor ?? '#12100e',
+      columnHeaderBgColor: palette?.columnHeaderBg ?? settings.customColumnHeaderBgColor ?? '#161412',
+      cardBgColor: palette?.card ?? settings.customCardBgColor ?? '#201d1a',
+      agentAlertColor: palette?.agentAlert ?? settings.agentAlertColor ?? '#38BDF8',
       createdAt: Date.now()
     };
     onUpdateSettings({ savedThemes: [...settings.savedThemes, savedTheme] });
@@ -228,8 +233,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       atmosphereColor: theme.atmosphereColor,
       selectedCardColor: theme.selectedCardColor,
       customBgColor: theme.backgroundColor,
-      customTextColor: theme.textColor
+      customTextColor: theme.textColor,
+      customSurfaceBgColor: theme.surfaceBgColor || theme.backgroundColor,
+      customHeaderBgColor: theme.headerBgColor || theme.backgroundColor,
+      customColumnHeaderBgColor: theme.columnHeaderBgColor || theme.backgroundColor,
+      customCardBgColor: theme.cardBgColor || theme.backgroundColor,
+      agentAlertColor: theme.agentAlertColor || settings.agentAlertColor
     });
+  };
+
+  const handleResetToPreset = () => {
+    const targetPreset = settings.preset !== 'custom' ? settings.preset : 'vanilla';
+    const pal = PRESET_PALETTES[targetPreset];
+    if (pal) {
+      onUpdateSettings({
+        accentColor: pal.accent,
+        atmosphereColor: pal.atmosphere,
+        selectedCardColor: pal.selected,
+        customBgColor: pal.bg,
+        customSurfaceBgColor: pal.surface,
+        customHeaderBgColor: pal.headerBg,
+        customColumnHeaderBgColor: pal.columnHeaderBg,
+        customCardBgColor: pal.card,
+        customTextColor: pal.text,
+        agentAlertColor: pal.agentAlert
+      });
+    }
   };
 
   const deleteSavedTheme = (themeId: string, name: string) => {
@@ -289,7 +318,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               fontSize: '0.72rem',
               color: 'var(--text-secondary)',
               padding: '2px 6px',
-              background: 'rgba(255, 255, 255, 0.06)',
+              background: 'rgba(var(--atmosphere-rgb), 0.08)',
               border: '1px solid var(--border-subtle)',
               borderRadius: '4px',
               fontWeight: 500
@@ -351,15 +380,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       className={`preset-card ${settings.preset === preset.id ? 'active' : ''}`}
                       onClick={() => {
                         const pal = PRESET_PALETTES[preset.id as keyof typeof PRESET_PALETTES];
-                        onUpdateSettings({
-                          preset: preset.id,
-                          accentColor: pal ? pal.accent : settings.accentColor,
-                          atmosphereColor: pal ? pal.atmosphere : settings.atmosphereColor,
-                          selectedCardColor: pal ? pal.selected : settings.selectedCardColor,
-                          customBgColor: pal ? pal.bg : settings.customBgColor,
-                          customTextColor: pal ? pal.text : settings.customTextColor,
-                          theme: pal ? pal.mode : settings.theme
-                        });
+                        if (pal) {
+                          onUpdateSettings({
+                            preset: preset.id,
+                            accentColor: pal.accent,
+                            atmosphereColor: pal.atmosphere,
+                            selectedCardColor: pal.selected,
+                            customBgColor: pal.bg,
+                            customSurfaceBgColor: pal.surface,
+                            customHeaderBgColor: pal.headerBg,
+                            customColumnHeaderBgColor: pal.columnHeaderBg,
+                            customCardBgColor: pal.card,
+                            customTextColor: pal.text,
+                            agentAlertColor: pal.agentAlert,
+                            theme: pal.mode
+                          });
+                        }
                       }}
                       style={{
                         background: preset.bg,
@@ -383,84 +419,142 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
               </div>
 
-              {/* Custom Color Pickers */}
+              {/* Custom Color Pickers - Categorized Table / List Layout */}
               <div className="setting-item">
-                <div className="setting-info">
-                  <label>Custom Colors</label>
-                  <span className="setting-description">Choose or refine your accent, atmosphere, selection, agent alert, background, and text colors</span>
+                <div className="custom-colors-header">
+                  <div className="setting-info">
+                    <label>Custom Colors</label>
+                    <span className="setting-description">Fine-tune individual colors across all UI layers and surfaces</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-reset-preset"
+                    onClick={handleResetToPreset}
+                    title="Reset custom colors to current preset values"
+                  >
+                    <RotateCcw size={13} />
+                    <span>Reset to Preset</span>
+                  </button>
                 </div>
-                <div className="color-picker-row">
-                  <div className="color-picker-field">
-                    <span>Accent Color</span>
-                    <div className="color-picker-input-wrapper">
-                      <input
-                        type="color"
-                        value={settings.accentColor}
-                        onChange={e => onUpdateSettings({ accentColor: e.target.value, preset: 'custom' })}
-                      />
-                      <span className="color-hex-label">{settings.accentColor}</span>
-                    </div>
-                  </div>
 
-                  <div className="color-picker-field">
-                    <span>Atmosphere Color (borders and tints)</span>
-                    <div className="color-picker-input-wrapper">
-                      <input
-                        type="color"
-                        value={settings.atmosphereColor}
-                        onChange={e => onUpdateSettings({ atmosphereColor: e.target.value, preset: 'custom' })}
-                      />
-                      <span className="color-hex-label">{settings.atmosphereColor}</span>
+                <div className="custom-colors-container">
+                  {[
+                    {
+                      title: 'Surfaces & Backgrounds',
+                      items: [
+                        {
+                          key: 'customBgColor',
+                          label: 'App Background',
+                          desc: 'Main workspace canvas and editor backdrop',
+                          value: settings.customBgColor || '#141312',
+                          updateKey: 'customBgColor'
+                        },
+                        {
+                          key: 'customSurfaceBgColor',
+                          label: 'Surface Panels',
+                          desc: 'Sidebars, panels, and popup dialog surfaces',
+                          value: settings.customSurfaceBgColor || '#1a1816',
+                          updateKey: 'customSurfaceBgColor'
+                        },
+                        {
+                          key: 'customCardBgColor',
+                          label: 'Card Surface',
+                          desc: 'Board cards and list item surfaces',
+                          value: settings.customCardBgColor || '#201d1a',
+                          updateKey: 'customCardBgColor'
+                        },
+                        {
+                          key: 'selectedCardColor',
+                          label: 'Selected Card Highlight',
+                          desc: 'Active card selection gradient & focus tint',
+                          value: settings.selectedCardColor || '#322C25',
+                          updateKey: 'selectedCardColor'
+                        }
+                      ]
+                    },
+                    {
+                      title: 'Headers & Structure',
+                      items: [
+                        {
+                          key: 'customHeaderBgColor',
+                          label: 'Top & Modal Headers',
+                          desc: 'App topbar, modal dialog headers and footers',
+                          value: settings.customHeaderBgColor || '#12100e',
+                          updateKey: 'customHeaderBgColor'
+                        },
+                        {
+                          key: 'customColumnHeaderBgColor',
+                          label: 'Column Headers',
+                          desc: 'Miller column and board stage headers',
+                          value: settings.customColumnHeaderBgColor || '#161412',
+                          updateKey: 'customColumnHeaderBgColor'
+                        }
+                      ]
+                    },
+                    {
+                      title: 'Text & Atmosphere',
+                      items: [
+                        {
+                          key: 'customTextColor',
+                          label: 'Primary Text',
+                          desc: 'Main headings, labels, and editor text',
+                          value: settings.customTextColor || '#faf6ee',
+                          updateKey: 'customTextColor'
+                        },
+                        {
+                          key: 'atmosphereColor',
+                          label: 'Atmosphere & Borders',
+                          desc: 'Borders, outlines, tag badges, and glow tints',
+                          value: settings.atmosphereColor || '#EBDEC3',
+                          updateKey: 'atmosphereColor'
+                        }
+                      ]
+                    },
+                    {
+                      title: 'Accents & Highlights',
+                      items: [
+                        {
+                          key: 'accentColor',
+                          label: 'Accent Color',
+                          desc: 'Action buttons, active tabs, and primary links',
+                          value: settings.accentColor || '#3b82f6',
+                          updateKey: 'accentColor'
+                        },
+                        {
+                          key: 'agentAlertColor',
+                          label: 'Agent Alert Color',
+                          desc: 'AI Agent update ribbons and live notifications',
+                          value: settings.agentAlertColor || '#38BDF8',
+                          updateKey: 'agentAlertColor'
+                        }
+                      ]
+                    }
+                  ].map(category => (
+                    <div key={category.title} className="color-category">
+                      <div className="color-category-title">{category.title}</div>
+                      <div className="color-category-list">
+                        {category.items.map(item => (
+                          <div key={item.key} className="color-table-row">
+                            <div className="color-row-info">
+                              <span className="color-row-label">{item.label}</span>
+                              <span className="color-row-desc">{item.desc}</span>
+                            </div>
+                            <div className="color-row-control">
+                              <div className="color-swatch-wrapper" style={{ backgroundColor: item.value }}>
+                                <input
+                                  type="color"
+                                  value={item.value}
+                                  onChange={e => onUpdateSettings({ [item.updateKey]: e.target.value, preset: 'custom' })}
+                                  title={`Change ${item.label}`}
+                                />
+                              </div>
+                              <span className="color-hex-tag">{item.value.toUpperCase()}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-
-                  <div className="color-picker-field">
-                    <span>Agent Alert Color</span>
-                    <div className="color-picker-input-wrapper">
-                      <input
-                        type="color"
-                        value={settings.agentAlertColor}
-                        onChange={e => onUpdateSettings({ agentAlertColor: e.target.value })}
-                      />
-                      <span className="color-hex-label">{settings.agentAlertColor}</span>
-                    </div>
-                  </div>
-
-                  <div className="color-picker-field">
-                    <span>Background</span>
-                    <div className="color-picker-input-wrapper">
-                      <input
-                        type="color"
-                        value={settings.customBgColor || '#141312'}
-                        onChange={e => onUpdateSettings({ customBgColor: e.target.value, preset: 'custom' })}
-                      />
-                      <span className="color-hex-label">{settings.customBgColor || '#141312'}</span>
-                    </div>
-                  </div>
-
-                  <div className="color-picker-field">
-                    <span>Selected Cards (gradient)</span>
-                    <div className="color-picker-input-wrapper">
-                      <input
-                        type="color"
-                        value={settings.selectedCardColor}
-                        onChange={e => onUpdateSettings({ selectedCardColor: e.target.value, preset: 'custom' })}
-                      />
-                      <span className="color-hex-label">{settings.selectedCardColor}</span>
-                    </div>
-                  </div>
-
-                  <div className="color-picker-field">
-                    <span>Text Color</span>
-                    <div className="color-picker-input-wrapper">
-                      <input
-                        type="color"
-                        value={settings.customTextColor || '#faf6ee'}
-                        onChange={e => onUpdateSettings({ customTextColor: e.target.value, preset: 'custom' })}
-                      />
-                      <span className="color-hex-label">{settings.customTextColor || '#faf6ee'}</span>
-                    </div>
-                  </div>
+                  ))}
                 </div>
               </div>
 
@@ -480,6 +574,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             <span className="dot" style={{ backgroundColor: theme.textColor }} />
                             <span className="dot" style={{ backgroundColor: theme.accentColor }} />
                             <span className="dot" style={{ backgroundColor: theme.atmosphereColor }} />
+                            <span className="dot" style={{ backgroundColor: theme.headerBgColor || theme.backgroundColor }} />
                             <span className="dot" style={{ backgroundColor: theme.selectedCardColor }} />
                           </span>
                         </button>

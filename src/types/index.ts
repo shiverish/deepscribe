@@ -213,6 +213,11 @@ export interface SavedTheme {
   selectedCardColor: string;
   backgroundColor: string;
   textColor: string;
+  surfaceBgColor?: string;
+  headerBgColor?: string;
+  columnHeaderBgColor?: string;
+  cardBgColor?: string;
+  agentAlertColor?: string;
   createdAt: number;
 }
 
@@ -225,6 +230,10 @@ export interface UserSettings {
   agentAlertColor: string;
   savedThemes: SavedTheme[];
   customBgColor?: string;
+  customSurfaceBgColor?: string;
+  customHeaderBgColor?: string;
+  customColumnHeaderBgColor?: string;
+  customCardBgColor?: string;
   customTextColor?: string;
   enableGlassmorphism: boolean;
   enableGlow: boolean;
@@ -248,6 +257,10 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
   agentAlertColor: '#38BDF8',
   savedThemes: [],
   customBgColor: '#141312',
+  customSurfaceBgColor: '#1a1816',
+  customHeaderBgColor: '#12100e',
+  customColumnHeaderBgColor: '#161412',
+  customCardBgColor: '#201d1a',
   customTextColor: '#faf6ee',
   enableGlassmorphism: true,
   enableGlow: true,

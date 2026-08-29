@@ -48,7 +48,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  background: rgba(22, 20, 18, 0.7);
+  background: var(--header-bg);
 }
 
 .print-error {
@@ -511,7 +511,7 @@
   align-items: center;
   gap: 4px;
   flex-wrap: wrap;
-  background: rgba(18, 16, 14, 0.6);
+  background: var(--header-bg);
 }
 
 .toolbar-btn {
@@ -529,7 +529,7 @@
 }
 
 .toolbar-btn:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(var(--atmosphere-rgb), 0.08);
   color: var(--text-primary);
 }
 
@@ -573,7 +573,7 @@
   gap: 8px;
   border: 1px dashed rgba(var(--atmosphere-rgb), 0.55);
   border-radius: var(--radius-md);
-  background: rgba(18, 16, 14, 0.86);
+  background: var(--bg-surface);
   color: var(--atmosphere-color);
   font-size: 0.78rem;
   font-weight: 600;
@@ -671,7 +671,7 @@
 }
 
 .ProseMirror pre {
-  background: rgba(18, 16, 14, 0.9);
+  background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
   padding: 12px;
@@ -731,7 +731,7 @@
   justify-content: space-between;
   font-size: 0.75rem;
   color: var(--text-muted);
-  background: rgba(22, 20, 18, 0.7);
+  background: var(--header-bg);
 }
 
 .references-panel {

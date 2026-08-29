@@ -92,9 +92,9 @@ export const Column: React.FC<ColumnProps> = ({
           onClick={onAddNewItem}
           title={type === 'project' ? 'New Project' : 'New Block'}
           style={{
-            background: 'rgba(0, 240, 255, 0.08)',
-            border: '1px solid rgba(0, 240, 255, 0.2)',
-            color: 'var(--neon-cyan)',
+            background: 'rgba(var(--atmosphere-rgb), 0.09)',
+            border: '1px solid rgba(var(--atmosphere-rgb), 0.22)',
+            color: 'var(--text-primary)',
             borderRadius: '4px',
             cursor: 'pointer',
             padding: '4px 8px',
@@ -115,7 +115,7 @@ export const Column: React.FC<ColumnProps> = ({
           style={{
             padding: '6px 12px',
             borderBottom: '1px solid var(--border-subtle)',
-            background: 'rgba(0, 0, 0, 0.15)',
+            background: 'rgba(var(--atmosphere-rgb), 0.04)',
             display: 'flex',
             alignItems: 'center',
             gap: 6,

@@ -14,9 +14,37 @@ export interface ReleaseEntry {
   items: ChangelogItem[];
 }
 
-export const CURRENT_APP_VERSION = '0.2.24';
+export const CURRENT_APP_VERSION = '0.2.25';
 
 export const CHANGELOG_ENTRIES: ReleaseEntry[] = [
+  {
+    version: '0.2.25',
+    date: 'August 2026',
+    title: 'Custom Theme Colors Table & Contrast Overhaul',
+    summary: 'Redesigned theme custom colors into a categorized table list, expanded UI element color controls, and perfected contrast across all themes.',
+    items: [
+      {
+        type: 'feature',
+        text: 'Categorized Custom Colors Table',
+        detail: 'Replaced cramped color picker row with a structured list organized by Surfaces, Headers, Text, and Accents with instant swatch picking and HEX badges.'
+      },
+      {
+        type: 'feature',
+        text: 'Extended UI Layer Color Controls',
+        detail: 'Individually customize App Background, Surface Panels, Card Backgrounds, Selected Card Highlight, Modal/App Headers, and Column Headers.'
+      },
+      {
+        type: 'improvement',
+        text: 'Master Reset to Preset',
+        detail: 'Quickly restore custom theme overrides back to the active preset palette with one click.'
+      },
+      {
+        type: 'fix',
+        text: 'Theme Contrast & Legibility Fixes',
+        detail: 'Replaced hardcoded dark styling in modal headers, Miller column headers, tag filter bars, and editor toolbars so Sepia and custom light themes render cleanly.'
+      }
+    ]
+  },
   {
     version: '0.2.24',
     date: 'August 2026',

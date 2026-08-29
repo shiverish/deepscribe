@@ -8,62 +8,80 @@ const STORAGE_KEY = 'deepscribe_settings';
 export const PRESET_PALETTES = {
   vanilla: {
     bg: '#141312',
-    surface: 'rgba(26, 24, 22, 0.88)',
-    card: 'rgba(32, 29, 26, 0.75)',
+    surface: '#1a1816',
+    card: '#201d1a',
+    headerBg: '#12100e',
+    columnHeaderBg: '#161412',
     text: '#FAF6EE',
     accent: '#3b82f6',
     atmosphere: '#EBDEC3',
     selected: '#322C25',
+    agentAlert: '#38BDF8',
     mode: 'dark' as const
   },
   cyberpunk: {
     bg: '#0d0914',
-    surface: 'rgba(21, 14, 32, 0.9)',
-    card: 'rgba(30, 20, 48, 0.8)',
+    surface: '#150e20',
+    card: '#1e1430',
+    headerBg: '#100b1a',
+    columnHeaderBg: '#181024',
     text: '#e2d9f3',
     accent: '#00f0ff',
     atmosphere: '#00f0ff',
     selected: '#241735',
+    agentAlert: '#ff0055',
     mode: 'dark' as const
   },
   nord: {
     bg: '#2e3440',
-    surface: 'rgba(43, 49, 62, 0.9)',
-    card: 'rgba(59, 66, 82, 0.85)',
+    surface: '#2b313e',
+    card: '#3b4252',
+    headerBg: '#252a34',
+    columnHeaderBg: '#343d4d',
     text: '#eceff4',
     accent: '#88c0d0',
     atmosphere: '#88c0d0',
     selected: '#465064',
+    agentAlert: '#ebcb8b',
     mode: 'dark' as const
   },
   dracula: {
     bg: '#282a36',
-    surface: 'rgba(33, 34, 44, 0.92)',
-    card: 'rgba(44, 47, 63, 0.85)',
+    surface: '#21222c',
+    card: '#2c2f3f',
+    headerBg: '#1d1e26',
+    columnHeaderBg: '#2a2c3a',
     text: '#f8f8f2',
     accent: '#bd93f9',
     atmosphere: '#bd93f9',
     selected: '#3A3D51',
+    agentAlert: '#ff79c6',
     mode: 'dark' as const
   },
   sepia: {
     bg: '#fbf0d9',
-    surface: 'rgba(244, 230, 204, 0.95)',
-    card: 'rgba(238, 221, 190, 0.9)',
+    surface: '#f4e6cc',
+    card: '#eeddbe',
+    headerBg: '#ebd9bc',
+    columnHeaderBg: '#e8d3b0',
     text: '#433422',
     accent: '#b45309',
     atmosphere: '#b45309',
     selected: '#E4CFAA',
+    agentAlert: '#c2410c',
     mode: 'light' as const
   },
   obsidian: {
     bg: '#000000',
-    surface: 'rgba(18, 18, 18, 0.95)',
-    card: 'rgba(28, 28, 28, 0.9)',
+    surface: '#121212',
+    card: '#1c1c1c',
+    headerBg: '#0a0a0a',
+    columnHeaderBg: '#141414',
     text: '#e0e0e0',
     accent: '#6366f1',
     atmosphere: '#6366f1',
     selected: '#242424',
+    agentAlert: '#ec4899',
     mode: 'dark' as const
   }
 };
@@ -91,7 +109,11 @@ export function mergeStoredSettings(value: Partial<UserSettings>): UserSettings 
     savedThemes: Array.isArray(value.savedThemes) ? value.savedThemes : [],
     atmosphereColor: value.atmosphereColor || palette?.atmosphere || DEFAULT_USER_SETTINGS.atmosphereColor,
     selectedCardColor: value.selectedCardColor || palette?.selected || value.customBgColor || DEFAULT_USER_SETTINGS.selectedCardColor,
-    agentAlertColor: value.agentAlertColor || DEFAULT_USER_SETTINGS.agentAlertColor
+    agentAlertColor: value.agentAlertColor || palette?.agentAlert || DEFAULT_USER_SETTINGS.agentAlertColor,
+    customSurfaceBgColor: value.customSurfaceBgColor || palette?.surface || DEFAULT_USER_SETTINGS.customSurfaceBgColor,
+    customHeaderBgColor: value.customHeaderBgColor || palette?.headerBg || DEFAULT_USER_SETTINGS.customHeaderBgColor,
+    customColumnHeaderBgColor: value.customColumnHeaderBgColor || palette?.columnHeaderBg || DEFAULT_USER_SETTINGS.customColumnHeaderBgColor,
+    customCardBgColor: value.customCardBgColor || palette?.card || DEFAULT_USER_SETTINGS.customCardBgColor
   };
 }
 
@@ -114,11 +136,21 @@ export function applySettingsToDOM(settings: UserSettings) {
     root.style.setProperty('--bg-dark', palette.bg);
     root.style.setProperty('--bg-surface', palette.surface);
     root.style.setProperty('--bg-card', palette.card);
+    root.style.setProperty('--header-bg', palette.headerBg);
+    root.style.setProperty('--modal-header-bg', palette.headerBg);
+    root.style.setProperty('--column-header-bg', palette.columnHeaderBg);
     root.style.setProperty('--text-primary', palette.text);
     root.style.setProperty('--accent-color', settings.accentColor || palette.accent);
     root.setAttribute('data-theme', palette.mode);
   } else if (settings.preset === 'custom') {
     if (settings.customBgColor) root.style.setProperty('--bg-dark', settings.customBgColor);
+    if (settings.customSurfaceBgColor) root.style.setProperty('--bg-surface', settings.customSurfaceBgColor);
+    if (settings.customCardBgColor) root.style.setProperty('--bg-card', settings.customCardBgColor);
+    if (settings.customHeaderBgColor) {
+      root.style.setProperty('--header-bg', settings.customHeaderBgColor);
+      root.style.setProperty('--modal-header-bg', settings.customHeaderBgColor);
+    }
+    if (settings.customColumnHeaderBgColor) root.style.setProperty('--column-header-bg', settings.customColumnHeaderBgColor);
     if (settings.customTextColor) root.style.setProperty('--text-primary', settings.customTextColor);
     root.style.setProperty('--accent-color', settings.accentColor);
     let effectiveTheme = settings.theme;

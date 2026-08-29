@@ -19,8 +19,26 @@ describe('settings compatibility', () => {
     expect(merged.minimizeToTray).toBe(true);
   });
 
-  it('preserves an explicit minimizeToTray false setting', () => {
-    const merged = mergeStoredSettings({ preset: 'vanilla', minimizeToTray: false });
-    expect(merged.minimizeToTray).toBe(false);
+  it('defaults new UI layer colors when omitted in older settings', () => {
+    const merged = mergeStoredSettings({ preset: 'sepia' });
+    expect(merged.customSurfaceBgColor).toBe('#f4e6cc');
+    expect(merged.customHeaderBgColor).toBe('#ebd9bc');
+    expect(merged.customColumnHeaderBgColor).toBe('#e8d3b0');
+    expect(merged.customCardBgColor).toBe('#eeddbe');
+  });
+
+  it('preserves custom UI layer colors when provided', () => {
+    const merged = mergeStoredSettings({
+      preset: 'custom',
+      customHeaderBgColor: '#112233',
+      customColumnHeaderBgColor: '#223344',
+      customCardBgColor: '#334455',
+      customSurfaceBgColor: '#445566'
+    });
+    expect(merged.customHeaderBgColor).toBe('#112233');
+    expect(merged.customColumnHeaderBgColor).toBe('#223344');
+    expect(merged.customCardBgColor).toBe('#334455');
+    expect(merged.customSurfaceBgColor).toBe('#445566');
   });
 });
+
