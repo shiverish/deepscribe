@@ -14,9 +14,22 @@ export interface ReleaseEntry {
   items: ChangelogItem[];
 }
 
-export const CURRENT_APP_VERSION = '0.2.28';
+export const CURRENT_APP_VERSION = '0.2.29';
 
 export const CHANGELOG_ENTRIES: ReleaseEntry[] = [
+  {
+    version: '0.2.29',
+    date: 'August 2026',
+    title: 'Clean Webhook Creator & Assignment Metadata',
+    summary: 'Webhook payloads now carry clear createdBy and assignedTo fields for downstream automations like n8n.',
+    items: [
+      {
+        type: 'improvement',
+        text: 'Clean Webhook Assignment & Creator Metadata',
+        detail: 'Task and block webhook payloads now include createdBy (indicating whether the task was created by the user or an agent tool like SeeScribe) and assignedTo (indicating the assigned agent target or active claim owner).'
+      }
+    ]
+  },
   {
     version: '0.2.28',
     date: 'August 2026',

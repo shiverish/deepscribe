@@ -54,11 +54,32 @@ describe('deriving webhook events from a block change', () => {
     expect(deriveWebhookEvents(undefined, task('inbox')).map(event => event.event)).toEqual(['task.created']);
   });
 
-  it('reports a task status change with both the old and the new status', () => {
-    const events = deriveWebhookEvents(task('ready'), task('in-progress'));
+  it('reports a task status change with both the old and the new status and assignment info', () => {
+    const events = deriveWebhookEvents(task('ready'), task('in-progress', {
+      task: {
+        status: 'in-progress',
+        agentTarget: 'custom',
+        customAgentName: 'SeeScribe',
+        position: 0,
+        taskNumber: 7,
+        creator: { type: 'agent', agentTarget: 'custom', customAgentName: 'SeeScribe', agentId: 'seescribe-1', requestId: 'req-1' }
+      }
+    }));
     const statusChange = events.find(event => event.event === 'task.status_changed');
-    expect(statusChange).toMatchObject({ oldStatus: 'ready', newStatus: 'in-progress', taskId: 'block-1' });
-    expect(statusChange?.metadata).toMatchObject({ source: 'deepscribe', kind: 'task', taskNumber: 7 });
+    expect(statusChange).toMatchObject({
+      oldStatus: 'ready',
+      newStatus: 'in-progress',
+      taskId: 'block-1',
+      createdBy: 'SeeScribe',
+      assignedTo: 'SeeScribe'
+    });
+    expect(statusChange?.metadata).toMatchObject({
+      source: 'deepscribe',
+      kind: 'task',
+      taskNumber: 7,
+      createdBy: 'SeeScribe',
+      assignedTo: 'SeeScribe'
+    });
   });
 
   it('stays silent when nothing meaningful changed', () => {

@@ -17,11 +17,18 @@ export interface WebhookPayload {
   oldStatus: string | null;
   newStatus: string | null;
   title: string;
+  createdBy: string;
+  assignedTo: string | null;
   tags: string[];
   metadata: {
     source: 'deepscribe';
     kind: 'block' | 'task';
     taskNumber: number | null;
+    createdBy: string;
+    assignedTo: string | null;
+    agentTarget?: TaskAgentTarget | null;
+    customAgentName?: string | null;
+    claimOwner?: string | null;
   };
 }
 
@@ -57,25 +64,59 @@ function contentFingerprint(block: Block): string {
     tags: block.tags,
     dependsOn: block.dependsOn,
     isTrash: block.isTrash,
-    kind: block.kind
+    kind: block.kind,
+    taskAgentTarget: block.task?.agentTarget,
+    taskCustomAgentName: block.task?.customAgentName,
+    taskClaimOwner: block.task?.claim?.ownerId
   });
 }
 
 function payload(event: WebhookEventName, block: Block, oldStatus: string | null = null): WebhookPayload {
+  const isTask = block.kind === 'task';
+  const task = block.task;
+  const agentTarget = isTask && task ? task.agentTarget : null;
+  const customAgentName = isTask && task?.customAgentName ? task.customAgentName : null;
+  const claimOwner = isTask && task?.claim?.ownerId ? task.claim.ownerId : null;
+
+  let createdBy = 'user';
+  if (isTask && task?.creator) {
+    if (task.creator.type === 'agent') {
+      createdBy = task.creator.customAgentName || task.creator.agentId || task.creator.agentTarget;
+    }
+  }
+
+  let assignedTo: string | null = null;
+  if (isTask && task) {
+    if (claimOwner) {
+      assignedTo = claimOwner;
+    } else if (agentTarget === 'custom' && customAgentName) {
+      assignedTo = customAgentName;
+    } else if (agentTarget && agentTarget !== 'none') {
+      assignedTo = agentTarget;
+    }
+  }
+
   return {
     event,
     timestamp: new Date().toISOString(),
     projectId: block.projectId,
     blockId: block.id,
-    taskId: block.kind === 'task' ? block.id : null,
+    taskId: isTask ? block.id : null,
     oldStatus,
-    newStatus: event === 'task.status_changed' ? block.task?.status ?? null : null,
+    newStatus: event === 'task.status_changed' ? task?.status ?? null : null,
     title: block.title,
+    createdBy,
+    assignedTo,
     tags: [...(block.tags ?? [])],
     metadata: {
       source: 'deepscribe',
-      kind: block.kind === 'task' ? 'task' : 'block',
-      taskNumber: block.task?.taskNumber ?? null
+      kind: isTask ? 'task' : 'block',
+      taskNumber: task?.taskNumber ?? null,
+      createdBy,
+      assignedTo,
+      agentTarget,
+      customAgentName,
+      claimOwner
     }
   };
 }
