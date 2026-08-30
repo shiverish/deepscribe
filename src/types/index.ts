@@ -1,4 +1,4 @@
-export type ActiveView = 'columns' | 'tasks' | 'stats' | 'graph';
+export type ActiveView = 'columns' | 'tasks' | 'stats';
 
 export interface Project {
   id: string;

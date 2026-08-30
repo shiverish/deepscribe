@@ -8,7 +8,6 @@ import { UpdateNotification, type UpdaterState } from './components/Navigation/U
 import { HorizontalLayout, type ColumnData } from './components/Navigation/HorizontalLayout';
 import { WritingPanel } from './components/Editor/WritingPanel';
 import { StatisticsView } from './components/Statistics/StatisticsView';
-import { GraphView } from './components/Graph/GraphView';
 import { TasksView } from './components/Tasks/TasksView';
 import { SearchModal } from './components/Search/SearchModal';
 import { TrashModal } from './components/Modals/TrashModal';
@@ -1078,18 +1077,6 @@ function DeepScribeApp() {
           />
         )}
 
-        {activeView === 'graph' && (
-          <GraphView
-            blocks={allBlocks}
-            projects={projects}
-            links={allLinks}
-            activeBlockId={activeBlock?.id ?? null}
-            onOpenBlock={(blockId) => {
-              openBlockById(blockId);
-              setActiveView('columns');
-            }}
-          />
-        )}
 
         <WritingPanel
           isOpen={isWritingPanelOpen}

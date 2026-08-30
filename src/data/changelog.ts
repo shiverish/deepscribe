@@ -14,9 +14,22 @@ export interface ReleaseEntry {
   items: ChangelogItem[];
 }
 
-export const CURRENT_APP_VERSION = '0.2.32';
+export const CURRENT_APP_VERSION = '0.2.33';
 
 export const CHANGELOG_ENTRIES: ReleaseEntry[] = [
+  {
+    version: '0.2.33',
+    date: 'August 2026',
+    title: 'Graph View Removed',
+    summary: 'The graph is a tool for agents rather than something to sit and look at, so the view is gone. The relations it drew are untouched.',
+    items: [
+      {
+        type: 'improvement',
+        text: 'Graph View Removed',
+        detail: 'The fourth view and its Ctrl + 4 shortcut are gone; the switcher is back to Columns, Tasks and Stats. Nothing about the underlying data changed: relations, dependencies and wiki links are still stored, still shown in the References panel while writing, and still reachable by agents over MCP.'
+      }
+    ]
+  },
   {
     version: '0.2.32',
     date: 'August 2026',
