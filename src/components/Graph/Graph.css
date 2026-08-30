@@ -3,9 +3,13 @@
 
 .graph-view {
   display: flex;
+  flex: 1;
   flex-direction: column;
   height: 100%;
   min-height: 0;
+  /* Without this the panels below set a min-content floor that the app row
+     cannot shrink past, which shoves the writing panel off its right edge. */
+  min-width: 0;
   background: var(--bg-primary);
 }
 
@@ -97,6 +101,7 @@
 .graph-canvas {
   flex: 1;
   min-height: 0;
+  min-width: 0;
   width: 100%;
 }
 
@@ -256,6 +261,7 @@
   display: flex;
   flex: 1;
   min-height: 0;
+  min-width: 0;
 }
 
 .graph-project-node {
@@ -269,8 +275,10 @@
 }
 
 .graph-loose-ends {
-  width: 300px;
-  flex-shrink: 0;
+  /* Gives way before the canvas does, rather than widening the whole view. */
+  flex: 0 1 300px;
+  min-width: 200px;
+  max-width: 45%;
   overflow-y: auto;
   padding: 14px 16px;
   border-left: 1px solid var(--border-subtle);

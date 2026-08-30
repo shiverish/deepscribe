@@ -14,9 +14,21 @@ export interface ReleaseEntry {
   items: ChangelogItem[];
 }
 
-export const CURRENT_APP_VERSION = '0.2.31';
+export const CURRENT_APP_VERSION = '0.2.32';
 
 export const CHANGELOG_ENTRIES: ReleaseEntry[] = [
+  {
+    version: '0.2.32',
+    date: 'August 2026',
+    title: 'Graph Keeps Its Hands Off The Writing Panel',
+    items: [
+      {
+        type: 'fix',
+        text: 'Writing Panel Stays Put In Graph View',
+        detail: 'Opening the loose ends panel widened the graph view and shoved the writing panel off its right edge. The graph view now claims the space left over beside the writing panel and stays shrinkable, and the loose ends panel gives way before the canvas does instead of forcing the whole view wider.'
+      }
+    ]
+  },
   {
     version: '0.2.31',
     date: 'August 2026',

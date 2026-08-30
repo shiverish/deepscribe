@@ -1,7 +1,7 @@
 {
   "name": "deepscribe",
   "private": true,
-  "version": "0.2.31",
+  "version": "0.2.32",
   "description": "Local-first hierarchical writing and knowledge app with Miller columns",
   "license": "GPL-3.0-or-later",
   "author": "shiverish",
