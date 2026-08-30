@@ -14,9 +14,32 @@ export interface ReleaseEntry {
   items: ChangelogItem[];
 }
 
-export const CURRENT_APP_VERSION = '0.2.30';
+export const CURRENT_APP_VERSION = '0.2.31';
 
 export const CHANGELOG_ENTRIES: ReleaseEntry[] = [
+  {
+    version: '0.2.31',
+    date: 'August 2026',
+    title: 'A Graph You Can Enter Cold',
+    summary: 'The graph now opens on the workspace instead of on whichever block happened to be open, so it answers what is in here before it answers what hangs off this one block.',
+    items: [
+      {
+        type: 'feature',
+        text: 'Workspace And Project Levels',
+        detail: 'Three levels of zoom: projects and how strongly they are tied together, then the best connected blocks inside one project, then the neighbourhood of a single block that was already there. A breadcrumb walks back up. Edge thickness on the workspace level is the number of relations running between two projects. Nodes are ranked so the cap drops the quietest, never an arbitrary slice.'
+      },
+      {
+        type: 'feature',
+        text: 'Loose Ends',
+        detail: 'A panel listing what the graph cannot reach: blocks nothing links to, and references pointing at a title that does not exist or that more than one block carries. Scoped to the whole workspace or to the project you are looking at.'
+      },
+      {
+        type: 'improvement',
+        text: 'Depth And Filters Where They Apply',
+        detail: 'The depth selector and relation type filters now appear only at block level, where they actually change the picture. A chip jumps straight to the block open elsewhere in the app.'
+      }
+    ]
+  },
   {
     version: '0.2.30',
     date: 'August 2026',
