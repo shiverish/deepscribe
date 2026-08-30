@@ -17,6 +17,7 @@ dist-skills
 
 # Claude Code personal settings
 .claude/settings.local.json
+.claude/launch.json
 
 # Editor directories and files
 .vscode/*
