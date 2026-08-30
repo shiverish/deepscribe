@@ -49,6 +49,26 @@ export interface TaskClaim {
   attempt: number;
 }
 
+/**
+ * Who created a block. Canonical on `Block.creator` for every block, tasks
+ * included. The agent variant keeps its identity optional because a block can
+ * arrive over MCP without the caller declaring who it is; `type` is what a
+ * consumer should branch on.
+ */
+export type BlockCreator =
+  | { type: 'user' }
+  | {
+      type: 'agent';
+      agentTarget?: ClaimantAgentTarget;
+      agentId?: string;
+      customAgentName?: string;
+    };
+
+/**
+ * @deprecated Superseded by `Block.creator`, which covers tasks too. Still
+ * written by create_task because its `requestId` backs the idempotency lookup,
+ * and still read as a fallback for task rows created before `Block.creator`.
+ */
 export type TaskCreator =
   | { type: 'user' }
   | {
@@ -65,6 +85,7 @@ export interface TaskMetadata {
   customAgentName?: string;
   position: number;
   taskNumber?: number;
+  /** @deprecated Read `Block.creator`; kept for idempotency and legacy rows. */
   creator?: TaskCreator;
   readyAt?: number;
   claimAttempt?: number;
@@ -90,6 +111,8 @@ export interface Block {
   dependsOn?: string[];
   kind?: 'task';
   task?: TaskMetadata;
+  /** Canonical creator for every block kind. Absent on rows predating the field. */
+  creator?: BlockCreator;
   lastAgentEditAt?: number;
   lastSeenAgentEditAt?: number;
   createdAt: number;

@@ -1,5 +1,6 @@
 import { db, subscribeToDatabaseMutations } from '../db/db';
-import type { Block, WebhookEndpoint, WebhookEventName } from '../types';
+import { assignmentSlug, blockCreator, creatorSlug } from './creators';
+import type { Block, TaskAgentTarget, WebhookEndpoint, WebhookEventName } from '../types';
 
 export const WEBHOOK_EVENTS: ReadonlyArray<{ id: WebhookEventName; label: string }> = [
   { id: 'task.status_changed', label: 'Task status changed' },
@@ -17,7 +18,11 @@ export interface WebhookPayload {
   oldStatus: string | null;
   newStatus: string | null;
   title: string;
+  /** Stable name of the creator: 'user', a provider slug, or a custom agent name. */
   createdBy: string;
+  /** The axis to branch on; 'user' is also the default for rows with no recorded creator. */
+  createdByType: 'user' | 'agent';
+  /** Stable name of the assigned agent, or null when the block is assigned to nobody. */
   assignedTo: string | null;
   tags: string[];
   metadata: {
@@ -25,6 +30,9 @@ export interface WebhookPayload {
     kind: 'block' | 'task';
     taskNumber: number | null;
     createdBy: string;
+    createdByType: 'user' | 'agent';
+    /** Opaque caller identity behind createdBy, when the creator declared one. */
+    createdByAgentId: string | null;
     assignedTo: string | null;
     agentTarget?: TaskAgentTarget | null;
     customAgentName?: string | null;
@@ -65,6 +73,7 @@ function contentFingerprint(block: Block): string {
     dependsOn: block.dependsOn,
     isTrash: block.isTrash,
     kind: block.kind,
+    creator: block.creator,
     taskAgentTarget: block.task?.agentTarget,
     taskCustomAgentName: block.task?.customAgentName,
     taskClaimOwner: block.task?.claim?.ownerId
@@ -78,23 +87,15 @@ function payload(event: WebhookEventName, block: Block, oldStatus: string | null
   const customAgentName = isTask && task?.customAgentName ? task.customAgentName : null;
   const claimOwner = isTask && task?.claim?.ownerId ? task.claim.ownerId : null;
 
-  let createdBy = 'user';
-  if (isTask && task?.creator) {
-    if (task.creator.type === 'agent') {
-      createdBy = task.creator.customAgentName || task.creator.agentId || task.creator.agentTarget;
-    }
-  }
+  const creator = blockCreator(block);
+  const createdBy = creatorSlug(creator);
+  const createdByType = creator.type;
+  const createdByAgentId = creator.type === 'agent' ? creator.agentId ?? null : null;
 
-  let assignedTo: string | null = null;
-  if (isTask && task) {
-    if (claimOwner) {
-      assignedTo = claimOwner;
-    } else if (agentTarget === 'custom' && customAgentName) {
-      assignedTo = customAgentName;
-    } else if (agentTarget && agentTarget !== 'none') {
-      assignedTo = agentTarget;
-    }
-  }
+  // Only the assignment itself names the assignee. An active claim is a lease on
+  // top of that assignment, not a different assignee, so its opaque owner id
+  // stays in metadata.claimOwner rather than leaking into this field.
+  const assignedTo = assignmentSlug(agentTarget, customAgentName);
 
   return {
     event,
@@ -106,6 +107,7 @@ function payload(event: WebhookEventName, block: Block, oldStatus: string | null
     newStatus: event === 'task.status_changed' ? task?.status ?? null : null,
     title: block.title,
     createdBy,
+    createdByType,
     assignedTo,
     tags: [...(block.tags ?? [])],
     metadata: {
@@ -113,6 +115,8 @@ function payload(event: WebhookEventName, block: Block, oldStatus: string | null
       kind: isTask ? 'task' : 'block',
       taskNumber: task?.taskNumber ?? null,
       createdBy,
+      createdByType,
+      createdByAgentId,
       assignedTo,
       agentTarget,
       customAgentName,

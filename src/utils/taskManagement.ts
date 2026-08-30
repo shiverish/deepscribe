@@ -43,6 +43,7 @@ export async function createUserTask(input: {
     tags: [],
     kind: 'task',
     task: createTaskMetadata(position, { type: 'user' }, taskNumber),
+    creator: { type: 'user' },
     isTrash: false,
     createdAt: now,
     updatedAt: now
@@ -146,6 +147,7 @@ export async function ensureArchiveParentBlock(projectId: string): Promise<Block
     completedTaskCount: 0,
     attachmentCount: 0,
     tags: ['archive'],
+    creator: { type: 'user' },
     isTrash: false,
     createdAt: now,
     updatedAt: now

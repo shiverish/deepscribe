@@ -110,6 +110,7 @@ export async function createAnnotationBlock(payload: CreateAnnotationPayload): P
           creator: { type: 'user' }
         }
       : undefined,
+    creator: { type: 'user' },
     createdAt: now,
     updatedAt: now
   };

@@ -501,6 +501,7 @@ function DeepScribeApp() {
         attachmentCount: 0,
         tags: [],
         ...(kind === 'task' ? { kind: 'task' as const, task: createTaskMetadata(now, { type: 'user' }, getNextTaskNumber(allBlocks)) } : {}),
+        creator: { type: 'user' },
         isTrash: false,
         createdAt: now,
         updatedAt: now
@@ -539,6 +540,7 @@ function DeepScribeApp() {
       attachmentCount: 0,
       tags: [],
       ...(kind === 'task' ? { kind: 'task' as const, task: createTaskMetadata(now, { type: 'user' }, getNextTaskNumber(allBlocks)) } : {}),
+      creator: { type: 'user' },
       isTrash: false,
       createdAt: now,
       updatedAt: now
@@ -739,6 +741,7 @@ function DeepScribeApp() {
           isTrash: false,
           trashedAt: undefined,
           task: duplicatedTask,
+          creator: { type: 'user' },
           createdAt: now,
           updatedAt: now
         });
@@ -990,7 +993,7 @@ function DeepScribeApp() {
     await db.blocks.add({
       id, projectId: activeProjectId, parentId, title: template.title, content: template.content,
       plainText: template.plainText, order: siblings.length, childCount: 0, taskCount, completedTaskCount,
-      attachmentCount: 0, tags: template.tags, isTrash: false, createdAt: now, updatedAt: now
+      attachmentCount: 0, tags: template.tags, creator: { type: 'user' }, isTrash: false, createdAt: now, updatedAt: now
     });
     await recordActivity({ projectId: activeProjectId, blockId: id, action: 'template-applied', summary: `Template “${template.name}” toegepast` });
     const byId = new Map(allBlocks.map(block => [block.id, block]));

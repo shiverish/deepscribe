@@ -308,7 +308,10 @@ registerTool('create_block', {
     title: z.string().min(1),
     content: z.string().optional(),
     tags: z.array(z.string()).max(20).optional(),
-    dependsOn: z.array(z.string()).max(20).optional()
+    dependsOn: z.array(z.string()).max(20).optional(),
+    agentId: z.string().min(1).optional().describe('Caller agent identity ID'),
+    agentTarget: z.enum(['openai', 'claude', 'gemini', 'custom']).optional().describe('Caller provider identity'),
+    customAgentName: z.string().min(1).optional().describe('Caller custom agent name if agentTarget is custom')
   },
   annotations: write
 });

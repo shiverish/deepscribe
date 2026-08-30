@@ -14,19 +14,19 @@ export interface ReleaseEntry {
   items: ChangelogItem[];
 }
 
-export const CURRENT_APP_VERSION = '0.2.29';
+export const CURRENT_APP_VERSION = '0.2.30';
 
 export const CHANGELOG_ENTRIES: ReleaseEntry[] = [
   {
-    version: '0.2.29',
+    version: '0.2.30',
     date: 'August 2026',
     title: 'Clean Webhook Creator & Assignment Metadata',
-    summary: 'Webhook payloads now carry clear createdBy and assignedTo fields for downstream automations like n8n.',
+    summary: 'Webhook payloads now carry createdBy as a stable slug, createdByType as the branch axis, and assignedTo as the assignment — not a mix of types, names and claim ids.',
     items: [
       {
         type: 'improvement',
         text: 'Clean Webhook Assignment & Creator Metadata',
-        detail: 'Task and block webhook payloads now include createdBy (indicating whether the task was created by the user or an agent tool like SeeScribe) and assignedTo (indicating the assigned agent target or active claim owner).'
+        detail: 'Task and block webhook payloads now include createdBy (a stable slug: user, openai, claude, gemini, or a custom agent name), createdByType (user or agent), and assignedTo (the assigned provider slug, or null when unassigned). Claim owner ids stay in metadata. Every block now records its creator; rows without one default to the user.'
       }
     ]
   },

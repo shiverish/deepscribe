@@ -41,6 +41,7 @@ import {
   validateTaskMetadata,
   validateTaskReady
 } from './core/tasks.mjs';
+import { agentBlockCreator } from './core/creators.mjs';
 import {
   containsMarkdownTask,
   contentStatsFromHtml as contentStats,
@@ -870,7 +871,8 @@ export class DirectWorkspaceStore {
       attachmentCount: block.attachmentCount ?? 0,
       updatedAt: block.updatedAt,
       kind: safeBlock.kind,
-      task: safeBlock.task
+      task: safeBlock.task,
+      creator: block.creator
     };
   }
 
@@ -1204,6 +1206,11 @@ export class DirectWorkspaceStore {
           tags: sanitizeTags(Array.isArray(params.tags) ? params.tags.filter(t => typeof t === 'string') : []),
           dependsOn: rawDependsOn.length > 0 ? rawDependsOn : undefined,
           ...(params.kind === 'task' && params.task ? { kind: 'task', task: params.task } : {}),
+          creator: agentBlockCreator({
+            agentId: optionalStr('agentId'),
+            agentTarget: optionalStr('agentTarget'),
+            customAgentName: optionalStr('customAgentName')
+          }),
           lastAgentEditAt: now,
           isTrash: false,
           createdAt: now,
@@ -1296,6 +1303,7 @@ export class DirectWorkspaceStore {
           tags: [],
           kind: 'task',
           task: createTaskMetadata(position, { type: 'agent', agentTarget, agentId, requestId, ...(agentTarget === 'custom' ? { customAgentName } : {}) }, taskNumber, assigneeTarget, assigneeCustomName),
+          creator: agentBlockCreator({ agentId, agentTarget, customAgentName }),
           lastAgentEditAt: now,
           isTrash: false,
           createdAt: now,

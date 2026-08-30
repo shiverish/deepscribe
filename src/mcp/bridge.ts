@@ -12,6 +12,7 @@ import { sanitizeTags } from '../utils/tagUtils';
 import { rankChunksLocally, rankProjectsLocally } from '../utils/semanticSearch';
 import { BLOCK_LINK_TYPES, collectRelatedBlocks, createBlockLink, linkKey, linkRefusal, normalizeLinkType, syncWikiLinksForBlock } from '../../mcp/core/links.mjs';
 import { isDescendantOrSelf, moveBlockInTree } from '../utils/dragAndDrop';
+import { agentBlockCreator } from '../utils/creators';
 import { canTransitionTask, createTaskClaim, createTaskInboxProject, createTaskMetadata, formatTaskDeepLink, formatTaskHumanId, getNextTaskNumber, isTaskClaimCandidate, isTaskInboxProject, normalizeLeaseSeconds, parseTaskHumanId, redactTaskClaim, TASK_AGENT_TARGETS, taskClaimWriteRefusal, taskCreatorLabel, TASK_INBOX_PROJECT_ID, taskProtectedFieldRefusal, validateTaskMetadata, validateTaskReady } from '../utils/taskBlocks';
 import { exportBlockAsHtml, exportBlockAsMarkdown, exportBlockAsText, type ExportFormat } from '../utils/exportUtils';
 import { BLOCK_PRINT_PRESETS, loadStoredPrintSettings, normalizeBlockPrintSettings, saveStoredPrintSettings } from '../utils/printDocument';
@@ -140,6 +141,7 @@ function blockSummary(block: Block) {
     attachmentCount: block.attachmentCount,
     kind: block.kind,
     task: redactTaskClaim(block).task,
+    creator: block.creator,
     updatedAt: block.updatedAt
   };
 }
@@ -327,6 +329,11 @@ async function createBlock(params: JsonObject) {
     tags: sanitizeTags(Array.isArray(params.tags) ? params.tags.filter((tag): tag is string => typeof tag === 'string') : []),
     dependsOn: dependsOn.length > 0 ? dependsOn : undefined,
     ...(params.kind === 'task' && params.task ? { kind: 'task' as const, task: params.task as TaskMetadata } : {}),
+    creator: agentBlockCreator({
+      agentId: optionalString(params, 'agentId'),
+      agentTarget: optionalString(params, 'agentTarget'),
+      customAgentName: optionalString(params, 'customAgentName')
+    }),
     lastAgentEditAt: now,
     isTrash: false,
     createdAt: now,
@@ -440,6 +447,7 @@ async function createAgentTask(params: JsonObject) {
         type: 'agent', agentTarget, agentId, requestId,
         ...(agentTarget === 'custom' ? { customAgentName } : {})
       }, taskNumber, assigneeTarget, assigneeCustomName),
+      creator: agentBlockCreator({ agentId, agentTarget, customAgentName }),
       lastAgentEditAt: now,
       isTrash: false,
       createdAt: now,
@@ -1109,6 +1117,7 @@ async function createCapture(params: JsonObject) {
       tags: sanitizeTags(Array.isArray(params.tags) ? params.tags.filter((tag): tag is string => typeof tag === 'string') : []),
       kind: 'task',
       task,
+      creator: agentBlockCreator({ agentId, agentTarget: claimantTarget, customAgentName }),
       lastAgentEditAt: now,
       isTrash: false,
       createdAt: now,

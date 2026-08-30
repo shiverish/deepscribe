@@ -78,8 +78,57 @@ describe('deriving webhook events from a block change', () => {
       kind: 'task',
       taskNumber: 7,
       createdBy: 'SeeScribe',
+      createdByType: 'agent',
+      createdByAgentId: 'seescribe-1',
       assignedTo: 'SeeScribe'
     });
+  });
+
+  it('attributes a block with no recorded creator to the user', () => {
+    const [event] = deriveWebhookEvents(undefined, block());
+    expect(event).toMatchObject({ createdBy: 'user', createdByType: 'user', assignedTo: null });
+    expect(event.metadata).toMatchObject({ kind: 'block', createdByAgentId: null });
+  });
+
+  it('reports the agent that created a plain block', () => {
+    const [event] = deriveWebhookEvents(undefined, block({
+      creator: { type: 'agent', agentTarget: 'claude', agentId: 'claude-7f2a' }
+    }));
+    expect(event).toMatchObject({ createdBy: 'claude', createdByType: 'agent' });
+    expect(event.metadata).toMatchObject({ createdByAgentId: 'claude-7f2a' });
+  });
+
+  it('prefers the canonical creator over the legacy one on the task', () => {
+    const [event] = deriveWebhookEvents(undefined, task('inbox', {
+      creator: { type: 'user' },
+      task: {
+        status: 'inbox', agentTarget: 'any', position: 0, taskNumber: 7,
+        creator: { type: 'agent', agentTarget: 'claude', agentId: 'c-1', requestId: 'r-1' }
+      }
+    }));
+    expect(event).toMatchObject({ createdBy: 'user', createdByType: 'user' });
+  });
+
+  it('reports the agent pool as an assignment and none as no assignment', () => {
+    expect(deriveWebhookEvents(undefined, task('inbox'))[0].assignedTo).toBe('any');
+    expect(deriveWebhookEvents(undefined, task('inbox', {
+      task: { status: 'inbox', agentTarget: 'none', position: 0, taskNumber: 7 }
+    }))[0].assignedTo).toBeNull();
+  });
+
+  it('keeps an opaque claim owner out of assignedTo', () => {
+    const claimed = task('in-progress', {
+      task: {
+        status: 'in-progress', agentTarget: 'gemini', position: 0, taskNumber: 7,
+        claim: {
+          ownerId: 'gemini-session-9', agentTarget: 'gemini', token: 't', requestId: 'r',
+          claimedAt: 1, heartbeatAt: 1, expiresAt: 2, attempt: 1
+        }
+      }
+    });
+    const [event] = deriveWebhookEvents(task('ready'), claimed);
+    expect(event.assignedTo).toBe('gemini');
+    expect(event.metadata.claimOwner).toBe('gemini-session-9');
   });
 
   it('stays silent when nothing meaningful changed', () => {
