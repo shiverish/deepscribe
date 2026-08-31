@@ -22,6 +22,7 @@ let isQuitting = false;
 let isMinimizeToTrayEnabled = true;
 let isCloseToTrayEnabled = true;
 let overlayWindow = null;
+let captureWindow = null;
 let pendingOverlayData = null;
 const pendingBridgeRequests = new Map();
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
@@ -258,6 +259,30 @@ function registerScreenCaptureIpc() {
     }
     setSeeScribePath(executablePath);
     return { executablePath };
+  });
+
+  ipcMain.handle('deepscribe:capture:open', async () => {
+    openQuickCapture();
+    return { ok: true };
+  });
+
+  ipcMain.handle('deepscribe:capture:close', async () => {
+    closeQuickCapture();
+    return { ok: true };
+  });
+
+  ipcMain.handle('deepscribe:capture:save', async (_event, payload) => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      throw new Error('DeepScribe is not ready to store this capture yet.');
+    }
+    // Deliberately no show() or focus(): capturing must not pull the app to the
+    // front. The main window persists the entry wherever it is, hidden or not.
+    mainWindow.webContents.send('deepscribe:capture:save-request', {
+      text: typeof payload?.text === 'string' ? payload.text : '',
+      projectHintName: typeof payload?.projectHintName === 'string' ? payload.projectHintName : undefined
+    });
+    closeQuickCapture();
+    return { ok: true };
   });
 
   ipcMain.handle('deepscribe:screen:trigger-overlay', async () => {
@@ -690,6 +715,10 @@ function registerUpdaterIpc() {
       try { overlayWindow.destroy(); } catch {}
       overlayWindow = null;
     }
+    if (captureWindow && !captureWindow.isDestroyed()) {
+      try { captureWindow.destroy(); } catch {}
+      captureWindow = null;
+    }
     if (tray) {
       try { tray.destroy(); } catch {}
       tray = null;
@@ -1009,6 +1038,76 @@ function showMainWindow() {
 }
 
 /**
+ * Quick Capture: a small always-on-top window that only asks for text. It never
+ * writes to the workspace itself — the text is handed to the main window, which
+ * owns the database — so this window can disappear the instant you save and
+ * leave focus where it was.
+ */
+function openQuickCapture() {
+  if (captureWindow && !captureWindow.isDestroyed()) {
+    captureWindow.show();
+    captureWindow.focus();
+    return;
+  }
+
+  const cursorPoint = screen.getCursorScreenPoint();
+  const display = screen.getDisplayNearestPoint(cursorPoint);
+  const width = 520;
+  const height = 260;
+  const x = Math.round(display.workArea.x + (display.workArea.width - width) / 2);
+  const y = Math.round(display.workArea.y + display.workArea.height * 0.28);
+
+  captureWindow = new BrowserWindow({
+    x,
+    y,
+    width,
+    height,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    fullscreenable: false,
+    backgroundColor: '#00000000',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: false
+    }
+  });
+
+  captureWindow.on('closed', () => {
+    captureWindow = null;
+  });
+
+  // Losing focus means the user moved on; a capture window left floating over
+  // someone's work is worse than a discarded empty note. Only armed once the
+  // window has actually had focus, so it cannot close itself while loading.
+  captureWindow.once('focus', () => {
+    if (!captureWindow || captureWindow.isDestroyed()) return;
+    captureWindow.on('blur', () => {
+      if (captureWindow && !captureWindow.isDestroyed()) captureWindow.close();
+    });
+  });
+
+  const isDev = process.env.NODE_ENV === 'development' || process.argv.includes('--dev');
+  if (isDev) {
+    const devUrl = process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173';
+    captureWindow.loadURL(`${devUrl}?capture=true`);
+  } else {
+    captureWindow.loadFile(path.join(__dirname, '../dist/index.html'), { query: { capture: 'true' } });
+  }
+}
+
+function closeQuickCapture() {
+  if (captureWindow && !captureWindow.isDestroyed()) {
+    captureWindow.close();
+    captureWindow = null;
+  }
+}
+
+/**
  * Start een vastlegging. SeeScribe heeft de voorkeur zodra het beschikbaar is;
  * de ingebouwde overlay blijft achter de hand tot SeeScribe die rol volledig overneemt.
  */
@@ -1039,6 +1138,10 @@ function setupTray() {
 
     tray = new Tray(trayIcon);
     const contextMenu = Menu.buildFromTemplate([
+      {
+        label: '📥 Quick Capture (Ctrl+Alt+C)',
+        click: () => openQuickCapture()
+      },
       {
         label: '📸 Scherm annoteren (Ctrl+Alt+S)',
         click: () => startScreenAnnotation()
@@ -1216,6 +1319,18 @@ if (!gotTheLock) {
       console.warn('Failed to register global hotkey CommandOrControl+Alt+S:', e);
     }
 
+    // Quick Capture is only reachable while DeepScribe runs; that is deliberate.
+    try {
+      const captureRegistered = globalShortcut.register('CommandOrControl+Alt+C', () => {
+        openQuickCapture();
+      });
+      if (!captureRegistered) {
+        console.info('Ctrl+Alt+C is already claimed by another application; Quick Capture keeps its tray entry.');
+      }
+    } catch (e) {
+      console.warn('Failed to register global hotkey CommandOrControl+Alt+C:', e);
+    }
+
     // In production, perform an initial background check for updates after 5s
     const isDev = process.env.NODE_ENV === 'development' || process.argv.includes('--dev');
     if (!isDev && app.isPackaged) {
@@ -1249,6 +1364,10 @@ app.on('before-quit', event => {
   if (overlayWindow && !overlayWindow.isDestroyed()) {
     try { overlayWindow.destroy(); } catch {}
     overlayWindow = null;
+  }
+  if (captureWindow && !captureWindow.isDestroyed()) {
+    try { captureWindow.destroy(); } catch {}
+    captureWindow = null;
   }
   if (tray) {
     try { tray.destroy(); } catch {}

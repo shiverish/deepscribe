@@ -35,6 +35,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return () => ipcRenderer.removeListener('deepscribe:screen:block-created', listener);
     }
   },
+  quickCapture: {
+    open: () => ipcRenderer.invoke('deepscribe:capture:open'),
+    close: () => ipcRenderer.invoke('deepscribe:capture:close'),
+    save: payload => ipcRenderer.invoke('deepscribe:capture:save', payload),
+    onSaveRequest: handler => {
+      const listener = (_event, payload) => handler(payload);
+      ipcRenderer.on('deepscribe:capture:save-request', listener);
+      return () => ipcRenderer.removeListener('deepscribe:capture:save-request', listener);
+    }
+  },
   tray: {
     minimizeToTray: () => ipcRenderer.invoke('deepscribe:tray:minimize'),
     setTrayBehavior: behavior => ipcRenderer.invoke('deepscribe:tray:set-behavior', behavior),

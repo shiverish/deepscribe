@@ -982,6 +982,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </label>
               </div>
 
+              {/* Quick Capture Global Shortcut Info */}
+              <div className="setting-item">
+                <div className="setting-info">
+                  <label>Quick Capture (Global Hotkey)</label>
+                  <span className="setting-description">Open a small note window from anywhere in Windows and drop the text straight into the Workspace Inbox, ready for an agent to turn into a task. Available while DeepScribe is running, including from the tray.</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <kbd style={{
+                    padding: '4px 10px',
+                    borderRadius: '6px',
+                    background: 'rgba(59, 130, 246, 0.15)',
+                    border: '1px solid rgba(59, 130, 246, 0.3)',
+                    color: '#60A5FA',
+                    fontSize: '0.82rem',
+                    fontWeight: 600,
+                    fontFamily: 'monospace'
+                  }}>
+                    Ctrl + Alt + C
+                  </kbd>
+                </div>
+              </div>
+
               {/* Screen Annotation Global Shortcut Info */}
               <div className="setting-item">
                 <div className="setting-info">

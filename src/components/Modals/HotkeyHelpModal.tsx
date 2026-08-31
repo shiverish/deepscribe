@@ -35,6 +35,7 @@ export const HotkeyHelpModal: React.FC<HotkeyHelpModalProps> = ({ isOpen, onClos
     { key: 'Ctrl + D', desc: 'Duplicate selected block and descendant branch' },
     { key: 'Ctrl + 1 / 2 / 3', desc: 'Switch view (Columns / Tasks / Stats)' },
     { key: 'Ctrl + Alt + S', desc: 'Annotate screen & create task/block (works across Windows)' },
+    { key: 'Ctrl + Alt + C', desc: 'Quick Capture: dump a note into the Workspace Inbox (works across Windows)' },
     { key: 'Ctrl + Shift + E', desc: 'Expand or collapse the fixed writing panel' },
     { key: 'Shift + ?', desc: 'Open this keyboard shortcut overview' },
   ];

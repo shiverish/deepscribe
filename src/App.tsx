@@ -10,6 +10,8 @@ import { WritingPanel } from './components/Editor/WritingPanel';
 import { StatisticsView } from './components/Statistics/StatisticsView';
 import { TasksView } from './components/Tasks/TasksView';
 import { resolveStartupView } from './utils/views';
+import { QuickCaptureWindow } from './components/Capture/QuickCaptureWindow';
+import { createCaptureBlock, isProcessedCapture } from './utils/quickCapture';
 import { SearchModal } from './components/Search/SearchModal';
 import { TrashModal } from './components/Modals/TrashModal';
 import { ExportImportModal } from './components/Modals/ExportImportModal';
@@ -198,6 +200,17 @@ function DeepScribeApp() {
         setSelectedBlockPath([block.id]);
         setIsWritingPanelOpen(true);
       }
+    });
+  }, []);
+
+  // Quick Capture hands its text to this window because this is the one that
+  // owns the workspace. It runs while hidden in the tray too, and deliberately
+  // does not bring the app forward — capturing should not interrupt anything.
+  useEffect(() => {
+    if (!window.electronAPI?.quickCapture?.onSaveRequest) return;
+    return window.electronAPI.quickCapture.onSaveRequest(payload => {
+      createCaptureBlock({ text: payload?.text ?? '', projectHintName: payload?.projectHintName })
+        .catch(error => console.error('Failed to store a Quick Capture entry:', error));
     });
   }, []);
 
@@ -404,7 +417,7 @@ function DeepScribeApp() {
     if (!activeProjectId) return cols;
 
     const rootBlocks = allBlocks
-      .filter(b => b.projectId === activeProjectId && b.parentId === null && b.kind !== 'task')
+      .filter(b => b.projectId === activeProjectId && b.parentId === null && b.kind !== 'task' && !isProcessedCapture(b))
       .sort((a, b) => a.order - b.order);
 
     const selectedLevel1Id = selectedBlockPath[0] || null;
@@ -1235,6 +1248,12 @@ function DeepScribeApp() {
 
 export function App() {
   const isOverlayMode = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('overlay') === 'true';
+
+  const isCaptureMode = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('capture') === 'true';
+
+  if (isCaptureMode) {
+    return <QuickCaptureWindow />;
+  }
 
   if (isOverlayMode) {
     return (

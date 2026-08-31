@@ -37,6 +37,12 @@ declare global {
         onTriggerOverlay: (handler: (data: { screenshotDataUrl: string; width: number; height: number; scaleFactor?: number }) => void) => () => void;
         onBlockCreated: (handler: (block: unknown) => void) => () => void;
       };
+      quickCapture?: {
+        open: () => Promise<{ ok: boolean }>;
+        close: () => Promise<{ ok: boolean }>;
+        save: (payload: { text: string; projectHintName?: string }) => Promise<{ ok: boolean }>;
+        onSaveRequest: (handler: (payload: { text: string; projectHintName?: string }) => void) => () => void;
+      };
       tray?: {
         minimizeToTray: () => Promise<void>;
         setTrayBehavior: (behavior: { minimizeToTray: boolean; closeToTray: boolean }) => Promise<{ minimizeToTray: boolean; closeToTray: boolean }>;
