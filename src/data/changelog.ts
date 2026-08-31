@@ -14,9 +14,27 @@ export interface ReleaseEntry {
   items: ChangelogItem[];
 }
 
-export const CURRENT_APP_VERSION = '0.2.36';
+export const CURRENT_APP_VERSION = '0.2.37';
 
 export const CHANGELOG_ENTRIES: ReleaseEntry[] = [
+  {
+    version: '0.2.37',
+    date: 'August 2026',
+    title: 'Task Project Filter & Multi-Select',
+    summary: 'Effortlessly exclude specific projects with a single click, toggle all projects with dynamic Select All / Deselect All, and enjoy clean zero-selection state handling.',
+    items: [
+      {
+        type: 'improvement',
+        text: 'Single Project Exclusion',
+        detail: 'Clicking a project when all projects are active now unchecks only that project while keeping all other projects selected, making it easy to exclude a few projects.'
+      },
+      {
+        type: 'improvement',
+        text: 'Dynamic Select / Deselect All',
+        detail: 'The project filter now features a dynamic toggle button to select or deselect all projects (or search-filtered projects) with one click.'
+      }
+    ]
+  },
   {
     version: '0.2.36',
     date: 'August 2026',

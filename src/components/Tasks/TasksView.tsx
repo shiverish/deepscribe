@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
-import { Archive, ArrowRight, Bot, Camera, Check, CheckCheck, ChevronDown, ChevronRight, Columns3, Copy, FolderArchive, Layers, List, PanelRightClose, PanelRightOpen, Plus, Search, Trash2, User } from 'lucide-react';
+import { Archive, ArrowRight, Bot, Camera, Check, CheckCheck, ChevronDown, ChevronRight, Columns3, Copy, Filter, FolderArchive, Layers, List, PanelRightClose, PanelRightOpen, Plus, Search, Trash2, User } from 'lucide-react';
 import type { Block, Project, TaskAgentTarget, TaskStatus } from '../../types';
 import { formatTaskHumanId, taskCreatorLabel, TASK_AGENT_LABELS, TASK_AGENT_TARGETS, TASK_STATUSES, TASK_STATUS_LABELS, TASK_INBOX_PROJECT_ID } from '../../utils/taskBlocks';
 import { copyAgentReference } from '../../utils/agentReferences';
@@ -7,6 +7,7 @@ import { archiveDoneTasks, archiveUserTask, createUserTask, relocateUserTask, up
 import { hasUnseenAgentEdits } from '../../utils/agentEdits';
 import { getProjectColor, INBOX_PROJECT_COLOR, DEFAULT_PROJECT_COLOR } from '../../utils/projectColors';
 import { markBlockSubtreeAsRead } from '../../db/operations';
+import { isNoProjectsSelected } from '../../utils/projectFilter';
 import { ProjectFilterDropdown } from './ProjectFilterDropdown';
 import { ClearSearchButton } from '../Search/ClearSearchButton';
 import { FloatingBulkActionBar } from './FloatingBulkActionBar';
@@ -164,35 +165,38 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, selected
     return counts;
   }, [blocks]);
 
-  const tasks = useMemo(() => blocks
-    .filter(block => !block.isTrash && block.kind === 'task' && block.task)
-    .filter(block => selectedProjectIds.length === 0 || selectedProjectIds.includes(block.projectId))
-    .filter(block => {
-      const q = query.trim().toLocaleLowerCase('en-US');
-      if (!q) return true;
-      const titleAndText = `${block.title} ${block.plainText}`.toLocaleLowerCase('en-US');
-      if (titleAndText.includes(q)) return true;
+  const isNoneProjectsSelected = isNoProjectsSelected(selectedProjectIds);
 
-      const taskNum = block.task?.taskNumber;
-      if (typeof taskNum === 'number') {
-        const humanId = formatTaskHumanId(taskNum)?.toLocaleLowerCase('en-US') ?? '';
-        const plainTsk = `tsk-${taskNum}`;
-        const numStr = `${taskNum}`;
-        const hashNumStr = `#${taskNum}`;
-        if (
-          humanId.includes(q) ||
-          plainTsk.includes(q) ||
-          numStr === q ||
-          hashNumStr === q
-        ) {
-          return true;
+  const tasks = useMemo(() => {
+    if (isNoneProjectsSelected) return [];
+    return blocks
+      .filter(block => !block.isTrash && block.kind === 'task' && block.task)
+      .filter(block => selectedProjectIds.length === 0 || selectedProjectIds.includes(block.projectId))
+      .filter(block => {
+        const q = query.trim().toLocaleLowerCase('en-US');
+        if (!q) return true;
+        const titleAndText = `${block.title} ${block.plainText}`.toLocaleLowerCase('en-US');
+        if (titleAndText.includes(q)) return true;
+
+        const taskNum = block.task?.taskNumber;
+        if (typeof taskNum === 'number') {
+          const humanId = formatTaskHumanId(taskNum)?.toLocaleLowerCase('en-US') ?? '';
+          const plainTsk = `tsk-${taskNum}`;
+          const numStr = `${taskNum}`;
+          const hashNumStr = `#${taskNum}`;
+          if (
+            humanId.includes(q) ||
+            plainTsk.includes(q) ||
+            numStr === q ||
+            hashNumStr === q
+          ) {
+            return true;
+          }
         }
-      }
-      return false;
-    })
-    .sort((left, right) => (left.task?.position ?? left.order) - (right.task?.position ?? right.order) || left.createdAt - right.createdAt),
-    [blocks, selectedProjectIds, query, statusFilter]
-  );
+        return false;
+      })
+      .sort((left, right) => (left.task?.position ?? left.order) - (right.task?.position ?? right.order) || left.createdAt - right.createdAt);
+  }, [blocks, selectedProjectIds, isNoneProjectsSelected, query]);
 
   const selectedTasks = useMemo(() => {
     return tasks.filter(t => selectedTaskIds.has(t.id));
@@ -856,7 +860,20 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, selected
 
       {error && <div className="tasks-error">{error}</div>}
 
-      {mode === 'board' ? (
+      {isNoneProjectsSelected ? (
+        <div className="tasks-none-selected-state">
+          <Filter size={32} className="tasks-none-selected-icon" />
+          <h3>No projects selected</h3>
+          <p>Select one or more projects from the project filter to view tasks.</p>
+          <button
+            type="button"
+            className="tasks-none-selected-action-btn"
+            onClick={() => onChangeSelectedProjects([])}
+          >
+            Select all projects
+          </button>
+        </div>
+      ) : mode === 'board' ? (
         <div className={`task-board ${isDoneCollapsed ? 'has-done-collapsed' : ''}`}>
           {TASK_STATUSES.map(status => {
             const laneTasks = tasks.filter(task => task.task?.status === status);

@@ -3,6 +3,7 @@ import { getBlockDependencyStatus } from './dependencyUtils';
 import { hasUnseenAgentEdits } from './agentEdits';
 import { getProjectColor, INBOX_PROJECT_COLOR } from './projectColors';
 import { TASK_AGENT_LABELS, TASK_INBOX_PROJECT_ID } from './taskBlocks';
+import { TASK_FILTER_NONE } from './projectFilter';
 
 /** A claim this close to running out is worth pointing at. */
 export const CLAIM_EXPIRING_SOON_MS = 5 * 60 * 1000;
@@ -142,7 +143,9 @@ export function buildFocusData(
   selectedProjectIds?: string[]
 ): FocusData {
   let active = blocks.filter(block => !block.isTrash);
-  if (selectedProjectIds && selectedProjectIds.length > 0) {
+  if (selectedProjectIds && selectedProjectIds.includes(TASK_FILTER_NONE)) {
+    active = [];
+  } else if (selectedProjectIds && selectedProjectIds.length > 0) {
     const filterSet = new Set(selectedProjectIds);
     active = active.filter(block => filterSet.has(block.projectId));
   }

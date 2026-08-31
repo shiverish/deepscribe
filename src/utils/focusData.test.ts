@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Block, Project, ClaimantAgentTarget, TaskStatus } from '../types';
 import { TASK_INBOX_PROJECT_ID } from './taskBlocks';
+import { TASK_FILTER_NONE } from './projectFilter';
 import {
   CLAIM_EXPIRING_SOON_MS,
   LONG_REVIEW_MS,
@@ -211,6 +212,9 @@ describe('project filtering and momentum rings', () => {
     const dataFiltered = buildFocusData([project, proj2], blocks, NOW, ['proj-1']);
     expect(dataFiltered.totalCount).toBe(1);
     expect(dataFiltered.sections.find(s => s.id === 'ready')!.items[0].blockId).toBe('t1');
+
+    const dataNone = buildFocusData([project, proj2], blocks, NOW, [TASK_FILTER_NONE]);
+    expect(dataNone.totalCount).toBe(0);
   });
 
   it('populates 3 concentric rings correctly and counts active agents', () => {

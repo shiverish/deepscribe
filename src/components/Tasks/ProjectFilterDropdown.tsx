@@ -2,6 +2,14 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import type { Project } from '../../types';
 import { TASK_INBOX_PROJECT_ID } from '../../utils/taskBlocks';
 import { DEFAULT_PROJECT_COLOR } from '../../utils/projectColors';
+import {
+  isAllProjectsSelected,
+  isNoProjectsSelected,
+  getEffectiveSelectedProjectIds,
+  toggleProjectSelection,
+  getSelectAllActionState,
+  toggleSelectAll
+} from '../../utils/projectFilter';
 import { ChevronDown, Search, Check, Filter } from 'lucide-react';
 import { ClearSearchButton } from '../Search/ClearSearchButton';
 
@@ -20,6 +28,7 @@ export const ProjectFilterDropdown: React.FC<ProjectFilterDropdownProps> = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [lastAction, setLastAction] = useState<'select' | 'deselect'>('deselect');
   const containerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -43,7 +52,17 @@ export const ProjectFilterDropdown: React.FC<ProjectFilterDropdownProps> = ({
     };
   }, [isOpen]);
 
-  const isAllSelected = selectedProjectIds.length === 0;
+  const allProjectIds = useMemo(() => [
+    TASK_INBOX_PROJECT_ID,
+    ...projects.map(p => p.id)
+  ], [projects]);
+
+  const effectiveSelectedIds = useMemo(() => {
+    return getEffectiveSelectedProjectIds(selectedProjectIds, allProjectIds);
+  }, [selectedProjectIds, allProjectIds]);
+
+  const isAllSelected = isAllProjectsSelected(selectedProjectIds, allProjectIds);
+  const isNoneSelected = isNoProjectsSelected(selectedProjectIds);
 
   const filteredProjects = useMemo(() => {
     if (!searchQuery.trim()) return projects;
@@ -51,38 +70,53 @@ export const ProjectFilterDropdown: React.FC<ProjectFilterDropdownProps> = ({
     return projects.filter(p => p.title.toLowerCase().includes(q));
   }, [projects, searchQuery]);
 
-  const toggleProject = (projectId: string) => {
-    if (isAllSelected) {
-      onChangeSelectedProjects([projectId]);
-      return;
+  const matchingProjectIds = useMemo(() => {
+    const ids: string[] = [];
+    if (!searchQuery || 'workspace inbox'.includes(searchQuery.toLowerCase())) {
+      ids.push(TASK_INBOX_PROJECT_ID);
     }
+    filteredProjects.forEach(p => ids.push(p.id));
+    return ids;
+  }, [filteredProjects, searchQuery]);
 
-    if (selectedProjectIds.includes(projectId)) {
-      const next = selectedProjectIds.filter(id => id !== projectId);
-      onChangeSelectedProjects(next);
-    } else {
-      onChangeSelectedProjects([...selectedProjectIds, projectId]);
-    }
+  const dynamicAction = useMemo(() => {
+    return getSelectAllActionState(matchingProjectIds, selectedProjectIds, allProjectIds, lastAction);
+  }, [matchingProjectIds, selectedProjectIds, allProjectIds, lastAction]);
+
+  const dynamicButtonLabel = dynamicAction === 'deselect' ? 'Deselect all' : 'Select all';
+
+  const handleToggleDynamic = () => {
+    const { nextSelectedIds, nextAction } = toggleSelectAll(
+      matchingProjectIds,
+      selectedProjectIds,
+      allProjectIds,
+      dynamicAction
+    );
+    setLastAction(nextAction);
+    onChangeSelectedProjects(nextSelectedIds);
   };
 
-  const handleSelectAll = () => {
-    onChangeSelectedProjects([]);
+  const handleToggleProject = (projectId: string) => {
+    const next = toggleProjectSelection(projectId, selectedProjectIds, allProjectIds);
+    onChangeSelectedProjects(next);
   };
 
-  const handleClear = () => {
+  const handleReset = () => {
+    setLastAction('deselect');
     onChangeSelectedProjects([]);
   };
 
   const buttonLabel = useMemo(() => {
     if (isAllSelected) return 'All projects';
-    if (selectedProjectIds.length === 1) {
-      const id = selectedProjectIds[0];
+    if (isNoneSelected) return 'No projects';
+    if (effectiveSelectedIds.length === 1) {
+      const id = effectiveSelectedIds[0];
       if (id === TASK_INBOX_PROJECT_ID) return 'Workspace Inbox';
       const proj = projects.find(p => p.id === id);
       return proj ? proj.title : '1 project';
     }
-    return `${selectedProjectIds.length} projects`;
-  }, [isAllSelected, selectedProjectIds, projects]);
+    return `${effectiveSelectedIds.length} projects`;
+  }, [isAllSelected, isNoneSelected, effectiveSelectedIds, projects]);
 
   return (
     <div className="project-filter-dropdown" ref={containerRef}>
@@ -97,7 +131,7 @@ export const ProjectFilterDropdown: React.FC<ProjectFilterDropdownProps> = ({
         <Filter size={13} className="project-filter-icon" />
         <span className="project-filter-label">{buttonLabel}</span>
         {!isAllSelected && (
-          <span className="project-filter-badge">{selectedProjectIds.length}</span>
+          <span className="project-filter-badge">{effectiveSelectedIds.length}</span>
         )}
         <ChevronDown size={13} className={`project-filter-chevron ${isOpen ? 'open' : ''}`} />
       </button>
@@ -132,15 +166,15 @@ export const ProjectFilterDropdown: React.FC<ProjectFilterDropdownProps> = ({
             <button
               type="button"
               className="project-filter-action-btn"
-              onClick={handleSelectAll}
+              onClick={handleToggleDynamic}
             >
-              All projects
+              {dynamicButtonLabel}
             </button>
             {!isAllSelected && (
               <button
                 type="button"
                 className="project-filter-action-btn text-muted"
-                onClick={handleClear}
+                onClick={handleReset}
               >
                 Reset
               </button>
@@ -151,13 +185,13 @@ export const ProjectFilterDropdown: React.FC<ProjectFilterDropdownProps> = ({
             {/* Workspace Inbox Item */}
             {(!searchQuery || 'workspace inbox'.includes(searchQuery.toLowerCase())) && (
               <div
-                className={`project-filter-item ${selectedProjectIds.includes(TASK_INBOX_PROJECT_ID) ? 'selected' : ''}`}
-                onClick={() => toggleProject(TASK_INBOX_PROJECT_ID)}
+                className={`project-filter-item ${effectiveSelectedIds.includes(TASK_INBOX_PROJECT_ID) ? 'selected' : ''}`}
+                onClick={() => handleToggleProject(TASK_INBOX_PROJECT_ID)}
                 role="option"
-                aria-selected={selectedProjectIds.includes(TASK_INBOX_PROJECT_ID)}
+                aria-selected={effectiveSelectedIds.includes(TASK_INBOX_PROJECT_ID)}
               >
-                <div className={`project-filter-checkbox ${selectedProjectIds.includes(TASK_INBOX_PROJECT_ID) || isAllSelected ? 'checked' : ''}`}>
-                  {(selectedProjectIds.includes(TASK_INBOX_PROJECT_ID) || isAllSelected) && <Check size={11} />}
+                <div className={`project-filter-checkbox ${effectiveSelectedIds.includes(TASK_INBOX_PROJECT_ID) ? 'checked' : ''}`}>
+                  {effectiveSelectedIds.includes(TASK_INBOX_PROJECT_ID) && <Check size={11} />}
                 </div>
                 <span className="project-color-pip" style={{ backgroundColor: 'var(--atmosphere-color)' }} />
                 <span className="project-filter-item-title">Workspace Inbox</span>
@@ -168,18 +202,18 @@ export const ProjectFilterDropdown: React.FC<ProjectFilterDropdownProps> = ({
             )}
 
             {filteredProjects.map(project => {
-              const isChecked = selectedProjectIds.includes(project.id);
+              const isChecked = effectiveSelectedIds.includes(project.id);
               const count = taskCountsByProject[project.id];
               return (
                 <div
                   key={project.id}
                   className={`project-filter-item ${isChecked ? 'selected' : ''}`}
-                  onClick={() => toggleProject(project.id)}
+                  onClick={() => handleToggleProject(project.id)}
                   role="option"
                   aria-selected={isChecked}
                 >
-                  <div className={`project-filter-checkbox ${isChecked || isAllSelected ? 'checked' : ''}`}>
-                    {(isChecked || isAllSelected) && <Check size={11} />}
+                  <div className={`project-filter-checkbox ${isChecked ? 'checked' : ''}`}>
+                    {isChecked && <Check size={11} />}
                   </div>
                   <span
                     className="project-color-pip"
