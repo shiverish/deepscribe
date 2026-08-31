@@ -14,6 +14,9 @@ import './Tasks.css';
 interface TasksViewProps {
   projects: Project[];
   blocks: Block[];
+  /** Owned by App so a project card can open this view already filtered. */
+  selectedProjectIds: string[];
+  onChangeSelectedProjects: (projectIds: string[]) => void;
   onOpenTask: (blockId: string) => void;
   onDeleteTask: (task: Block) => Promise<void>;
 }
@@ -33,10 +36,9 @@ interface TaskGroup {
   tasks: Block[];
 }
 
-export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTask, onDeleteTask }) => {
+export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, selectedProjectIds, onChangeSelectedProjects, onOpenTask, onDeleteTask }) => {
   const [mode, setMode] = useState<'board' | 'list'>('board');
   const [query, setQuery] = useState('');
-  const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState<'all' | TaskStatus>('all');
   const [groupBy, setGroupByState] = useState<GroupByOption>(() => {
     try {
@@ -756,7 +758,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, onOpenTa
         <ProjectFilterDropdown
           projects={userProjects}
           selectedProjectIds={selectedProjectIds}
-          onChangeSelectedProjects={setSelectedProjectIds}
+          onChangeSelectedProjects={onChangeSelectedProjects}
           taskCountsByProject={taskCountsByProject}
         />
 

@@ -41,6 +41,8 @@ import './components/Navigation/Navigation.css';
 function DeepScribeApp() {
   const { settings, updateSettings, resetSettings } = useSettings();
   const [activeView, setActiveView] = useState<ActiveView>('columns');
+  // Lives here so a project card can send the task list straight to one project.
+  const [taskProjectFilter, setTaskProjectFilter] = useState<string[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [selectedBlockPath, setSelectedBlockPath] = useState<string[]>([]);
   const [focusedLevel, setFocusedLevel] = useState<number>(0);
@@ -1009,6 +1011,12 @@ function DeepScribeApp() {
     setIsWritingPanelOpen(true);
   };
 
+  /** The task badge on a project card is a shortcut to that project's tasks, not to the project. */
+  const handleOpenProjectTasks = useCallback((projectId: string) => {
+    setTaskProjectFilter([projectId]);
+    setActiveView('tasks');
+  }, []);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100vw', height: '100vh', background: 'var(--bg-dark)' }}>
       <Breadcrumbs
@@ -1035,8 +1043,10 @@ function DeepScribeApp() {
             columns={columns}
             activeLevel={focusedLevel}
             focusedCardId={focusedCardId}
-            unseenAgentEditsByProject={agentEditCounts.byProject}
+            unseenAgentEditsByProject={agentEditCounts.unseenBlockEditsByProject}
             unseenAgentEditsByBlock={agentEditCounts.byBlock}
+            unseenTaskEditsByProject={agentEditCounts.unseenTaskEditsByProject}
+            onOpenProjectTasks={handleOpenProjectTasks}
             blockedBlockIds={blockedBlockIds}
             onSelectItem={handleSelectItem}
             onAddNewItem={handleAddNewItem}
@@ -1058,6 +1068,8 @@ function DeepScribeApp() {
           <TasksView
             projects={projects}
             blocks={allBlocks}
+            selectedProjectIds={taskProjectFilter}
+            onChangeSelectedProjects={setTaskProjectFilter}
             onOpenTask={openBlockById}
             onDeleteTask={task => handleDeleteToTrash(task, 'block')}
           />

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { Block, Project, DragTarget } from '../../types';
 import { TagBadge } from './TagBadge';
 import { Bot, Folder, FileText, Layers, CheckSquare, MoreVertical, Paperclip, Plus, ExternalLink, Check, ClipboardCopy, Lock } from 'lucide-react';
-import { formatAgentEditBadgeLabel, hasUnseenAgentEdits } from '../../utils/agentEdits';
+import { describeProjectAgentBadges, formatAgentEditBadgeLabel, hasUnseenAgentEdits } from '../../utils/agentEdits';
 import { copyAgentReference } from '../../utils/agentReferences';
 import { TASK_AGENT_LABELS, TASK_STATUS_LABELS } from '../../utils/taskBlocks';
 import { getProjectColor } from '../../utils/projectColors';
@@ -14,8 +14,12 @@ interface CardProps {
   isCurrent?: boolean;
   isKeyboardFocused?: boolean;
   unseenAgentEditCount?: number;
+  /** Project cards only: task blocks the agent created or changed and you have not read. */
+  unseenTaskEditCount?: number;
   isBlocked?: boolean;
   onSelect: () => void;
+  /** Project cards only: jump to the task list filtered on this project. */
+  onOpenProjectTasks?: (projectId: string) => void;
   onContextMenu?: (e: React.MouseEvent, item: Block | Project, type: 'project' | 'block') => void;
   onAddChild?: (parentId: string) => void;
   onDuplicate?: (block: Block) => void;
@@ -41,8 +45,10 @@ export const Card: React.FC<CardProps> = ({
   isCurrent = false,
   isKeyboardFocused,
   unseenAgentEditCount = 0,
+  unseenTaskEditCount = 0,
   isBlocked = false,
   onSelect,
+  onOpenProjectTasks,
   onContextMenu,
   onAddChild,
   onTagClick,
@@ -62,12 +68,15 @@ export const Card: React.FC<CardProps> = ({
   const hasOwnAgentUpdate = Boolean(block && hasUnseenAgentEdits(block));
   const descendantAgentEditCount = block ? Math.max(0, unseenAgentEditCount - (hasOwnAgentUpdate ? 1 : 0)) : 0;
   const agentEditCount = unseenAgentEditCount;
-  const hasAgentUpdates = agentEditCount > 0;
+  // On a project card the two kinds are told apart; a block card keeps one combined count.
+  const projectBadges = describeProjectAgentBadges(agentEditCount, unseenTaskEditCount);
+  const taskEditCount = project ? projectBadges.taskEditCount : 0;
+  const hasAgentUpdates = project ? projectBadges.hasAgentUpdates : agentEditCount > 0;
   const agentBadgeLabel = project
     ? String(agentEditCount)
     : formatAgentEditBadgeLabel(hasOwnAgentUpdate, agentEditCount);
   const agentBadgeTitle = project
-    ? `${agentEditCount} block${agentEditCount === 1 ? '' : 's'} with unread agent edits.`
+    ? projectBadges.blockBadgeTitle
     : hasOwnAgentUpdate && descendantAgentEditCount > 0
       ? `This block and ${descendantAgentEditCount} descendant block${descendantAgentEditCount === 1 ? '' : 's'} contain unread agent edits.`
       : hasOwnAgentUpdate
@@ -247,10 +256,24 @@ export const Card: React.FC<CardProps> = ({
           </span>
         )}
 
-        {hasAgentUpdates && (
+        {agentEditCount > 0 && (
           <span className="card-badge agent-update" title={agentBadgeTitle}>
             <Bot size={11} /> {agentBadgeLabel}
           </span>
+        )}
+
+        {project && taskEditCount > 0 && (
+          <button
+            type="button"
+            className="card-badge agent-update agent-task-update"
+            title={projectBadges.taskBadgeTitle}
+            onClick={e => {
+              e.stopPropagation();
+              onOpenProjectTasks?.(project.id);
+            }}
+          >
+            <CheckSquare size={11} /> {taskEditCount}
+          </button>
         )}
 
         {type === 'project' && Boolean((item as Project).scratchpad) && (

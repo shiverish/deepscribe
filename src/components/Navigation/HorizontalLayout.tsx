@@ -17,8 +17,10 @@ interface HorizontalLayoutProps {
   focusedCardId?: string | null;
   unseenAgentEditsByProject?: Record<string, number>;
   unseenAgentEditsByBlock?: Record<string, number>;
+  unseenTaskEditsByProject?: Record<string, number>;
   blockedBlockIds?: Set<string>;
   onSelectItem: (level: number, item: Project | Block) => void;
+  onOpenProjectTasks?: (projectId: string) => void;
   onAddNewItem: (level: number, parentId: string | null, kind?: 'text' | 'task') => void;
   onAddChildItem?: (parentId: string, kind?: 'text' | 'task') => void;
   onContextMenuItem?: (e: React.MouseEvent, item: Project | Block, type: 'project' | 'block') => void;
@@ -36,8 +38,10 @@ export const HorizontalLayout: React.FC<HorizontalLayoutProps> = ({
   focusedCardId,
   unseenAgentEditsByProject = {},
   unseenAgentEditsByBlock = {},
+  unseenTaskEditsByProject = {},
   blockedBlockIds,
   onSelectItem,
+  onOpenProjectTasks,
   onAddNewItem,
   onAddChildItem,
   onContextMenuItem,
@@ -98,6 +102,8 @@ export const HorizontalLayout: React.FC<HorizontalLayoutProps> = ({
           focusedCardId={focusedCardId}
           unseenAgentEditsByProject={unseenAgentEditsByProject}
           unseenAgentEditsByBlock={unseenAgentEditsByBlock}
+          unseenTaskEditsByProject={unseenTaskEditsByProject}
+          onOpenProjectTasks={onOpenProjectTasks}
           blockedBlockIds={blockedBlockIds}
           isActiveLevel={activeLevel === col.level}
           isCurrentLevel={currentSelectionLevel === col.level}

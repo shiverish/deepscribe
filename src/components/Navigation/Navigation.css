@@ -429,6 +429,21 @@
   font-weight: 650;
 }
 
+/* The task badge is a button: it leads to the task list instead of opening the project. */
+.card-badge.agent-task-update {
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.card-badge.agent-task-update:hover,
+.card-badge.agent-task-update:focus-visible {
+  background: rgba(var(--agent-alert-rgb), 0.24);
+  border-color: rgba(var(--agent-alert-rgb), 0.75);
+  box-shadow: 0 0 8px rgba(var(--agent-alert-rgb), 0.35);
+}
+
 .card-badge.link {
   color: #38BDF8;
   border-color: rgba(56, 189, 248, 0.3);

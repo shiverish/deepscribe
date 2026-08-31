@@ -15,8 +15,10 @@ interface ColumnProps {
   isCurrentLevel: boolean;
   unseenAgentEditsByProject?: Record<string, number>;
   unseenAgentEditsByBlock?: Record<string, number>;
+  unseenTaskEditsByProject?: Record<string, number>;
   blockedBlockIds?: Set<string>;
   onSelectItem: (item: Project | Block) => void;
+  onOpenProjectTasks?: (projectId: string) => void;
   onAddNewItem: () => void;
   onAddTask?: () => void;
   onAddChildItem?: (parentId: string) => void;
@@ -40,8 +42,10 @@ export const Column: React.FC<ColumnProps> = ({
   isCurrentLevel,
   unseenAgentEditsByProject = {},
   unseenAgentEditsByBlock = {},
+  unseenTaskEditsByProject = {},
   blockedBlockIds,
   onSelectItem,
+  onOpenProjectTasks,
   onAddNewItem,
   onAddTask,
   onAddChildItem,
@@ -209,7 +213,9 @@ export const Column: React.FC<ColumnProps> = ({
               unseenAgentEditCount={type === 'project'
                 ? unseenAgentEditsByProject[item.id] ?? 0
                 : unseenAgentEditsByBlock[item.id] ?? 0}
+              unseenTaskEditCount={type === 'project' ? unseenTaskEditsByProject[item.id] ?? 0 : 0}
               onSelect={() => onSelectItem(item)}
+              onOpenProjectTasks={onOpenProjectTasks}
               onContextMenu={onContextMenuItem}
               onAddChild={onAddChildItem}
               onTagClick={handleTagClick}
