@@ -55,17 +55,6 @@ Blokken kunnen aan elkaar gerelateerd worden, ook over projectgrenzen heen. Rela
 - Agents gebruiken `link_blocks` om een relatie te leggen en `get_related` om vanaf een blok door de graaf te lopen. Zowel uitgaande links als backlinks tellen als stap; ieder resultaat meldt richting, type, afstand en of het cross-project is.
 - Bij het definitief verwijderen van een blok of project worden de bijbehorende relaties opgeruimd.
 
-### Graph-weergave
-
-De vierde weergave (**Ctrl + 4**) toont de buurt rond het blok dat je open hebt: met welke blokken het verbonden is, in welke richting en via welk relatietype. Bewust geen wolk van de hele workspace, maar een dieptebegrensde buurt die je kunt lezen.
-
-- Diepte 1 tot 3, met een bovengrens op het aantal getekende knopen; de rest wordt geteld gemeld.
-- Afhankelijkheden (`dependsOn`) worden als apart, gestippeld randtype meegetekend en zijn los uit te zetten.
-- Filteren op relatietype en op uitsluitend verbanden die een projectgrens overschrijden.
-- Knopen uit een ander project tonen projectnaam en -kleur; die randen zijn geaccentueerd, want dat is precies wat de kolomweergave niet kan tonen.
-- Per knoop kun je het blok openen of de weergave op dat blok centreren zonder de graaf te verlaten.
-- Een blok zonder relaties legt uit hoe je er een legt en toont onopgeloste `[[verwijzingen]]` als concrete aanknoping.
-
 ## Uitgaande webhooks
 
 DeepScribe kan taak- en blokgebeurtenissen als JSON naar externe automatiseringen sturen, bijvoorbeeld n8n, Discord of Home Assistant. Endpoints worden beheerd onder **Instellingen → Agents → Outgoing Webhooks**.
