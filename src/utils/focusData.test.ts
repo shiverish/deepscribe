@@ -24,7 +24,6 @@ const project: Project = {
 function task(overrides: Partial<Block> & { status: TaskStatus; id: string }): Block {
   const { status, ...rest } = overrides;
   return {
-    id: overrides.id,
     projectId: 'proj-1',
     parentId: null,
     title: 'A task',

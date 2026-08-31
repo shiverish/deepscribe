@@ -14,9 +14,37 @@ export interface ReleaseEntry {
   items: ChangelogItem[];
 }
 
-export const CURRENT_APP_VERSION = '0.2.34';
+export const CURRENT_APP_VERSION = '0.2.35';
 
 export const CHANGELOG_ENTRIES: ReleaseEntry[] = [
+  {
+    version: '0.2.35',
+    date: 'August 2026',
+    title: 'Somewhere To Dump It, Somewhere To See It',
+    summary: 'A capture window for the thought you do not want to file yet, a Focus view for where everything stands, a say in which view opens first, and a clear button on every search field.',
+    items: [
+      {
+        type: 'feature',
+        text: 'Focus View',
+        detail: 'The switcher slot the graph view left behind is now Focus, on Ctrl + 4. It answers "where do I stand" across every project: rows grouped by whose turn it is, an agent working, your turn, stuck, ready to pick up. Rows are flagged when a claim has expired or is about to, when a task looks busy but its agent has gone quiet, and when something has been waiting on you for days. No new data, no editing: every row leads back to the block.'
+      },
+      {
+        type: 'feature',
+        text: 'Quick Capture',
+        detail: 'Ctrl + Alt + C opens a small always-on-top window with one text field and nothing that has to be filled in, also reachable from the tray while DeepScribe sits minimised. An entry is an ordinary block in the Workspace Inbox and never a task: the text is stored verbatim, and an agent turns it into a proper task later, so tasks still come from agents alone. Capturing does not pull the app in front of whatever you were doing.'
+      },
+      {
+        type: 'improvement',
+        text: 'Choose The View DeepScribe Opens With',
+        detail: 'Settings → General gains a startup view choice: a fixed view, or the one you had open last. The default keeps the old behaviour. A stored view that no longer exists falls back to the columns, which is not theoretical: the graph view was removed in 0.2.33.'
+      },
+      {
+        type: 'improvement',
+        text: 'Every Search Field Has A Clear Button',
+        detail: 'All five search surfaces share one clear button that appears only when the field holds something, and focus stays in the input afterwards. Escape now clears a filled field first and closes the search modal or find bar once it is empty. Clearing empties the search text alone, so the task view keeps its project and status filters; the search modal is the exception, because tags are part of its query.'
+      }
+    ]
+  },
   {
     version: '0.2.34',
     date: 'August 2026',
