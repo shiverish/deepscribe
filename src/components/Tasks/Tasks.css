@@ -5,6 +5,8 @@
 .tasks-toolbar select, .task-create input, .task-create select, .task-card select, .task-list-row select { padding: 7px 9px; }
 .tasks-search { display: flex; align-items: center; flex: 1; min-width: 180px; padding: 0 9px; }
 .tasks-search input { width: 100%; border: 0; outline: 0; background: transparent; color: inherit; padding: 8px; }
+.tasks-search-clear { border: 0; background: transparent; color: var(--text-muted); cursor: pointer; padding: 2px; display: flex; }
+.tasks-search-clear:hover { color: var(--text-primary); }
 .tasks-mode-switch { display: flex; gap: 3px; padding: 3px; border-radius: 7px; background: var(--bg-surface); }
 .tasks-mode-switch button, .task-create button { display: flex; align-items: center; gap: 5px; border: 0; border-radius: 5px; padding: 6px 9px; background: transparent; color: var(--text-secondary); cursor: pointer; }
 .tasks-mode-switch button.active, .task-create button { background: var(--accent-color); color: white; }

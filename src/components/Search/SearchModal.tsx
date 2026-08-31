@@ -7,6 +7,7 @@ import { parseSearchQuery, rankTopTags, type TagCount } from '../../utils/search
 import { sanitizeTags } from '../../utils/tagUtils';
 import { buildSearchResults } from '../../utils/searchResults';
 import { formatTaskHumanId } from '../../utils/taskBlocks';
+import { ClearSearchButton } from './ClearSearchButton';
 
 interface SearchModalProps {
   isOpen: boolean;
@@ -112,8 +113,19 @@ export const SearchModal: React.FC<SearchModalProps> = ({
         openResult(results[selectedIndex]);
       }
     } else if (e.key === 'Escape') {
-      onClose();
+      if (query) {
+        clearQuery();
+      } else {
+        onClose();
+      }
     }
+  };
+
+  // Tags live inside the query string, so emptying it drops the active tag
+  // filters along with the text.
+  const clearQuery = () => {
+    setQuery('');
+    inputRef.current?.focus();
   };
 
   const activeTags = useMemo(() => parseSearchQuery(query).tags, [query]);
@@ -178,6 +190,12 @@ export const SearchModal: React.FC<SearchModalProps> = ({
               fontSize: '1rem',
               outline: 'none'
             }}
+          />
+          <ClearSearchButton
+            visible={query.length > 0}
+            onClear={clearQuery}
+            size={16}
+            style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex' }}
           />
           <button
             onClick={onClose}
@@ -350,7 +368,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
           }}
         >
           <span>Use <kbd>↑</kbd> <kbd>↓</kbd> to navigate, <kbd>Enter</kbd> to open</span>
-          <span><kbd>Esc</kbd> close</span>
+          <span><kbd>Esc</kbd> {query ? 'clear' : 'close'}</span>
         </div>
       </div>
     </div>

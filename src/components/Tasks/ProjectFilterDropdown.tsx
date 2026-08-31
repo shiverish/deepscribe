@@ -2,7 +2,8 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import type { Project } from '../../types';
 import { TASK_INBOX_PROJECT_ID } from '../../utils/taskBlocks';
 import { DEFAULT_PROJECT_COLOR } from '../../utils/projectColors';
-import { ChevronDown, Search, Check, X, Filter } from 'lucide-react';
+import { ChevronDown, Search, Check, Filter } from 'lucide-react';
+import { ClearSearchButton } from '../Search/ClearSearchButton';
 
 interface ProjectFilterDropdownProps {
   projects: Project[];
@@ -21,6 +22,11 @@ export const ProjectFilterDropdown: React.FC<ProjectFilterDropdownProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const clearSearchQuery = () => {
+    setSearchQuery('');
+    searchInputRef.current?.focus();
+  };
 
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
@@ -106,16 +112,20 @@ export const ProjectFilterDropdown: React.FC<ProjectFilterDropdownProps> = ({
               placeholder="Search projects..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Escape' && searchQuery) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  clearSearchQuery();
+                }
+              }}
             />
-            {searchQuery && (
-              <button
-                type="button"
-                className="project-filter-search-clear"
-                onClick={() => setSearchQuery('')}
-              >
-                <X size={12} />
-              </button>
-            )}
+            <ClearSearchButton
+              visible={searchQuery.length > 0}
+              onClear={clearSearchQuery}
+              size={12}
+              className="project-filter-search-clear"
+            />
           </div>
 
           <div className="project-filter-actions">

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Search, ChevronUp, ChevronDown, X } from 'lucide-react';
+import { ClearSearchButton } from '../Search/ClearSearchButton';
 
 interface FindBarProps {
   isOpen: boolean;
@@ -41,6 +42,11 @@ export const FindBar: React.FC<FindBarProps> = ({
 
   if (!isOpen) return null;
 
+  const clearSearch = () => {
+    onSearchChange('');
+    inputRef.current?.focus();
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -51,7 +57,11 @@ export const FindBar: React.FC<FindBarProps> = ({
       }
     } else if (e.key === 'Escape') {
       e.preventDefault();
-      onClose();
+      if (searchTerm) {
+        clearSearch();
+      } else {
+        onClose();
+      }
     } else if (e.altKey && e.key.toLowerCase() === 'c') {
       e.preventDefault();
       onToggleCaseSensitive();
@@ -82,6 +92,12 @@ export const FindBar: React.FC<FindBarProps> = ({
           {countDisplay}
         </span>
       )}
+      <ClearSearchButton
+        visible={searchTerm.length > 0}
+        onClear={clearSearch}
+        className="find-bar-btn"
+        size={14}
+      />
       <button
         type="button"
         className={`find-bar-btn case-toggle ${caseSensitive ? 'active' : ''}`}

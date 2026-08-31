@@ -8,6 +8,7 @@ import { hasUnseenAgentEdits } from '../../utils/agentEdits';
 import { getProjectColor, INBOX_PROJECT_COLOR, DEFAULT_PROJECT_COLOR } from '../../utils/projectColors';
 import { markBlockSubtreeAsRead } from '../../db/operations';
 import { ProjectFilterDropdown } from './ProjectFilterDropdown';
+import { ClearSearchButton } from '../Search/ClearSearchButton';
 import { FloatingBulkActionBar } from './FloatingBulkActionBar';
 import './Tasks.css';
 
@@ -39,6 +40,12 @@ interface TaskGroup {
 export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, selectedProjectIds, onChangeSelectedProjects, onOpenTask, onDeleteTask }) => {
   const [mode, setMode] = useState<'board' | 'list'>('board');
   const [query, setQuery] = useState('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  // Only the search text; the project and status filters are left alone.
+  const clearQuery = useCallback(() => {
+    setQuery('');
+    searchInputRef.current?.focus();
+  }, []);
   const [statusFilter, setStatusFilter] = useState<'all' | TaskStatus>('all');
   const [groupBy, setGroupByState] = useState<GroupByOption>(() => {
     try {
@@ -751,7 +758,23 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, selected
 
         <label className="tasks-search">
           <Search size={14} />
-          <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search tasks..." />
+          <input
+            ref={searchInputRef}
+            value={query}
+            onChange={event => setQuery(event.target.value)}
+            onKeyDown={event => {
+              if (event.key === 'Escape' && query) {
+                event.preventDefault();
+                clearQuery();
+              }
+            }}
+            placeholder="Search tasks..."
+          />
+          <ClearSearchButton
+            visible={query.length > 0}
+            onClear={clearQuery}
+            className="tasks-search-clear"
+          />
         </label>
 
         {/* Multi-select Project Filter */}

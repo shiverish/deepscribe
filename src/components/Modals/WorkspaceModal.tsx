@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Bot, CheckCircle2, Clock3, History, LayoutTemplate, Trash2, X, Search } from 'lucide-react';
 import { db } from '../../db/db';
 import { recordActivity } from '../../db/activity';
 import type { Block, BlockTemplate, Project } from '../../types';
+import { ClearSearchButton } from '../Search/ClearSearchButton';
 
 type WorkspaceTab = 'activity' | 'templates';
 
@@ -27,6 +28,11 @@ export const WorkspaceModal: React.FC<WorkspaceModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [activitySourceFilter, setActivitySourceFilter] = useState<'all' | 'agent' | 'user' | 'system'>('all');
   const [activitySearchQuery, setActivitySearchQuery] = useState('');
+  const activitySearchInputRef = useRef<HTMLInputElement>(null);
+  const clearActivitySearch = () => {
+    setActivitySearchQuery('');
+    activitySearchInputRef.current?.focus();
+  };
   const activities = useLiveQuery(
     () => db.activities.orderBy('createdAt').reverse().limit(250).toArray(),
     [],
@@ -171,19 +177,44 @@ export const WorkspaceModal: React.FC<WorkspaceModalProps> = ({
                 <div style={{ flex: 1, minWidth: 160, position: 'relative' }}>
                   <Search size={12} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                   <input
+                    ref={activitySearchInputRef}
                     type="text"
                     value={activitySearchQuery}
                     onChange={e => setActivitySearchQuery(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Escape' && activitySearchQuery) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        clearActivitySearch();
+                      }
+                    }}
                     placeholder="Search activity..."
                     style={{
                       width: '100%',
-                      padding: '4px 8px 4px 24px',
+                      padding: '4px 26px 4px 24px',
                       fontSize: '0.72rem',
                       borderRadius: 4,
                       background: 'rgba(0,0,0,0.2)',
                       border: '1px solid var(--border-subtle)',
                       color: 'var(--text-primary)',
                       boxSizing: 'border-box'
+                    }}
+                  />
+                  <ClearSearchButton
+                    visible={activitySearchQuery.length > 0}
+                    onClear={clearActivitySearch}
+                    size={12}
+                    style={{
+                      position: 'absolute',
+                      right: 6,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      padding: 0,
+                      display: 'flex',
+                      color: 'var(--text-muted)',
+                      cursor: 'pointer'
                     }}
                   />
                 </div>
