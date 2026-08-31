@@ -834,6 +834,13 @@ ipcMain.on('deepscribe-mcp-response', (_event, response) => {
 
 ipcMain.on('deepscribe-mcp-ready', startMcpBridge);
 ipcMain.on('deepscribe-workspace-flushed', () => {
+  // Hiding to the tray flushes the workspace too, and that is not a quit. Only
+  // a flush the quit path asked for may end the app or mark the window as safe
+  // to destroy; otherwise closing to the tray would exit, and the flush from
+  // the first hide would let the next close through unflushed.
+  if (!isQuitting) {
+    return;
+  }
   workspaceQuitReady = true;
   if (!isInstallingUpdate) {
     app.quit();
