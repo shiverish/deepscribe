@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { X, Command } from 'lucide-react';
+import { VIEW_DEFINITIONS } from '../../utils/views';
 
 interface HotkeyHelpModalProps {
   isOpen: boolean;
@@ -33,7 +34,10 @@ export const HotkeyHelpModal: React.FC<HotkeyHelpModalProps> = ({ isOpen, onClos
     { key: 'Ctrl + F', desc: 'Find text in current document' },
     { key: 'Ctrl + Shift + F / Ctrl + K', desc: 'Open global search (title, content, and tags)' },
     { key: 'Ctrl + D', desc: 'Duplicate selected block and descendant branch' },
-    { key: 'Ctrl + 1 / 2 / 3', desc: 'Switch view (Columns / Tasks / Stats)' },
+    {
+      key: `Ctrl + ${VIEW_DEFINITIONS.map((_, index) => index + 1).join(' / ')}`,
+      desc: `Switch view (${VIEW_DEFINITIONS.map(view => view.label).join(' / ')})`
+    },
     { key: 'Ctrl + Alt + S', desc: 'Annotate screen & create task/block (works across Windows)' },
     { key: 'Ctrl + Alt + C', desc: 'Quick Capture: dump a note into the Workspace Inbox (works across Windows)' },
     { key: 'Ctrl + Shift + E', desc: 'Expand or collapse the fixed writing panel' },

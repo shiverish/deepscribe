@@ -1,4 +1,4 @@
-export type ActiveView = 'columns' | 'tasks' | 'stats';
+export type ActiveView = 'columns' | 'tasks' | 'stats' | 'focus';
 export type StartupViewMode = 'fixed' | 'last-used';
 
 export interface Project {

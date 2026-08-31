@@ -17,6 +17,7 @@ import {
   Columns3,
   CheckSquare,
   BarChart3,
+  Crosshair,
   Camera,
   ArrowUpCircle
 } from 'lucide-react';
@@ -25,7 +26,8 @@ import {
 const VIEW_ICONS: Record<ActiveView, React.ComponentType<{ size?: number }>> = {
   columns: Columns3,
   tasks: CheckSquare,
-  stats: BarChart3
+  stats: BarChart3,
+  focus: Crosshair
 };
 
 interface BreadcrumbsProps {

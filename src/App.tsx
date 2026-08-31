@@ -9,6 +9,7 @@ import { HorizontalLayout, type ColumnData } from './components/Navigation/Horiz
 import { WritingPanel } from './components/Editor/WritingPanel';
 import { StatisticsView } from './components/Statistics/StatisticsView';
 import { TasksView } from './components/Tasks/TasksView';
+import { FocusView } from './components/Focus/FocusView';
 import { resolveStartupView } from './utils/views';
 import { QuickCaptureWindow } from './components/Capture/QuickCaptureWindow';
 import { createCaptureBlock, isProcessedCapture } from './utils/quickCapture';
@@ -1113,6 +1114,14 @@ function DeepScribeApp() {
             onChangeSelectedProjects={setTaskProjectFilter}
             onOpenTask={openBlockById}
             onDeleteTask={task => handleDeleteToTrash(task, 'block')}
+          />
+        )}
+
+        {activeView === 'focus' && (
+          <FocusView
+            projects={projects}
+            blocks={allBlocks}
+            onOpenBlock={openBlockById}
           />
         )}
 
