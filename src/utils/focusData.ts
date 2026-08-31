@@ -36,8 +36,11 @@ export interface FocusItem {
   detail?: string;
   /** Which agent holds the claim, for the section where that matters. */
   agentLabel?: string;
+  agentTarget?: TaskAgentTarget;
   alerts: FocusAlert[];
   isTask: boolean;
+  sectionId: FocusSectionId;
+  pulseIntensity: 'alert' | 'high' | 'medium' | 'normal';
 }
 
 export interface FocusSection {
@@ -48,11 +51,23 @@ export interface FocusSection {
   items: FocusItem[];
 }
 
+export interface FocusRings {
+  yourTurn: FocusItem[];
+  working: FocusItem[];
+  ready: FocusItem[];
+}
+
 export interface FocusData {
   sections: FocusSection[];
+  rings: FocusRings;
   /** Rows carrying at least one alert, across every section. */
   alertCount: number;
   totalCount: number;
+  workingCount: number;
+  yourTurnCount: number;
+  readyCount: number;
+  stuckCount: number;
+  activeAgentCount: number;
 }
 
 function projectName(projects: Project[], projectId: string): string {
@@ -120,34 +135,61 @@ function claimAlerts(block: Block, now: number): FocusAlert[] {
  * from the status, claim and agent-edit data that already exists; nothing here
  * needs a new field.
  */
-export function buildFocusData(projects: Project[], blocks: Block[], now: number = Date.now()): FocusData {
-  const active = blocks.filter(block => !block.isTrash);
+export function buildFocusData(
+  projects: Project[],
+  blocks: Block[],
+  now: number = Date.now(),
+  selectedProjectIds?: string[]
+): FocusData {
+  let active = blocks.filter(block => !block.isTrash);
+  if (selectedProjectIds && selectedProjectIds.length > 0) {
+    const filterSet = new Set(selectedProjectIds);
+    active = active.filter(block => filterSet.has(block.projectId));
+  }
+
   const tasks = active.filter(block => block.kind === 'task' && block.task);
 
-  const base = (block: Block) => ({
-    blockId: block.id,
-    title: block.title,
-    projectId: block.projectId,
-    projectName: projectName(projects, block.projectId),
-    projectColor: projectColor(projects, block.projectId),
-    isTask: block.kind === 'task'
-  });
+  const base = (block: Block, sectionId: FocusSectionId, alerts: FocusAlert[] = []) => {
+    let pulseIntensity: FocusItem['pulseIntensity'] = 'normal';
+    if (alerts.length > 0) {
+      pulseIntensity = 'alert';
+    } else if (block.task?.status === 'in-progress' && block.task.claim) {
+      const heartbeatAge = now - (block.task.claim.heartbeatAt ?? block.task.claim.claimedAt);
+      pulseIntensity = heartbeatAge < 2 * 60 * 1000 ? 'high' : 'medium';
+    } else if (now - block.updatedAt < 60 * 60 * 1000) {
+      pulseIntensity = 'medium';
+    }
+
+    return {
+      blockId: block.id,
+      title: block.title,
+      projectId: block.projectId,
+      projectName: projectName(projects, block.projectId),
+      projectColor: projectColor(projects, block.projectId),
+      isTask: block.kind === 'task',
+      sectionId,
+      pulseIntensity
+    };
+  };
 
   const working: FocusItem[] = tasks
     .filter(block => block.task?.status === 'in-progress')
     .map(block => {
       const claim = block.task?.claim;
       const since = claim?.claimedAt ?? block.updatedAt;
+      const alerts = claimAlerts(block, now);
+      const target = (claim?.agentTarget ?? block.task?.agentTarget) as TaskAgentTarget | undefined;
       return {
-        ...base(block),
+        ...base(block, 'working', alerts),
         since,
         agentLabel: claim
           ? agentLabel(claim.agentTarget as TaskAgentTarget, claim.customAgentName)
           : agentLabel(block.task?.agentTarget, block.task?.customAgentName),
+        agentTarget: target,
         detail: claim
           ? `Held for ${formatDuration(now - since)}`
           : 'In progress without an active claim',
-        alerts: claimAlerts(block, now)
+        alerts
       };
     });
 
@@ -155,11 +197,13 @@ export function buildFocusData(projects: Project[], blocks: Block[], now: number
     .filter(block => block.task?.status === 'review')
     .map(block => {
       const waitingFor = now - block.updatedAt;
+      const alerts: FocusAlert[] = waitingFor >= LONG_REVIEW_MS ? [{ kind: 'long-review' as const, waitingFor }] : [];
       return {
-        ...base(block),
+        ...base(block, 'your-turn', alerts),
         since: block.updatedAt,
+        agentTarget: block.task?.agentTarget,
         detail: `In review for ${formatDuration(waitingFor)}`,
-        alerts: waitingFor >= LONG_REVIEW_MS ? [{ kind: 'long-review' as const, waitingFor }] : []
+        alerts
       };
     });
 
@@ -168,7 +212,7 @@ export function buildFocusData(projects: Project[], blocks: Block[], now: number
   const unreadBlocks: FocusItem[] = active
     .filter(block => block.kind !== 'task' && hasUnseenAgentEdits(block))
     .map(block => ({
-      ...base(block),
+      ...base(block, 'your-turn', []),
       since: block.lastAgentEditAt ?? block.updatedAt,
       detail: 'Unread agent edit',
       alerts: []
@@ -185,14 +229,22 @@ export function buildFocusData(projects: Project[], blocks: Block[], now: number
         : missing > 0
           ? `Waiting on ${missing} dependenc${missing === 1 ? 'y' : 'ies'} that no longer exist${missing === 1 ? 's' : ''}`
           : 'Blocked without a recorded dependency';
-      return { ...base(block), since: block.updatedAt, detail, alerts: [] };
+      return {
+        ...base(block, 'stuck', []),
+        since: block.updatedAt,
+        agentTarget: block.task?.agentTarget,
+        detail,
+        alerts: []
+      };
     });
 
   const ready: FocusItem[] = tasks
     .filter(block => block.task?.status === 'ready')
     .map(block => ({
-      ...base(block),
+      ...base(block, 'ready', []),
       since: block.task?.readyAt ?? block.updatedAt,
+      agentLabel: agentLabel(block.task?.agentTarget, block.task?.customAgentName),
+      agentTarget: block.task?.agentTarget,
       detail: `Ready for ${agentLabel(block.task?.agentTarget, block.task?.customAgentName)}`,
       alerts: []
     }));
@@ -200,38 +252,62 @@ export function buildFocusData(projects: Project[], blocks: Block[], now: number
   // Oldest first everywhere: what has been sitting longest is what needs you.
   const byAge = (a: FocusItem, b: FocusItem) => a.since - b.since;
 
+  const yourTurnItems = [...review, ...unreadBlocks].sort(byAge);
+  const workingItems = working.sort(byAge);
+  const stuckItems = stuck.sort(byAge);
+  const readyItems = ready.sort(byAge);
+
   const sections: FocusSection[] = [
     {
       id: 'working',
       title: 'An agent is working',
       emptyLabel: 'No agent is working on anything right now.',
-      items: working.sort(byAge)
+      items: workingItems
     },
     {
       id: 'your-turn',
       title: 'Your turn',
       emptyLabel: 'Nothing is waiting on you.',
-      items: [...review, ...unreadBlocks].sort(byAge)
+      items: yourTurnItems
     },
     {
       id: 'stuck',
       title: 'Stuck',
       emptyLabel: 'Nothing is blocked.',
-      items: stuck.sort(byAge)
+      items: stuckItems
     },
     {
       id: 'ready',
       title: 'Ready to pick up',
       emptyLabel: 'Nothing is queued up for an agent.',
-      items: ready.sort(byAge)
+      items: readyItems
     }
   ];
 
+  // The 3 concentric rings combine your-turn & stuck into the inner attention ring
+  const rings: FocusRings = {
+    yourTurn: [...yourTurnItems, ...stuckItems].sort(byAge),
+    working: workingItems,
+    ready: readyItems
+  };
+
   const allItems = sections.flatMap(section => section.items);
+
+  // Active distinct agents working
+  const activeAgentSet = new Set<string>();
+  for (const item of workingItems) {
+    if (item.agentLabel) activeAgentSet.add(item.agentLabel);
+  }
 
   return {
     sections,
+    rings,
     alertCount: allItems.filter(item => item.alerts.length > 0).length,
-    totalCount: allItems.length
+    totalCount: allItems.length,
+    workingCount: workingItems.length,
+    yourTurnCount: yourTurnItems.length,
+    readyCount: readyItems.length,
+    stuckCount: stuckItems.length,
+    activeAgentCount: activeAgentSet.size
   };
 }

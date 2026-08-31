@@ -14,9 +14,27 @@ export interface ReleaseEntry {
   items: ChangelogItem[];
 }
 
-export const CURRENT_APP_VERSION = '0.2.35';
+export const CURRENT_APP_VERSION = '0.2.36';
 
 export const CHANGELOG_ENTRIES: ReleaseEntry[] = [
+  {
+    version: '0.2.36',
+    date: 'August 2026',
+    title: 'Circle Momentum Radar',
+    summary: 'A complete redesign of the Focus view into an interactive Circle Momentum Radar with concentric orbital tracks, momentum hub, live glowing nodes, and hover previews.',
+    items: [
+      {
+        type: 'feature',
+        text: 'Circle Momentum Radar',
+        detail: 'The Focus view is now an orbital radar visualization showing workspace momentum. A central hub displays total active tasks and agent counts, surrounded by three concentric rings (Your Turn, In Flight, and Up Next). Orbiting nodes reflect project colors, active pulse intensities, drift alert warnings, and quick hover previews.'
+      },
+      {
+        type: 'improvement',
+        text: 'Focus View Project & Rotation Controls',
+        detail: 'Filter radar items by specific projects or view all projects at once, and pause or resume orbital rotation with a single click in the header.'
+      }
+    ]
+  },
   {
     version: '0.2.35',
     date: 'August 2026',

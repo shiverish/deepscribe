@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Block, Project, TaskStatus } from '../types';
+import type { Block, Project, ClaimantAgentTarget, TaskStatus } from '../types';
 import { TASK_INBOX_PROJECT_ID } from './taskBlocks';
 import {
   CLAIM_EXPIRING_SOON_MS,
@@ -44,10 +44,10 @@ function task(overrides: Partial<Block> & { status: TaskStatus; id: string }): B
   } as Block;
 }
 
-function claim(overrides: Partial<{ claimedAt: number; heartbeatAt: number; expiresAt: number }> = {}) {
+function claim(overrides: Partial<{ claimedAt: number; heartbeatAt: number; expiresAt: number; agentTarget: ClaimantAgentTarget }> = {}) {
   return {
     ownerId: 'agent-1',
-    agentTarget: 'claude' as const,
+    agentTarget: 'claude' as ClaimantAgentTarget,
     token: 't',
     requestId: 'r',
     claimedAt: NOW - 60_000,
@@ -196,3 +196,39 @@ describe('formatDuration', () => {
     expect(formatDuration(50 * 60 * 60_000)).toBe('2d');
   });
 });
+
+describe('project filtering and momentum rings', () => {
+  it('filters blocks when selectedProjectIds is provided', () => {
+    const proj2: Project = { ...project, id: 'proj-2', title: 'Beta' };
+    const blocks = [
+      task({ id: 't1', status: 'ready', projectId: 'proj-1' }),
+      task({ id: 't2', status: 'ready', projectId: 'proj-2' })
+    ];
+
+    const dataAll = buildFocusData([project, proj2], blocks, NOW);
+    expect(dataAll.totalCount).toBe(2);
+
+    const dataFiltered = buildFocusData([project, proj2], blocks, NOW, ['proj-1']);
+    expect(dataFiltered.totalCount).toBe(1);
+    expect(dataFiltered.sections.find(s => s.id === 'ready')!.items[0].blockId).toBe('t1');
+  });
+
+  it('populates 3 concentric rings correctly and counts active agents', () => {
+    const blocks = [
+      task({ id: 'a', status: 'in-progress', task: { status: 'in-progress', agentTarget: 'claude', position: 0, claim: claim({ agentTarget: 'claude' }) } } as Partial<Block> & { status: TaskStatus; id: string }),
+      task({ id: 'b', status: 'review' }),
+      task({ id: 'c', status: 'blocked' }),
+      task({ id: 'd', status: 'ready' })
+    ];
+
+    const data = buildFocusData([project], blocks, NOW);
+    expect(data.rings.yourTurn.map(i => i.blockId)).toEqual(['b', 'c']);
+    expect(data.rings.working.map(i => i.blockId)).toEqual(['a']);
+    expect(data.rings.ready.map(i => i.blockId)).toEqual(['d']);
+    expect(data.activeAgentCount).toBe(1);
+    expect(data.workingCount).toBe(1);
+    expect(data.yourTurnCount).toBe(1);
+    expect(data.stuckCount).toBe(1);
+  });
+});
+
