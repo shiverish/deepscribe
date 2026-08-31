@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, requestPersistentStorage, seedDemoDataIfEmpty } from './db/db';
 import { createId, deleteTagFromProject, markBlockSubtreeAsRead, markProjectAsRead, renameTagInProject, saveBlockDraft, saveProjectDraft, trashBlock, trashProject } from './db/operations';
@@ -9,6 +9,7 @@ import { HorizontalLayout, type ColumnData } from './components/Navigation/Horiz
 import { WritingPanel } from './components/Editor/WritingPanel';
 import { StatisticsView } from './components/Statistics/StatisticsView';
 import { TasksView } from './components/Tasks/TasksView';
+import { resolveStartupView } from './utils/views';
 import { SearchModal } from './components/Search/SearchModal';
 import { TrashModal } from './components/Modals/TrashModal';
 import { ExportImportModal } from './components/Modals/ExportImportModal';
@@ -39,8 +40,35 @@ import './styles/theme.css';
 import './components/Navigation/Navigation.css';
 
 function DeepScribeApp() {
-  const { settings, updateSettings, resetSettings } = useSettings();
+  const { settings, settingsLoaded, updateSettings, resetSettings } = useSettings();
   const [activeView, setActiveView] = useState<ActiveView>('columns');
+  // Set as soon as anything deliberately picks a view — the switcher, a shortcut,
+  // a deep link. The startup preference only applies while nothing has.
+  const viewChosen = useRef(false);
+  const startupViewApplied = useRef(false);
+  const changeView = useCallback((view: ActiveView) => {
+    viewChosen.current = true;
+    setActiveView(view);
+  }, []);
+
+  // The stored settings land after mount, so the startup view is applied once,
+  // here, rather than as the initial state.
+  useEffect(() => {
+    if (!settingsLoaded || startupViewApplied.current) return;
+    startupViewApplied.current = true;
+    if (viewChosen.current) return;
+    setActiveView(resolveStartupView(settings));
+  }, [settingsLoaded, settings]);
+
+  // Remember where the user was, for the 'last used view' option. Restoring a
+  // view is not a choice, so the startup effect above deliberately does not
+  // come through here.
+  useEffect(() => {
+    if (!settingsLoaded || !viewChosen.current) return;
+    if (settings.lastActiveView === activeView) return;
+    updateSettings({ lastActiveView: activeView });
+  }, [activeView, settingsLoaded, settings.lastActiveView, updateSettings]);
+
   // Lives here so a project card can send the task list straight to one project.
   const [taskProjectFilter, setTaskProjectFilter] = useState<string[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
@@ -107,10 +135,10 @@ function DeepScribeApp() {
       if (found) {
         setActiveProjectId(found.projectId);
         if (found.kind === 'task') {
-          setActiveView('tasks');
+          changeView('tasks');
           setSelectedBlockPath([found.id]);
         } else {
-          setActiveView('columns');
+          changeView('columns');
           const path: string[] = [found.id];
           let current = found;
           const blockMap = new Map(allBlocks.map(b => [b.id, b]));
@@ -128,7 +156,7 @@ function DeepScribeApp() {
         }
       }
     });
-  }, []);
+  }, [changeView]);
 
   useEffect(() => {
     const updater = window.electronAPI?.updater;
@@ -946,7 +974,7 @@ function DeepScribeApp() {
     onToggleWritingPanel: () => setIsWritingPanelOpen(prev => !prev),
     onOpenHelp: () => setIsHelpOpen(true),
     onOpenSettings: () => setIsSettingsOpen(true),
-    onSwitchView: setActiveView
+    onSwitchView: changeView
   });
 
   const openBlockById = useCallback((blockId: string) => {
@@ -965,11 +993,11 @@ function DeepScribeApp() {
     setFocusedCardId(block.id);
     setIsWritingPanelOpen(true);
     if (block.kind === 'task') {
-      setActiveView('tasks');
+      changeView('tasks');
     } else {
-      setActiveView('columns');
+      changeView('columns');
     }
-  }, [allBlocks]);
+  }, [allBlocks, changeView]);
 
   const handleSelectSearchResult = (blockId: string) => {
     openBlockById(blockId);
@@ -1014,8 +1042,8 @@ function DeepScribeApp() {
   /** The task badge on a project card is a shortcut to that project's tasks, not to the project. */
   const handleOpenProjectTasks = useCallback((projectId: string) => {
     setTaskProjectFilter([projectId]);
-    setActiveView('tasks');
-  }, []);
+    changeView('tasks');
+  }, [changeView]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100vw', height: '100vh', background: 'var(--bg-dark)' }}>
@@ -1023,7 +1051,7 @@ function DeepScribeApp() {
         pathSegments={pathSegments}
         onSelectSegment={handleSelectBreadcrumbSegment}
         activeView={activeView}
-        onViewChange={setActiveView}
+        onViewChange={changeView}
         onOpenSearch={() => setIsSearchOpen(true)}
         onOpenTrash={() => setIsTrashOpen(true)}
         onOpenExportImport={() => setIsExportImportOpen(true)}
@@ -1083,7 +1111,7 @@ function DeepScribeApp() {
             onSelectProject={(projId) => {
               setActiveProjectId(projId);
               setSelectedBlockPath([]);
-              setActiveView('columns');
+              changeView('columns');
             }}
             onSelectBlock={(blockId) => openBlockById(blockId)}
           />

@@ -3,6 +3,7 @@ import { db } from '../db/db';
 import { type UserSettings, DEFAULT_USER_SETTINGS } from '../types';
 import { repository } from '../db/repository';
 import { normalizeWebhookEndpoints } from '../utils/webhooks';
+import { DEFAULT_STARTUP_VIEW, isActiveView } from '../utils/views';
 
 const STORAGE_KEY = 'deepscribe_settings';
 
@@ -114,6 +115,11 @@ export function mergeStoredSettings(value: Partial<UserSettings>): UserSettings 
       ? value.closeToTray
       : typeof value.minimizeToTray === 'boolean' ? value.minimizeToTray : DEFAULT_USER_SETTINGS.closeToTray,
     savedThemes: Array.isArray(value.savedThemes) ? value.savedThemes : [],
+    startupViewMode: value.startupViewMode === 'last-used' ? 'last-used' : DEFAULT_USER_SETTINGS.startupViewMode,
+    // A stored view can outlive the view itself — the graph view was removed in
+    // 0.2.33 — so anything the switcher no longer offers falls back to the default.
+    startupView: isActiveView(value.startupView) ? value.startupView : DEFAULT_STARTUP_VIEW,
+    lastActiveView: isActiveView(value.lastActiveView) ? value.lastActiveView : DEFAULT_STARTUP_VIEW,
     webhooks: normalizeWebhookEndpoints(value.webhooks),
     atmosphereColor: value.atmosphereColor || palette?.atmosphere || DEFAULT_USER_SETTINGS.atmosphereColor,
     selectedCardColor: value.selectedCardColor || palette?.selected || value.customBgColor || DEFAULT_USER_SETTINGS.selectedCardColor,
@@ -211,6 +217,9 @@ export function applySettingsToDOM(settings: UserSettings) {
 }
 
 export function useSettings() {
+  // The stored settings arrive from the workspace after mount, so anything that
+  // acts on them once — the startup view — has to wait for this.
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [settings, setSettings] = useState<UserSettings>(() => {
     if (typeof window !== 'undefined' && window.electronAPI?.workspace) return DEFAULT_USER_SETTINGS;
     try {
@@ -236,6 +245,8 @@ export function useSettings() {
       }
     }).catch(() => {
       // Ignore fallback
+    }).finally(() => {
+      if (isMounted) setSettingsLoaded(true);
     });
 
     return () => {
@@ -282,6 +293,7 @@ export function useSettings() {
 
   return {
     settings,
+    settingsLoaded,
     updateSettings,
     resetSettings
   };

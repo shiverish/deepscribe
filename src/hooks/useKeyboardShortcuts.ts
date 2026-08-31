@@ -1,4 +1,6 @@
 import { useEffect } from 'react';
+import type { ActiveView } from '../types';
+import { VIEW_DEFINITIONS } from '../utils/views';
 
 interface KeyboardShortcutsHandlers {
   onNavigateUp: () => void;
@@ -15,7 +17,7 @@ interface KeyboardShortcutsHandlers {
   onToggleWritingPanel: () => void;
   onOpenHelp: () => void;
   onOpenSettings?: () => void;
-  onSwitchView?: (view: 'columns' | 'tasks' | 'stats') => void;
+  onSwitchView?: (view: ActiveView) => void;
 }
 
 export function useKeyboardShortcuts({
@@ -71,22 +73,15 @@ export function useKeyboardShortcuts({
         return;
       }
 
-      if (isCtrlOrCmd && e.key === '1') {
-        e.preventDefault();
-        if (onSwitchView) onSwitchView('columns');
-        return;
-      }
-
-      if (isCtrlOrCmd && e.key === '2') {
-        e.preventDefault();
-        if (onSwitchView) onSwitchView('tasks');
-        return;
-      }
-
-      if (isCtrlOrCmd && e.key === '3') {
-        e.preventDefault();
-        if (onSwitchView) onSwitchView('stats');
-        return;
+      // Ctrl + 1..n follow the switcher, so a new view brings its shortcut along.
+      if (isCtrlOrCmd) {
+        const slot = Number.parseInt(e.key, 10);
+        const view = Number.isNaN(slot) ? undefined : VIEW_DEFINITIONS[slot - 1];
+        if (view) {
+          e.preventDefault();
+          if (onSwitchView) onSwitchView(view.id);
+          return;
+        }
       }
 
       if (e.shiftKey && e.key === '?') {

@@ -64,3 +64,30 @@ describe('settings compatibility', () => {
   });
 });
 
+
+describe('startup view settings', () => {
+  it('keeps opening the columns view for settings saved before the choice existed', () => {
+    const merged = mergeStoredSettings({ preset: 'vanilla' });
+    expect(merged.startupViewMode).toBe('fixed');
+    expect(merged.startupView).toBe('columns');
+    expect(merged.lastActiveView).toBe('columns');
+  });
+
+  it('keeps a stored startup view and mode', () => {
+    const merged = mergeStoredSettings({ startupViewMode: 'last-used', startupView: 'stats', lastActiveView: 'tasks' });
+    expect(merged.startupViewMode).toBe('last-used');
+    expect(merged.startupView).toBe('stats');
+    expect(merged.lastActiveView).toBe('tasks');
+  });
+
+  // The graph view was removed in 0.2.33; settings written before that can name it.
+  it('drops a stored view that no longer exists', () => {
+    const merged = mergeStoredSettings({ startupView: 'graph' as never, lastActiveView: 'graph' as never });
+    expect(merged.startupView).toBe('columns');
+    expect(merged.lastActiveView).toBe('columns');
+  });
+
+  it('ignores an unknown startup mode', () => {
+    expect(mergeStoredSettings({ startupViewMode: 'whenever' as never }).startupViewMode).toBe('fixed');
+  });
+});

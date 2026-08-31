@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { X, RotateCcw, Palette, Type, Sliders, Sparkles, Eye, Check, Save, Trash2, FolderOpen, FolderInput, Database, Bot, Copy, CheckCheck, RefreshCw, ArrowUpCircle, Webhook, Plus } from 'lucide-react';
-import type { UserSettings, ThemePreset, FontFamily, ContentWidth, WorkspaceStatus } from '../../types';
+import { X, RotateCcw, Palette, Type, Sliders, Sparkles, Eye, Check, Save, Trash2, FolderOpen, FolderInput, Database, Bot, Copy, CheckCheck, RefreshCw, ArrowUpCircle, Webhook, Plus, LayoutTemplate } from 'lucide-react';
+import type { ActiveView, UserSettings, ThemePreset, FontFamily, ContentWidth, WorkspaceStatus } from '../../types';
 import { PRESET_PALETTES } from '../../hooks/useSettings';
 import { repository } from '../../db/repository';
 import { CURRENT_APP_VERSION } from '../../data/changelog';
 import { WEBHOOK_EVENTS } from '../../utils/webhooks';
+import { VIEW_DEFINITIONS } from '../../utils/views';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -909,6 +910,45 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   />
                   <span className="toggle-slider"></span>
                 </label>
+              </div>
+
+              {/* Startup View */}
+              <div className="setting-item">
+                <div className="setting-info">
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}><LayoutTemplate size={15} /> Startup View</label>
+                  <span className="setting-description">The view DeepScribe opens with. Remember the last used view to pick up where you left off, or always start in the same one.</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'flex-end' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Remember last used</span>
+                    <label className="toggle-switch">
+                      <input
+                        type="checkbox"
+                        checked={settings.startupViewMode === 'last-used'}
+                        onChange={e => onUpdateSettings({ startupViewMode: e.target.checked ? 'last-used' : 'fixed' })}
+                      />
+                      <span className="toggle-slider"></span>
+                    </label>
+                  </div>
+                  <select
+                    aria-label="Startup view"
+                    value={settings.startupView}
+                    disabled={settings.startupViewMode === 'last-used'}
+                    onChange={event => onUpdateSettings({ startupView: event.target.value as ActiveView })}
+                    style={{
+                      padding: '8px 10px',
+                      borderRadius: '6px',
+                      border: '1px solid var(--border-subtle)',
+                      background: 'var(--bg-dark)',
+                      color: 'var(--text-primary)',
+                      opacity: settings.startupViewMode === 'last-used' ? 0.5 : 1
+                    }}
+                  >
+                    {VIEW_DEFINITIONS.map(view => (
+                      <option key={view.id} value={view.id}>{view.title}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               {/* System Tray & Background Settings */}

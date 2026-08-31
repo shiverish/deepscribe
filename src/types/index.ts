@@ -1,4 +1,5 @@
 export type ActiveView = 'columns' | 'tasks' | 'stats';
+export type StartupViewMode = 'fixed' | 'last-used';
 
 export interface Project {
   id: string;
@@ -303,6 +304,12 @@ export interface UserSettings {
   allowOfflineAgentAccess: boolean;
   minimizeToTray: boolean;
   closeToTray: boolean;
+  /** Open a fixed view on startup, or the one that was open last. */
+  startupViewMode: StartupViewMode;
+  /** The view to open when startupViewMode is 'fixed'. */
+  startupView: ActiveView;
+  /** Follows the switcher, so 'last-used' has something to restore. */
+  lastActiveView: ActiveView;
   webhooks: WebhookEndpoint[];
   lastSeenWhatsNewVersion?: string;
 }
@@ -345,5 +352,8 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
   allowOfflineAgentAccess: true,
   minimizeToTray: true,
   closeToTray: true,
+  startupViewMode: 'fixed',
+  startupView: 'columns',
+  lastActiveView: 'columns',
   webhooks: []
 };

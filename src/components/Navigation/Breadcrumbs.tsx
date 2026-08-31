@@ -1,5 +1,6 @@
 import React from 'react';
 import type { PathSegment, ActiveView } from '../../types';
+import { VIEW_DEFINITIONS } from '../../utils/views';
 import type { UpdaterState } from './UpdateNotification';
 import {
   Bot,
@@ -19,6 +20,13 @@ import {
   Camera,
   ArrowUpCircle
 } from 'lucide-react';
+
+/** Keyed by view id, so a new view cannot be added without giving it an icon. */
+const VIEW_ICONS: Record<ActiveView, React.ComponentType<{ size?: number }>> = {
+  columns: Columns3,
+  tasks: CheckSquare,
+  stats: BarChart3
+};
 
 interface BreadcrumbsProps {
   pathSegments: PathSegment[];
@@ -92,37 +100,23 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
           })}
         </nav>
 
-        {/* View Switcher: Columns | Tasks | Stats */}
+        {/* View Switcher, built from the shared view definitions */}
         <div className="view-switcher-group">
-          <button
-            type="button"
-            className={`view-switch-btn ${activeView === 'columns' ? 'active' : ''}`}
-            onClick={() => onViewChange('columns')}
-            title="Columns View (Ctrl+1)"
-          >
-            <Columns3 size={13} />
-            <span>Columns</span>
-          </button>
-
-          <button
-            type="button"
-            className={`view-switch-btn ${activeView === 'tasks' ? 'active' : ''}`}
-            onClick={() => onViewChange('tasks')}
-            title="Tasks View (Ctrl+2)"
-          >
-            <CheckSquare size={13} />
-            <span>Tasks</span>
-          </button>
-
-          <button
-            type="button"
-            className={`view-switch-btn ${activeView === 'stats' ? 'active' : ''}`}
-            onClick={() => onViewChange('stats')}
-            title="Statistics View (Ctrl+3)"
-          >
-            <BarChart3 size={13} />
-            <span>Stats</span>
-          </button>
+          {VIEW_DEFINITIONS.map(view => {
+            const Icon = VIEW_ICONS[view.id];
+            return (
+              <button
+                key={view.id}
+                type="button"
+                className={`view-switch-btn ${activeView === view.id ? 'active' : ''}`}
+                onClick={() => onViewChange(view.id)}
+                title={`${view.title} (${view.shortcut})`}
+              >
+                <Icon size={13} />
+                <span>{view.label}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
