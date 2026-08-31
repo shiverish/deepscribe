@@ -14,9 +14,37 @@ export interface ReleaseEntry {
   items: ChangelogItem[];
 }
 
-export const CURRENT_APP_VERSION = '0.2.33';
+export const CURRENT_APP_VERSION = '0.2.34';
 
 export const CHANGELOG_ENTRIES: ReleaseEntry[] = [
+  {
+    version: '0.2.34',
+    date: 'August 2026',
+    title: 'Agents Can Hand You Files',
+    summary: 'An agent can now attach a file to a block instead of leaving a path behind, task updates say so on the project card, and the two tray behaviours are finally separate switches.',
+    items: [
+      {
+        type: 'feature',
+        text: 'Agents Upload Attachments',
+        detail: 'The new upload_attachment MCP tool takes one file per call, up to 25 MB, either from a path on disk or as base64, and stores it as a normal attachment on a knowledge or task block. Repeating an upload with the same requestId is safe: identical content gives back the attachment that is already there, different content is refused. Every uploaded file carries a SHA-256 and the id of the agent that sent it.'
+      },
+      {
+        type: 'feature',
+        text: 'Task Updates Have Their Own Badge',
+        detail: 'A project card used to fold agent task updates into the same bot badge as written content, and clicking it went to the columns. Tasks now get a second badge with its own count, and it opens the task list filtered on that project.'
+      },
+      {
+        type: 'improvement',
+        text: 'Minimize And Close To Tray Are Separate',
+        detail: 'One switch decided both, so keeping DeepScribe alive after closing also meant losing the window from the taskbar on minimize. They are two settings now. The tray icon only appears while one of them can actually hide the window. Your old setting carries over to both.'
+      },
+      {
+        type: 'fix',
+        text: 'Find In Block Jumps To The Match Again',
+        detail: 'The find bar counted matches but never highlighted them or scrolled to them. Both the highlighting and the scrolling are fixed, and Ctrl + F on a selection prefills the search again.'
+      }
+    ]
+  },
   {
     version: '0.2.33',
     date: 'August 2026',
