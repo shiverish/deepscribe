@@ -43,6 +43,11 @@ import {
 } from './core/tasks.mjs';
 import { agentBlockCreator } from './core/creators.mjs';
 import {
+  attachmentReplayRefusal,
+  MAX_ATTACHMENT_BYTES,
+  prepareAttachmentUpload
+} from './core/attachments.mjs';
+import {
   containsMarkdownTask,
   contentStatsFromHtml as contentStats,
   escapeHtml,
@@ -60,7 +65,6 @@ export { getNextTaskNumber, parseTaskHumanId };
 export { contentStats, escapeHtml, htmlToPlainText, inlineMarkdown, markdownToHtml, unescapeHtml };
 export { contentToHtml, looksLikeHtml, sanitizeHtml };
 
-const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 export function resolveWorkspacePath(customPath) {
   if (customPath) return path.resolve(customPath);
   if (process.env.DEEPSCRIBE_WORKSPACE_DIR) return path.resolve(process.env.DEEPSCRIBE_WORKSPACE_DIR);
@@ -670,6 +674,38 @@ export class DirectWorkspaceStore {
     return row ? JSON.parse(row.json) : null;
   }
 
+  saveAttachment(attachment) {
+    this.open();
+    this.database.prepare('INSERT INTO attachments (id, block_id, json) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET block_id = excluded.block_id, json = excluded.json')
+      .run(attachment.id, attachment.blockId, JSON.stringify(attachment));
+  }
+
+  /**
+   * Schrijft de bytes in de normale bijlagenmap van het project en geeft het pad
+   * terug zoals de app het opslaat: relatief aan de workspace, nooit absoluut.
+   * `wx` zorgt dat een bestaande bijlage nooit stilzwijgend wordt overschreven.
+   */
+  async writeAttachmentFile(projectId, upload) {
+    this.open();
+    if (!/^[a-z0-9-]+$/i.test(projectId)) throw new Error('Ongeldig project-id.');
+    const directory = path.join(this.workspacePath, 'attachments', projectId);
+    await fs.promises.mkdir(directory, { recursive: true });
+
+    const extension = upload.fileName.includes('.') ? upload.fileName.slice(upload.fileName.lastIndexOf('.')) : '';
+    const stem = extension ? upload.fileName.slice(0, -extension.length) : upload.fileName;
+    for (let suffix = 0; suffix < 10_000; suffix += 1) {
+      const fileName = suffix === 0 ? upload.fileName : `${stem} (${suffix})${extension}`;
+      const destination = path.join(directory, fileName);
+      try {
+        await fs.promises.writeFile(destination, Buffer.from(upload.base64, 'base64'), { flag: 'wx' });
+        return { fileName, localPath: path.relative(this.workspacePath, destination) };
+      } catch (error) {
+        if (error?.code !== 'EEXIST') throw error;
+      }
+    }
+    throw new Error('No available file names could be found.');
+  }
+
   getAllActivities() {
     this.open();
     return this.database.prepare('SELECT json FROM activities').all().map(row => JSON.parse(row.json));
@@ -850,6 +886,7 @@ export class DirectWorkspaceStore {
       fileType: attachment.fileType || 'application/octet-stream',
       fileSize: attachment.fileSize,
       createdAt: attachment.createdAt,
+      ...(attachment.sha256 ? { sha256: attachment.sha256 } : {}),
       uri: `deepscribe://attachment/${encodeURIComponent(attachment.id)}`
     };
   }
@@ -1105,6 +1142,57 @@ export class DirectWorkspaceStore {
         if (!project || project.isTrash) throw new Error('Het gekoppelde project is niet beschikbaar.');
         const base64 = await this.readAttachmentBase64(attachment);
         return { ...this.attachmentMetadata(attachment), dataBase64: base64 };
+      }
+
+      case 'upload_attachment': {
+        const blockId = requireString('blockId');
+        const block = this.getBlock(blockId);
+        if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
+        const project = this.getProject(block.projectId);
+        if (!project || project.isTrash) throw new Error('Project niet gevonden.');
+        const uploadRefusal = taskClaimWriteRefusal(block, params);
+        if (uploadRefusal) throw new Error(uploadRefusal);
+
+        // Alles valideren voordat er ook maar iets naar schijf of database gaat.
+        const upload = await prepareAttachmentUpload(params);
+
+        const existing = this.getAllAttachments().find(attachment => attachment.blockId === blockId
+          && attachment.upload?.agentId === upload.agentId
+          && attachment.upload?.requestId === upload.requestId);
+        if (existing) {
+          const replayRefusal = attachmentReplayRefusal(existing, upload);
+          if (replayRefusal) throw new Error(replayRefusal);
+          return { ...this.attachmentMetadata(existing), replayed: true };
+        }
+
+        const stored = await this.writeAttachmentFile(block.projectId, upload);
+        try {
+          const attachment = {
+            id: `attachment-${crypto.randomUUID()}`,
+            blockId,
+            fileName: stored.fileName,
+            fileType: upload.fileType,
+            fileSize: upload.fileSize,
+            sha256: upload.sha256,
+            localPath: stored.localPath,
+            upload: { agentId: upload.agentId, requestId: upload.requestId },
+            createdAt: Date.now()
+          };
+          this.saveAttachment(attachment);
+          this.saveBlock({ ...block, attachmentCount: (block.attachmentCount ?? 0) + 1, updatedAt: Date.now() });
+          this.recordActivity({
+            projectId: block.projectId,
+            blockId,
+            source: 'agent',
+            action: 'attachment-added',
+            summary: `${upload.agentId} attached “${stored.fileName}” to “${block.title}”`
+          });
+          return { ...this.attachmentMetadata(attachment), replayed: false };
+        } catch (error) {
+          // Geen halve bijlage laten staan: het bestand hoort bij de rij, of geen van beide.
+          try { fs.unlinkSync(path.join(this.workspacePath, stored.localPath)); } catch {}
+          throw error;
+        }
       }
 
       case 'search': {

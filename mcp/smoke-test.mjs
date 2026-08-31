@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
@@ -21,7 +22,7 @@ function parsed(result) {
 try {
   await client.connect(transport);
   const tools = await client.listTools();
-  const expectedTools = ['status', 'list_projects', 'get_block', 'create_task', 'list_tasks', 'get_task', 'update_task_status', 'list_attachments', 'read_attachment', 'search', 'create_block', 'move_block', 'list_claimable_work_items', 'claim_next_work_item', 'claim_work_item', 'renew_work_item_claim', 'transition_work_item', 'list_todos'];
+  const expectedTools = ['status', 'list_projects', 'get_block', 'create_task', 'list_tasks', 'get_task', 'update_task_status', 'list_attachments', 'read_attachment', 'upload_attachment', 'search', 'create_block', 'move_block', 'list_claimable_work_items', 'claim_next_work_item', 'claim_work_item', 'renew_work_item_claim', 'transition_work_item', 'list_todos'];
   for (const name of expectedTools) {
     if (!tools.tools.some(tool => tool.name === name)) throw new Error(`MCP-tool ontbreekt: ${name}`);
   }
@@ -61,12 +62,43 @@ try {
       name: 'create_task',
       arguments: { title: 'MCP smoke follow-up', content: 'Concrete follow-up created by the MCP smoke test.', agentId: 'mcp-smoke', agentTarget: 'openai', requestId: `smoke-${project.id}` }
     }));
+    // Een echte upload-, lijst- en terugleesronde met een minimale PNG.
+    const pngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    const uploadRequestId = `smoke-upload-${project.id}`;
+    const uploadArguments = {
+      blockId: block.id,
+      data: pngBase64,
+      fileName: 'smoke pixel ünï.png',
+      agentId: 'mcp-smoke',
+      requestId: uploadRequestId
+    };
+    const uploaded = parsed(await client.callTool({ name: 'upload_attachment', arguments: uploadArguments }));
+    const replayed = parsed(await client.callTool({ name: 'upload_attachment', arguments: uploadArguments }));
+    if (uploaded.id !== replayed.id) throw new Error('Dezelfde requestId maakte een tweede bijlage.');
+    if (!replayed.replayed) throw new Error('Een herhaalde upload werd niet als replay herkend.');
+
+    const conflict = await client.callTool({
+      name: 'upload_attachment',
+      arguments: { ...uploadArguments, data: Buffer.from('andere inhoud').toString('base64') }
+    });
+    if (!conflict.isError) throw new Error('Een conflicterende payload bij dezelfde requestId werd geaccepteerd.');
+
+    const listed = parsed(await client.callTool({ name: 'list_attachments', arguments: { blockId: block.id } }));
+    if (!listed.some(attachment => attachment.id === uploaded.id)) throw new Error('De upload verschijnt niet in list_attachments.');
+
+    const readBack = await client.callTool({ name: 'read_attachment', arguments: { attachmentId: uploaded.id } });
+    const blob = readBack.content?.[0]?.resource?.blob;
+    if (blob !== pngBase64) throw new Error('read_attachment gaf andere bytes terug dan geüpload.');
+    const digest = createHash('sha256').update(Buffer.from(pngBase64, 'base64')).digest('hex');
+    if (uploaded.sha256 !== digest) throw new Error('De SHA-256 van de bijlage klopt niet.');
+
     report.writeTest = {
       projectId: project.id,
       blockId: block.id,
       block: parsed(await client.callTool({ name: 'get_block', arguments: { blockId: block.id } })),
       task,
-      tasks: parsed(await client.callTool({ name: 'list_tasks', arguments: { status: 'inbox' } }))
+      tasks: parsed(await client.callTool({ name: 'list_tasks', arguments: { status: 'inbox' } })),
+      attachment: uploaded
     };
   }
 

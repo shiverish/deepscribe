@@ -150,6 +150,10 @@ export interface Attachment {
   fileSize: number;
   dataUrl?: string; // Kept for archive compatibility with imported projects.
   localPath?: string;
+  /** Lowercase hex SHA-256 of the stored bytes; present on agent uploads. */
+  sha256?: string;
+  /** Provenance of an agent upload, and the key a repeated requestId matches on. */
+  upload?: { agentId: string; requestId: string };
   createdAt: number;
 }
 

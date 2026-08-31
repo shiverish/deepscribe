@@ -16,9 +16,9 @@ import { agentBlockCreator } from '../utils/creators';
 import { canTransitionTask, createTaskClaim, createTaskInboxProject, createTaskMetadata, formatTaskDeepLink, formatTaskHumanId, getNextTaskNumber, isTaskClaimCandidate, isTaskInboxProject, normalizeLeaseSeconds, parseTaskHumanId, redactTaskClaim, TASK_AGENT_TARGETS, taskClaimWriteRefusal, taskCreatorLabel, TASK_INBOX_PROJECT_ID, taskProtectedFieldRefusal, validateTaskMetadata, validateTaskReady } from '../utils/taskBlocks';
 import { exportBlockAsHtml, exportBlockAsMarkdown, exportBlockAsText, type ExportFormat } from '../utils/exportUtils';
 import { BLOCK_PRINT_PRESETS, loadStoredPrintSettings, normalizeBlockPrintSettings, saveStoredPrintSettings } from '../utils/printDocument';
+import { attachmentReplayRefusal, MAX_ATTACHMENT_BYTES, prepareAttachmentUpload } from '../../mcp/core/attachments.mjs';
 
 type JsonObject = Record<string, unknown>;
-const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 const CLAIM_RECEIPTS_KEY = 'task_claim_receipts';
 type ClaimReceipt = { agentId: string; requestId: string; blockId: string; token: string; createdAt: number };
 
@@ -121,6 +121,7 @@ function attachmentMetadata(attachment: Attachment) {
     fileType: attachment.fileType || 'application/octet-stream',
     fileSize: attachment.fileSize,
     createdAt: attachment.createdAt,
+    ...(attachment.sha256 ? { sha256: attachment.sha256 } : {}),
     uri: `deepscribe://attachment/${encodeURIComponent(attachment.id)}`
   };
 }
@@ -1159,18 +1160,7 @@ async function createAttachment(params: JsonObject) {
   const fileSize = Math.round((base64.length * 3) / 4);
   if (fileSize > MAX_ATTACHMENT_BYTES) throw new Error('Deze bijlage is groter dan 25 MB.');
 
-  const electronAPI = typeof window !== 'undefined' ? window.electronAPI : undefined;
-  if (!electronAPI?.importAttachment) {
-    throw new Error('Bijlagen opslaan is alleen beschikbaar in de desktop-app.');
-  }
-
-  const stored = await electronAPI.importAttachment({
-    projectId: block.projectId,
-    blockId,
-    fileName,
-    base64
-  });
-
+  const stored = await writeAttachmentFile(block.projectId, blockId, fileName, base64);
   const attachment: Attachment = {
     id: `attachment-${crypto.randomUUID()}`,
     blockId,
@@ -1185,6 +1175,106 @@ async function createAttachment(params: JsonObject) {
   await db.blocks.update(blockId, { attachmentCount: (block.attachmentCount || 0) + 1 });
 
   return attachmentMetadata(attachment);
+}
+
+/**
+ * Legt de bytes vast via de bestaande, afgeschermde bijlagen-IPC. De renderer
+ * raakt zelf nooit het bestandssysteem, en het teruggegeven pad blijft binnen
+ * de beheerde workspace.
+ */
+async function writeAttachmentFile(projectId: string, blockId: string, fileName: string, base64: string) {
+  const electronAPI = typeof window !== 'undefined' ? window.electronAPI : undefined;
+  if (!electronAPI?.importAttachment) {
+    throw new Error('Storing attachments is only available in the desktop app.');
+  }
+  return await electronAPI.importAttachment({ projectId, blockId, fileName, base64 });
+}
+
+/**
+ * De MCP-uploadroute: valideert alles vóór de eerste schrijfactie, respecteert de
+ * claim van een andere agent op een taakblok en maakt een herhaalde requestId
+ * onschadelijk in plaats van dubbel.
+ */
+async function uploadAttachment(params: JsonObject) {
+  const blockId = requiredString(params, 'blockId');
+  const block = await db.blocks.get(blockId);
+  if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
+  const project = await db.projects.get(block.projectId);
+  if (!project || project.isTrash) throw new Error('Project niet gevonden.');
+  const refusal = taskClaimWriteRefusal(block, params);
+  if (refusal) throw new Error(refusal);
+
+  const upload = await prepareAttachmentUpload(params);
+
+  const findReplay = () => db.attachments.where('blockId').equals(blockId)
+    .filter(candidate => candidate.upload?.agentId === upload.agentId && candidate.upload?.requestId === upload.requestId)
+    .first();
+
+  const existing = await findReplay();
+  if (existing) {
+    const replayRefusal = attachmentReplayRefusal(existing, upload);
+    if (replayRefusal) throw new Error(replayRefusal);
+    return { ...attachmentMetadata(existing), replayed: true };
+  }
+
+  const stored = await writeAttachmentFile(block.projectId, blockId, upload.fileName, upload.base64);
+  const attachment: Attachment = {
+    id: `attachment-${crypto.randomUUID()}`,
+    blockId,
+    // Electron may have de-duplicated the name against what is already on disk.
+    fileName: storedFileName(stored.localPath) || upload.fileName,
+    fileType: upload.fileType,
+    fileSize: upload.fileSize,
+    sha256: upload.sha256,
+    localPath: stored.localPath,
+    upload: { agentId: upload.agentId, requestId: upload.requestId },
+    createdAt: Date.now()
+  };
+
+  try {
+    const raced = await db.transaction('rw', [db.attachments, db.blocks], async () => {
+      const replay = await findReplay();
+      if (replay) return replay;
+      await db.attachments.add(attachment);
+      const current = await db.blocks.get(blockId);
+      await db.blocks.update(blockId, { attachmentCount: (current?.attachmentCount || 0) + 1 });
+      return null;
+    });
+    if (raced) {
+      await removeAttachmentFile(attachment.localPath);
+      return { ...attachmentMetadata(raced), replayed: true };
+    }
+  } catch (error) {
+    // Geen bestand laten liggen waar geen bijlage bij hoort.
+    await removeAttachmentFile(attachment.localPath);
+    throw error;
+  }
+
+  await recordActivity({
+    projectId: block.projectId,
+    blockId,
+    source: 'agent',
+    action: 'attachment-added',
+    summary: `${upload.agentId} attached “${attachment.fileName}” to “${block.title}”`
+  });
+
+  return { ...attachmentMetadata(attachment), replayed: false };
+}
+
+function storedFileName(localPath: string | undefined): string | undefined {
+  if (!localPath) return undefined;
+  const segments = localPath.split(/[\\/]+/);
+  return segments[segments.length - 1] || undefined;
+}
+
+async function removeAttachmentFile(localPath: string | undefined): Promise<void> {
+  const electronAPI = typeof window !== 'undefined' ? window.electronAPI : undefined;
+  if (!localPath || !electronAPI?.removeAttachment) return;
+  try {
+    await electronAPI.removeAttachment(localPath);
+  } catch {
+    // Best effort: the attachment row was never written, so a stray file is the lesser problem.
+  }
 }
 
 export async function handleMcpBridgeRequest(method: string, rawParams: unknown): Promise<unknown> {
@@ -1274,6 +1364,8 @@ export async function handleMcpBridgeRequest(method: string, rawParams: unknown)
       return await createCapture(params);
     case 'create_attachment':
       return await createAttachment(params);
+    case 'upload_attachment':
+      return await uploadAttachment(params);
     case 'read_attachment': {
       const attachment = await getActiveAttachment(requiredString(params, 'attachmentId'));
       return { ...attachmentMetadata(attachment), dataBase64: await readAttachmentBase64(attachment) };

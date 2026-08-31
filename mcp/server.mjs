@@ -7,12 +7,13 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { SubscribeRequestSchema, UnsubscribeRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import * as z from 'zod/v4';
 import { handleDirectStoreRequest } from './direct-store.mjs';
+import { formatBytes, MAX_ATTACHMENT_BYTES } from './core/attachments.mjs';
 
 const server = new McpServer({
   name: 'deepscribe',
   version: '0.2.7'
 }, {
-  instructions: 'DeepScribe stores projects, nested knowledge blocks and user-managed tasks. Read before writing and preserve existing content. Agents may use create_task to capture concrete future work, risks or ideas after checking for duplicates; tasks can be attached directly to a project via projectId or placed into Workspace Inbox when omitted, and start in Inbox status assigned to Any agent (or a specified assigneeTarget). Never create an administrative task before performing a directly requested change. Agents must not move, organize, assign, delete or restore tasks or create inline todos. Use list_tasks/get_task to read tasks. When the user asks you to work on a specific task, claim it with claim_work_item before you start: that is the only way a task reaches In progress, and it takes the lease that keeps other agents off it. Renew the lease on long work and finish with transition_work_item to review, done or blocked, including a real summary. Report progress on an unclaimed task with update_task_status. Drive these status changes yourself; do not ask the user for permission to move a task you were told to work on. A task still in Inbox cannot be claimed, so say so and let the user set it to Ready. Agents may write a task body with append_to_block (preferred, it preserves what is already there) or update_block, for example to leave a delivery report; a task title, its dependencies, its assignment, its position and its status stay user-owned. While another agent holds an active claim on a task, writing to it requires the agentId and claimToken of that claim. Format block content as readable Markdown with blank lines between sections and one list item per line.'
+  instructions: 'DeepScribe stores projects, nested knowledge blocks and user-managed tasks. Read before writing and preserve existing content. Agents may use create_task to capture concrete future work, risks or ideas after checking for duplicates; tasks can be attached directly to a project via projectId or placed into Workspace Inbox when omitted, and start in Inbox status assigned to Any agent (or a specified assigneeTarget). Never create an administrative task before performing a directly requested change. Agents must not move, organize, assign, delete or restore tasks or create inline todos. Use list_tasks/get_task to read tasks. When the user asks you to work on a specific task, claim it with claim_work_item before you start: that is the only way a task reaches In progress, and it takes the lease that keeps other agents off it. Renew the lease on long work and finish with transition_work_item to review, done or blocked, including a real summary. Report progress on an unclaimed task with update_task_status. Drive these status changes yourself; do not ask the user for permission to move a task you were told to work on. A task still in Inbox cannot be claimed, so say so and let the user set it to Ready. Agents may write a task body with append_to_block (preferred, it preserves what is already there) or update_block, for example to leave a delivery report; a task title, its dependencies, its assignment, its position and its status stay user-owned. While another agent holds an active claim on a task, writing to it requires the agentId and claimToken of that claim. Attach files with upload_attachment rather than leaving a local path in the text: pass sourcePath for a file on disk or data with base64 content and a fileName, one file per call, at most 25 MB, and reuse the same requestId when you retry an upload whose result you did not see. Read them back with list_attachments and read_attachment. Format block content as readable Markdown with blank lines between sections and one list item per line.'
 });
 
 function bridgeFileCandidates() {
@@ -51,7 +52,8 @@ async function callBridge(method, params = {}) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({ method, params }),
-      signal: AbortSignal.timeout(5000)
+      // Een bijlage van tientallen megabytes moet nog over de bridge en naar schijf.
+      signal: AbortSignal.timeout(method === 'upload_attachment' ? 60000 : 5000)
     });
   } catch (error) {
     const code = error?.cause?.code;
@@ -174,6 +176,60 @@ server.registerTool('read_attachment', {
   try {
     const attachment = await executeMcpMethod('read_attachment', params);
     return { content: [{ type: 'resource', resource: attachmentContents(attachment) }] };
+  } catch (error) {
+    return { isError: true, content: [{ type: 'text', text: error instanceof Error ? error.message : 'Onbekende DeepScribe-fout.' }] };
+  }
+});
+
+/**
+ * Leest een lokaal bestand voor upload_attachment.
+ *
+ * Alleen deze stdio-server, die door de client van de agent zelf wordt gestart en
+ * onder dezelfde gebruiker draait, raakt het bestandssysteem aan. De DeepScribe-app
+ * en de SQLite-route krijgen uitsluitend base64 te zien en kennen sourcePath niet,
+ * zodat er geen pad uit de opslag van DeepScribe kan lekken of in kan sluipen.
+ */
+async function readUploadSource(sourcePath) {
+  const resolved = path.resolve(sourcePath);
+  let stats;
+  try {
+    stats = await fs.stat(resolved);
+  } catch {
+    throw new Error(`Bestand niet gevonden: ${path.basename(resolved)}`);
+  }
+  if (!stats.isFile()) throw new Error(`“${path.basename(resolved)}” is geen bestand.`);
+  if (stats.size === 0) throw new Error(`“${path.basename(resolved)}” is leeg.`);
+  if (stats.size > MAX_ATTACHMENT_BYTES) {
+    throw new Error(`“${path.basename(resolved)}” is ${formatBytes(stats.size)} en daarmee groter dan de ${formatBytes(MAX_ATTACHMENT_BYTES)} die een bijlage mag zijn.`);
+  }
+  return {
+    data: (await fs.readFile(resolved)).toString('base64'),
+    fileName: path.basename(resolved)
+  };
+}
+
+server.registerTool('upload_attachment', {
+  title: 'Bestand uploaden als bijlage',
+  description: 'Upload een bestand en koppel het duurzaam als bijlage aan een bestaand kennis- of taakblok. Geef sourcePath voor een bestand op schijf (aanbevolen; de server leest het zelf) of data met de inhoud als base64. Maximaal 25 MB per bestand, in één keer; er is geen upload in delen. requestId maakt herhalen veilig: dezelfde requestId met dezelfde inhoud geeft de bestaande bijlage terug, met andere inhoud een fout. Geef bij een taak met een actieve claim de agentId en claimToken van die claim mee.',
+  inputSchema: {
+    blockId: z.string().min(1),
+    sourcePath: z.string().min(1).optional(),
+    data: z.string().min(1).optional(),
+    fileName: z.string().min(1).optional(),
+    mimeType: z.string().min(1).optional(),
+    agentId: z.string().min(1),
+    requestId: z.string().min(1),
+    claimToken: z.string().min(1).optional()
+  },
+  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true }
+}, async params => {
+  try {
+    const { sourcePath, ...rest } = params;
+    if (!sourcePath && !rest.data) throw new Error('Geef sourcePath of data mee.');
+    if (sourcePath && rest.data) throw new Error('Geef sourcePath of data mee, niet allebei.');
+    const source = sourcePath ? await readUploadSource(sourcePath) : { data: rest.data, fileName: rest.fileName };
+    if (!source.fileName) throw new Error('fileName is verplicht wanneer je data meestuurt.');
+    return toolResult(await executeMcpMethod('upload_attachment', { ...rest, data: source.data, fileName: rest.fileName || source.fileName }));
   } catch (error) {
     return { isError: true, content: [{ type: 'text', text: error instanceof Error ? error.message : 'Onbekende DeepScribe-fout.' }] };
   }

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { DirectWorkspaceStore, markdownToHtml } from './direct-store.mjs';
 
@@ -642,6 +643,100 @@ describe('DirectWorkspaceStore offline MCP engine', () => {
       expect(readResult.fileName).toBe('document.txt');
       const text = Buffer.from(readResult.dataBase64, 'base64').toString('utf8');
       expect(text).toBe('Geheime offline document inhoud');
+    } finally {
+      store.close();
+    }
+  });
+
+  it('uploads a file, stores it under the project and reads the same bytes back', async () => {
+    const wsPath = temporaryWorkspace();
+    const store = new DirectWorkspaceStore({ workspacePath: wsPath });
+    try {
+      const project = await store.handleRequest('create_project', { title: 'Project with uploads' });
+      const block = await store.handleRequest('create_block', { projectId: project.id, title: 'Design block' });
+      const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+
+      const uploaded = await store.handleRequest('upload_attachment', {
+        blockId: block.id,
+        data: png.toString('base64'),
+        fileName: 'approved landing pàge.png',
+        agentId: 'claude-code',
+        requestId: 'upload-1'
+      });
+      expect(uploaded.fileName).toBe('approved landing pàge.png');
+      expect(uploaded.fileType).toBe('image/png');
+      expect(uploaded.fileSize).toBe(png.length);
+      expect(uploaded.sha256).toBe(createHash('sha256').update(png).digest('hex'));
+      expect(uploaded.uri).toBe(`deepscribe://attachment/${encodeURIComponent(uploaded.id)}`);
+      expect(uploaded.localPath).toBeUndefined();
+
+      // The bytes land in the ordinary attachments folder for the project.
+      expect(fs.existsSync(path.join(wsPath, 'attachments', project.id, 'approved landing pàge.png'))).toBe(true);
+
+      const listed = await store.handleRequest('list_attachments', { blockId: block.id });
+      expect(listed.map(item => item.id)).toEqual([uploaded.id]);
+      expect((await store.handleRequest('get_block', { blockId: block.id })).attachmentCount).toBe(1);
+
+      const readBack = await store.handleRequest('read_attachment', { attachmentId: uploaded.id });
+      expect(Buffer.from(readBack.dataBase64, 'base64').equals(png)).toBe(true);
+
+      const activity = store.getAllActivities().find(entry => entry.action === 'attachment-added');
+      expect(activity?.summary).toContain('approved landing pàge.png');
+    } finally {
+      store.close();
+    }
+  });
+
+  it('makes a repeated requestId a replay and a changed payload an error', async () => {
+    const store = new DirectWorkspaceStore({ workspacePath: temporaryWorkspace() });
+    try {
+      const project = await store.handleRequest('create_project', { title: 'Idempotent uploads' });
+      const block = await store.handleRequest('create_block', { projectId: project.id, title: 'Block' });
+      const request = {
+        blockId: block.id,
+        data: Buffer.from('report body').toString('base64'),
+        fileName: 'report.txt',
+        agentId: 'claude-code',
+        requestId: 'upload-1'
+      };
+
+      const first = await store.handleRequest('upload_attachment', request);
+      expect(first.replayed).toBe(false);
+      const second = await store.handleRequest('upload_attachment', request);
+      expect(second.replayed).toBe(true);
+      expect(second.id).toBe(first.id);
+      expect(await store.handleRequest('list_attachments', { blockId: block.id })).toHaveLength(1);
+
+      await expect(store.handleRequest('upload_attachment', { ...request, data: Buffer.from('other body').toString('base64') }))
+        .rejects.toThrow(/new requestId/);
+      expect(await store.handleRequest('list_attachments', { blockId: block.id })).toHaveLength(1);
+    } finally {
+      store.close();
+    }
+  });
+
+  it('refuses an upload that is invalid, misdirected or covered by another claim', async () => {
+    const store = new DirectWorkspaceStore({ workspacePath: temporaryWorkspace() });
+    try {
+      const project = await store.handleRequest('create_project', { title: 'Upload guards' });
+      const block = await store.handleRequest('create_block', { projectId: project.id, title: 'Block' });
+      const valid = { blockId: block.id, data: Buffer.from('x').toString('base64'), fileName: 'a.txt', agentId: 'claude-code', requestId: 'r1' };
+
+      await expect(store.handleRequest('upload_attachment', { ...valid, blockId: 'block-does-not-exist' })).rejects.toThrow(/niet gevonden/);
+      await expect(store.handleRequest('upload_attachment', { ...valid, requestId: '' })).rejects.toThrow(/requestId/);
+      await expect(store.handleRequest('upload_attachment', { ...valid, agentId: '' })).rejects.toThrow(/agentId/);
+      await expect(store.handleRequest('upload_attachment', { ...valid, data: 'not base64!!' })).rejects.toThrow(/valid base64/);
+      await expect(store.handleRequest('upload_attachment', { ...valid, fileName: '../../escape.txt', requestId: 'r2' }))
+        .resolves.toMatchObject({ fileName: 'escape.txt' });
+      expect(fs.existsSync(path.join(store.workspacePath, 'attachments', project.id, 'escape.txt'))).toBe(true);
+
+      // Nothing invalid left a file or a row behind.
+      expect(await store.handleRequest('list_attachments', { blockId: block.id })).toHaveLength(1);
+
+      const task = insertUserTask(store, project.id, null, 'Claimed task', { status: 'ready', agentTarget: 'claude' });
+      await store.handleRequest('claim_work_item', { blockId: task.id, agentId: 'other-agent', agentTarget: 'claude', requestId: 'claim-1' });
+      await expect(store.handleRequest('upload_attachment', { ...valid, blockId: task.id, requestId: 'r3' }))
+        .rejects.toThrow();
     } finally {
       store.close();
     }

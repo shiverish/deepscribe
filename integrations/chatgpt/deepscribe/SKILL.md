@@ -28,6 +28,7 @@ Use the connected DeepScribe tools as the only interface to the user's stored wo
 - Use `list_tasks` and `get_task` for user-managed tasks. You may write a task body, but its title, dependencies, assignment, position and status stay user-owned.
 - Distinguish facts stored in DeepScribe from conclusions or suggestions produced during the conversation.
 - Use `list_attachments` before `read_attachment`. Read only files relevant to the request and state when a binary format cannot be interpreted reliably.
+- Use `upload_attachment` to attach a file to an existing block instead of leaving a local path in the text. Pass `sourcePath` for a file on disk, or `data` with base64 content plus a `fileName`. One file per call, up to 25 MB, no chunked upload. Reuse the same `requestId` when retrying an upload whose result you did not see: identical content returns the existing attachment, different content is refused. Verify with `list_attachments` and, when it matters, compare the returned `sha256` after `read_attachment`.
 
 ## Write safely
 

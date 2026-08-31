@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../db/db';
 import type { Block, Project } from '../types';
 import { formatDailyPlanContent, formatWorkItemContent, handleMcpBridgeRequest, markdownToHtml } from './bridge';
@@ -487,6 +487,110 @@ describe('DeepScribe MCP attachments', () => {
     expect(read.dataBase64).toBe('aGVsbG8=');
     expect(read).not.toHaveProperty('dataUrl');
     expect(read).not.toHaveProperty('localPath');
+  });
+});
+
+/**
+ * The upload route never touches the file system itself: it hands the bytes to
+ * the same guarded Electron IPC the Attachments panel uses. The stub here stands
+ * in for that IPC so the bridge rules can be tested on their own.
+ */
+describe('DeepScribe MCP attachment uploads', () => {
+  const written = new Map<string, string>();
+  const removed: string[] = [];
+
+  beforeEach(() => {
+    written.clear();
+    removed.length = 0;
+    vi.stubGlobal('window', {
+      electronAPI: {
+        importAttachment: async ({ projectId, fileName, base64 }: { projectId: string; fileName: string; base64: string }) => {
+          const localPath = `attachments\\${projectId}\\${fileName}`;
+          if (written.has(localPath)) throw new Error('EEXIST');
+          written.set(localPath, base64);
+          return { localPath };
+        },
+        readAttachment: async (localPath: string) => written.get(localPath) ?? '',
+        removeAttachment: async (localPath: string) => { removed.push(localPath); written.delete(localPath); }
+      }
+    });
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  async function uploadTarget() {
+    const project = await handleMcpBridgeRequest('create_project', { title: 'Upload project' }) as Project;
+    const block = await handleMcpBridgeRequest('create_block', { projectId: project.id, title: 'Design' }) as Block;
+    return { project, block };
+  }
+
+  const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+  it('stores an upload as a real attachment and reads the same bytes back', async () => {
+    const { block } = await uploadTarget();
+    const uploaded = await handleMcpBridgeRequest('upload_attachment', {
+      blockId: block.id,
+      data: PNG,
+      fileName: 'design/approved landing pàge.png',
+      agentId: 'claude-code',
+      requestId: 'upload-1'
+    }) as Record<string, unknown>;
+
+    expect(uploaded.fileName).toBe('approved landing pàge.png');
+    expect(uploaded.fileType).toBe('image/png');
+    expect(uploaded.fileSize).toBe(70);
+    expect(uploaded.sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(uploaded.replayed).toBe(false);
+    expect(uploaded).not.toHaveProperty('localPath');
+
+    expect((await db.blocks.get(block.id))?.attachmentCount).toBe(1);
+    const listed = await handleMcpBridgeRequest('list_attachments', { blockId: block.id }) as Array<Record<string, unknown>>;
+    expect(listed.map(item => item.id)).toEqual([uploaded.id]);
+
+    const read = await handleMcpBridgeRequest('read_attachment', { attachmentId: uploaded.id }) as Record<string, unknown>;
+    expect(read.dataBase64).toBe(PNG);
+  });
+
+  it('replays the same requestId and refuses a different payload under it', async () => {
+    const { block } = await uploadTarget();
+    const request = { blockId: block.id, data: PNG, fileName: 'render.png', agentId: 'claude-code', requestId: 'upload-1' };
+
+    const first = await handleMcpBridgeRequest('upload_attachment', request) as Record<string, unknown>;
+    const second = await handleMcpBridgeRequest('upload_attachment', request) as Record<string, unknown>;
+    expect(second.id).toBe(first.id);
+    expect(second.replayed).toBe(true);
+    expect(await db.attachments.where('blockId').equals(block.id).count()).toBe(1);
+    expect((await db.blocks.get(block.id))?.attachmentCount).toBe(1);
+
+    await expect(handleMcpBridgeRequest('upload_attachment', { ...request, data: btoa('other bytes') }))
+      .rejects.toThrow(/new requestId/);
+    expect(await db.attachments.where('blockId').equals(block.id).count()).toBe(1);
+  });
+
+  it('refuses an invalid upload without leaving a file or a row behind', async () => {
+    const { block } = await uploadTarget();
+    const valid = { blockId: block.id, data: PNG, fileName: 'render.png', agentId: 'claude-code', requestId: 'upload-1' };
+
+    await expect(handleMcpBridgeRequest('upload_attachment', { ...valid, blockId: 'block-missing' })).rejects.toThrow();
+    await expect(handleMcpBridgeRequest('upload_attachment', { ...valid, requestId: '' })).rejects.toThrow(/requestId/);
+    await expect(handleMcpBridgeRequest('upload_attachment', { ...valid, data: 'not base64!!' })).rejects.toThrow(/valid base64/);
+    await expect(handleMcpBridgeRequest('upload_attachment', { ...valid, fileName: 'NUL.png' })).rejects.toThrow(/reserved/);
+
+    expect(written.size).toBe(0);
+    expect(await db.attachments.count()).toBe(0);
+    expect((await db.blocks.get(block.id))?.attachmentCount).toBe(0);
+  });
+
+  it('refuses an upload onto a task another agent holds a claim on', async () => {
+    const project = await handleMcpBridgeRequest('create_project', { title: 'Claimed uploads' }) as Project;
+    const task = await insertUserTask(project.id, null, 'Claimed task', { ...createTaskMetadata(0), status: 'ready', agentTarget: 'claude', readyAt: Date.now() });
+    await handleMcpBridgeRequest('claim_work_item', { blockId: task.id, agentId: 'other-agent', agentTarget: 'claude', requestId: 'claim-1' });
+
+    await expect(handleMcpBridgeRequest('upload_attachment', {
+      blockId: task.id, data: PNG, fileName: 'render.png', agentId: 'claude-code', requestId: 'upload-1'
+    })).rejects.toThrow();
+    expect(written.size).toBe(0);
+    expect(await db.attachments.count()).toBe(0);
   });
 });
 
