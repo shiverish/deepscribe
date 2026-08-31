@@ -14,9 +14,31 @@ describe('settings compatibility', () => {
     expect(merged.agentAlertColor).toBe('#ff5500');
   });
 
-  it('defaults minimizeToTray to true when omitted', () => {
+  it('defaults both tray behaviours to true when omitted', () => {
     const merged = mergeStoredSettings({ preset: 'vanilla' });
     expect(merged.minimizeToTray).toBe(true);
+    expect(merged.closeToTray).toBe(true);
+  });
+
+  /**
+   * Minimizing and closing shared one switch before the split. What the user chose
+   * there was a choice about both, so it has to carry over rather than silently
+   * turning closing back on.
+   */
+  it('carries the old combined tray choice over to closing', () => {
+    expect(mergeStoredSettings({ minimizeToTray: false }).closeToTray).toBe(false);
+    expect(mergeStoredSettings({ minimizeToTray: false }).minimizeToTray).toBe(false);
+    expect(mergeStoredSettings({ minimizeToTray: true }).closeToTray).toBe(true);
+  });
+
+  it('keeps the two tray behaviours independent once both are stored', () => {
+    const merged = mergeStoredSettings({ minimizeToTray: false, closeToTray: true });
+    expect(merged.minimizeToTray).toBe(false);
+    expect(merged.closeToTray).toBe(true);
+
+    const inverse = mergeStoredSettings({ minimizeToTray: true, closeToTray: false });
+    expect(inverse.minimizeToTray).toBe(true);
+    expect(inverse.closeToTray).toBe(false);
   });
 
   it('defaults new UI layer colors when omitted in older settings', () => {

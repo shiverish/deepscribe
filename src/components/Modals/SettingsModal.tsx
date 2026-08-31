@@ -911,23 +911,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </label>
               </div>
 
-              {/* System Tray & Background Setting */}
+              {/* System Tray & Background Settings */}
               <div className="setting-item">
                 <div className="setting-info">
-                  <label>Minimize and Close to System Tray</label>
-                  <span className="setting-description">Keep DeepScribe running silently in the Windows system tray when closed or minimized so global shortcuts like Ctrl+Alt+S remain active</span>
+                  <label>Minimize to System Tray</label>
+                  <span className="setting-description">Keep DeepScribe running in the Windows system tray when the window is minimized</span>
                 </div>
                 <label className="toggle-switch">
                   <input
                     type="checkbox"
                     checked={settings.minimizeToTray ?? true}
-                    onChange={e => {
-                      const enabled = e.target.checked;
-                      onUpdateSettings({ minimizeToTray: enabled });
-                      if (window.electronAPI?.tray?.setTrayEnabled) {
-                        window.electronAPI.tray.setTrayEnabled(enabled);
-                      }
-                    }}
+                    onChange={e => onUpdateSettings({ minimizeToTray: e.target.checked })}
+                  />
+                  <span className="toggle-slider"></span>
+                </label>
+              </div>
+
+              <div className="setting-item">
+                <div className="setting-info">
+                  <label>Close to System Tray</label>
+                  <span className="setting-description">Keep DeepScribe running silently in the Windows system tray when closed so global shortcuts remain active</span>
+                </div>
+                <label className="toggle-switch">
+                  <input
+                    type="checkbox"
+                    checked={settings.closeToTray ?? true}
+                    onChange={e => onUpdateSettings({ closeToTray: e.target.checked })}
                   />
                   <span className="toggle-slider"></span>
                 </label>

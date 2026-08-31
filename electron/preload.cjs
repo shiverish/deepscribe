@@ -37,8 +37,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   tray: {
     minimizeToTray: () => ipcRenderer.invoke('deepscribe:tray:minimize'),
-    setTrayEnabled: enabled => ipcRenderer.invoke('deepscribe:tray:set-enabled', enabled),
-    isTrayEnabled: () => ipcRenderer.invoke('deepscribe:tray:is-enabled')
+    setTrayBehavior: behavior => ipcRenderer.invoke('deepscribe:tray:set-behavior', behavior),
+    getTrayBehavior: () => ipcRenderer.invoke('deepscribe:tray:get-behavior')
   },
   workspace: {
     status: () => ipcRenderer.invoke('deepscribe:workspace:status'),

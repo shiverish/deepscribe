@@ -302,6 +302,7 @@ export interface UserSettings {
   spellcheck: boolean;
   allowOfflineAgentAccess: boolean;
   minimizeToTray: boolean;
+  closeToTray: boolean;
   webhooks: WebhookEndpoint[];
   lastSeenWhatsNewVersion?: string;
 }
@@ -343,5 +344,6 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
   spellcheck: true,
   allowOfflineAgentAccess: true,
   minimizeToTray: true,
+  closeToTray: true,
   webhooks: []
 };

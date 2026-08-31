@@ -17,7 +17,10 @@ let workspaceQuitReady = false;
 let isInstallingUpdate = false;
 let tray = null;
 let isQuitting = false;
-let isTrayEnabled = true;
+// Minimizing and closing are independent: the window can go to the taskbar while
+// the close button hides it in the system tray, or the other way around.
+let isMinimizeToTrayEnabled = true;
+let isCloseToTrayEnabled = true;
 let overlayWindow = null;
 let pendingOverlayData = null;
 const pendingBridgeRequests = new Map();
@@ -303,22 +306,33 @@ function registerTrayIpc() {
     }
   });
 
-  ipcMain.handle('deepscribe:tray:set-enabled', async (_event, enabled) => {
-    isTrayEnabled = !!enabled;
-    if (isTrayEnabled) {
-      setupTray();
-    } else {
-      if (tray) {
-        try { tray.destroy(); } catch {}
-        tray = null;
-      }
-    }
-    return isTrayEnabled;
+  ipcMain.handle('deepscribe:tray:set-behavior', async (_event, behavior) => {
+    isMinimizeToTrayEnabled = behavior?.minimizeToTray !== false;
+    isCloseToTrayEnabled = behavior?.closeToTray !== false;
+    applyTrayBehavior();
+    return trayBehavior();
   });
 
-  ipcMain.handle('deepscribe:tray:is-enabled', async () => {
-    return isTrayEnabled;
-  });
+  ipcMain.handle('deepscribe:tray:get-behavior', async () => trayBehavior());
+}
+
+function trayBehavior() {
+  return { minimizeToTray: isMinimizeToTrayEnabled, closeToTray: isCloseToTrayEnabled };
+}
+
+/**
+ * The tray icon only earns its place while it is the way back to a hidden window.
+ * With both behaviours off nothing ever hides, so the icon is taken down again.
+ */
+function applyTrayBehavior() {
+  if (isMinimizeToTrayEnabled || isCloseToTrayEnabled) {
+    setupTray();
+    return;
+  }
+  if (tray) {
+    try { tray.destroy(); } catch {}
+    tray = null;
+  }
 }
 
 function registerWorkspaceIpc() {
@@ -1091,7 +1105,7 @@ function createWindow() {
       return;
     }
 
-    if (!isQuitting && isTrayEnabled) {
+    if (!isQuitting && isCloseToTrayEnabled) {
       event.preventDefault();
       mainWindow.hide();
       // Auto-flush workspace in background when hiding to tray
@@ -1108,7 +1122,7 @@ function createWindow() {
   });
 
   mainWindow.on('minimize', event => {
-    if (isTrayEnabled) {
+    if (isMinimizeToTrayEnabled) {
       event.preventDefault();
       mainWindow.hide();
     }
@@ -1179,7 +1193,7 @@ if (!gotTheLock) {
 
   app.whenReady().then(() => {
     createWindow();
-    setupTray();
+    applyTrayBehavior();
 
     const initialDeepLink = process.argv.find(arg => arg.startsWith('deepscribe://'));
     if (initialDeepLink) {
@@ -1221,7 +1235,9 @@ if (!gotTheLock) {
 }
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin' && !isTrayEnabled) {
+  // With Close to System Tray on the window is hidden rather than destroyed, so
+  // this only fires when closing was meant to end the app.
+  if (process.platform !== 'darwin' && !isCloseToTrayEnabled) {
     app.quit();
   }
 });

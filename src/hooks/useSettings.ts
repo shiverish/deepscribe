@@ -107,6 +107,12 @@ export function mergeStoredSettings(value: Partial<UserSettings>): UserSettings 
     ...DEFAULT_USER_SETTINGS,
     ...value,
     minimizeToTray: typeof value.minimizeToTray === 'boolean' ? value.minimizeToTray : DEFAULT_USER_SETTINGS.minimizeToTray,
+    // Minimizing and closing used to share one switch. Settings saved before the
+    // split carry only minimizeToTray, and its value is what the user chose for
+    // both behaviours — so it becomes the starting point for closeToTray too.
+    closeToTray: typeof value.closeToTray === 'boolean'
+      ? value.closeToTray
+      : typeof value.minimizeToTray === 'boolean' ? value.minimizeToTray : DEFAULT_USER_SETTINGS.closeToTray,
     savedThemes: Array.isArray(value.savedThemes) ? value.savedThemes : [],
     webhooks: normalizeWebhookEndpoints(value.webhooks),
     atmosphereColor: value.atmosphereColor || palette?.atmosphere || DEFAULT_USER_SETTINGS.atmosphereColor,
@@ -242,12 +248,15 @@ export function useSettings() {
     applySettingsToDOM(settings);
   }, [settings]);
 
-  // Synchronize tray setting with Electron main process
+  // Synchronize both tray behaviours with the Electron main process
   useEffect(() => {
-    if (window.electronAPI?.tray?.setTrayEnabled) {
-      window.electronAPI.tray.setTrayEnabled(settings.minimizeToTray ?? true).catch(() => {});
+    if (window.electronAPI?.tray?.setTrayBehavior) {
+      window.electronAPI.tray.setTrayBehavior({
+        minimizeToTray: settings.minimizeToTray ?? true,
+        closeToTray: settings.closeToTray ?? true
+      }).catch(() => {});
     }
-  }, [settings.minimizeToTray]);
+  }, [settings.minimizeToTray, settings.closeToTray]);
 
   const updateSettings = useCallback(async (partial: Partial<UserSettings>) => {
     setSettings(prev => {

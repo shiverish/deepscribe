@@ -39,8 +39,8 @@ declare global {
       };
       tray?: {
         minimizeToTray: () => Promise<void>;
-        setTrayEnabled: (enabled: boolean) => Promise<void>;
-        isTrayEnabled: () => Promise<boolean>;
+        setTrayBehavior: (behavior: { minimizeToTray: boolean; closeToTray: boolean }) => Promise<{ minimizeToTray: boolean; closeToTray: boolean }>;
+        getTrayBehavior: () => Promise<{ minimizeToTray: boolean; closeToTray: boolean }>;
       };
       workspace: {
         status: () => Promise<WorkspaceStatus>;
