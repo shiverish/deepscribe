@@ -62,6 +62,22 @@ describe('settings compatibility', () => {
     expect(merged.customCardBgColor).toBe('#334455');
     expect(merged.customSurfaceBgColor).toBe('#445566');
   });
+
+  it('defaults auto-start settings appropriately when omitted', () => {
+    const merged = mergeStoredSettings({ preset: 'vanilla' });
+    expect(merged.autoStartOnBoot).toBe(false);
+    expect(merged.autoStartMinimized).toBe(true);
+  });
+
+  it('preserves custom auto-start settings when provided', () => {
+    const merged = mergeStoredSettings({
+      preset: 'vanilla',
+      autoStartOnBoot: true,
+      autoStartMinimized: false
+    });
+    expect(merged.autoStartOnBoot).toBe(true);
+    expect(merged.autoStartMinimized).toBe(false);
+  });
 });
 
 

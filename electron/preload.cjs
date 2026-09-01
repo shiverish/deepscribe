@@ -50,6 +50,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     setTrayBehavior: behavior => ipcRenderer.invoke('deepscribe:tray:set-behavior', behavior),
     getTrayBehavior: () => ipcRenderer.invoke('deepscribe:tray:get-behavior')
   },
+  autoStart: {
+    getStatus: () => ipcRenderer.invoke('deepscribe:autostart:get-status'),
+    setSettings: settings => ipcRenderer.invoke('deepscribe:autostart:set-status', settings)
+  },
   workspace: {
     status: () => ipcRenderer.invoke('deepscribe:workspace:status'),
     load: () => ipcRenderer.invoke('deepscribe:workspace:load'),

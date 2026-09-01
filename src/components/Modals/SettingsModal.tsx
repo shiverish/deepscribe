@@ -982,6 +982,48 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </label>
               </div>
 
+              {/* Windows Startup (Auto-Start) Settings */}
+              <div className="setting-item">
+                <div className="setting-info">
+                  <label>Start DeepScribe on Windows startup</label>
+                  <span className="setting-description">Automatically launch DeepScribe when you log in to Windows</span>
+                </div>
+                <label className="toggle-switch">
+                  <input
+                    type="checkbox"
+                    checked={settings.autoStartOnBoot ?? false}
+                    onChange={e => onUpdateSettings({ autoStartOnBoot: e.target.checked })}
+                  />
+                  <span className="toggle-slider"></span>
+                </label>
+              </div>
+
+              <div
+                className="setting-item"
+                style={{
+                  marginLeft: '24px',
+                  paddingLeft: '12px',
+                  borderLeft: '2px solid var(--border-subtle, rgba(255, 255, 255, 0.1))',
+                  opacity: (settings.autoStartOnBoot ?? false) ? 1 : 0.45,
+                  pointerEvents: (settings.autoStartOnBoot ?? false) ? 'auto' : 'none',
+                  transition: 'opacity 0.2s ease'
+                }}
+              >
+                <div className="setting-info">
+                  <label>Start minimized to system tray</label>
+                  <span className="setting-description">Launch silently in the background so global hotkeys (like Quick Capture) are ready without opening the main window</span>
+                </div>
+                <label className="toggle-switch">
+                  <input
+                    type="checkbox"
+                    checked={settings.autoStartMinimized ?? true}
+                    disabled={!(settings.autoStartOnBoot ?? false)}
+                    onChange={e => onUpdateSettings({ autoStartMinimized: e.target.checked })}
+                  />
+                  <span className="toggle-slider"></span>
+                </label>
+              </div>
+
               {/* Quick Capture Global Shortcut Info */}
               <div className="setting-item">
                 <div className="setting-info">

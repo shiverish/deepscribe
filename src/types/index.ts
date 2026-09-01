@@ -304,6 +304,10 @@ export interface UserSettings {
   allowOfflineAgentAccess: boolean;
   minimizeToTray: boolean;
   closeToTray: boolean;
+  /** Automatically launch DeepScribe when logging into Windows. */
+  autoStartOnBoot: boolean;
+  /** Launch minimized into the system tray when starting with Windows. */
+  autoStartMinimized: boolean;
   /** Open a fixed view on startup, or the one that was open last. */
   startupViewMode: StartupViewMode;
   /** The view to open when startupViewMode is 'fixed'. */
@@ -352,6 +356,8 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
   allowOfflineAgentAccess: true,
   minimizeToTray: true,
   closeToTray: true,
+  autoStartOnBoot: false,
+  autoStartMinimized: true,
   startupViewMode: 'fixed',
   startupView: 'columns',
   lastActiveView: 'columns',

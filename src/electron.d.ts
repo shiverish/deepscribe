@@ -48,6 +48,10 @@ declare global {
         setTrayBehavior: (behavior: { minimizeToTray: boolean; closeToTray: boolean }) => Promise<{ minimizeToTray: boolean; closeToTray: boolean }>;
         getTrayBehavior: () => Promise<{ minimizeToTray: boolean; closeToTray: boolean }>;
       };
+      autoStart?: {
+        getStatus: () => Promise<{ openAtLogin: boolean; openAsHidden: boolean }>;
+        setSettings: (settings: { openAtLogin: boolean; openAsHidden: boolean }) => Promise<{ openAtLogin: boolean; openAsHidden: boolean }>;
+      };
       workspace: {
         status: () => Promise<WorkspaceStatus>;
         load: () => Promise<WorkspaceSnapshot>;

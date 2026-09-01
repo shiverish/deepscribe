@@ -341,8 +341,51 @@ function registerTrayIpc() {
   ipcMain.handle('deepscribe:tray:get-behavior', async () => trayBehavior());
 }
 
+function registerAutoStartIpc() {
+  ipcMain.handle('deepscribe:autostart:get-status', async () => {
+    try {
+      const settings = app.getLoginItemSettings();
+      return {
+        openAtLogin: !!settings.openAtLogin,
+        openAsHidden: !!settings.openAsHidden
+      };
+    } catch (err) {
+      console.warn('Failed to get login item settings:', err);
+      return { openAtLogin: false, openAsHidden: false };
+    }
+  });
+
+  ipcMain.handle('deepscribe:autostart:set-status', async (_event, payload) => {
+    const openAtLogin = payload?.openAtLogin === true;
+    const openAsHidden = payload?.openAsHidden !== false;
+    try {
+      app.setLoginItemSettings({
+        openAtLogin,
+        openAsHidden,
+        args: openAsHidden ? ['--hidden'] : []
+      });
+      const settings = app.getLoginItemSettings();
+      return {
+        openAtLogin: !!settings.openAtLogin,
+        openAsHidden: !!settings.openAsHidden
+      };
+    } catch (err) {
+      console.warn('Failed to set login item settings:', err);
+      return { openAtLogin, openAsHidden };
+    }
+  });
+}
+
 function trayBehavior() {
   return { minimizeToTray: isMinimizeToTrayEnabled, closeToTray: isCloseToTrayEnabled };
+}
+
+function shouldStartHidden() {
+  return (
+    process.argv.includes('--hidden') ||
+    process.argv.includes('--minimized') ||
+    (typeof app.getLoginItemSettings === 'function' && app.getLoginItemSettings().wasOpenedAsHidden)
+  );
 }
 
 /**
@@ -350,7 +393,7 @@ function trayBehavior() {
  * With both behaviours off nothing ever hides, so the icon is taken down again.
  */
 function applyTrayBehavior() {
-  if (isMinimizeToTrayEnabled || isCloseToTrayEnabled) {
+  if (isMinimizeToTrayEnabled || isCloseToTrayEnabled || shouldStartHidden()) {
     setupTray();
     return;
   }
@@ -1150,7 +1193,7 @@ function setupTray() {
         click: () => openQuickCapture()
       },
       {
-        label: '📸 Scherm annoteren (Ctrl+Alt+S)',
+        label: '📸 Annotate Screen (Ctrl+Alt+S)',
         click: () => startScreenAnnotation()
       },
       { type: 'separator' },
@@ -1186,11 +1229,13 @@ function setupTray() {
 }
 
 function createWindow() {
+  const startHidden = shouldStartHidden();
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 800,
     minHeight: 600,
+    show: !startHidden,
     title: 'DeepScribe',
     icon: getAppIconPath(),
     webPreferences: {
@@ -1282,6 +1327,7 @@ if (!gotTheLock) {
   registerUpdaterIpc();
   registerScreenCaptureIpc();
   registerTrayIpc();
+  registerAutoStartIpc();
   setupAutoUpdater();
 
   app.on('second-instance', (_event, commandLine) => {

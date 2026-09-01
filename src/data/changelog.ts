@@ -14,9 +14,27 @@ export interface ReleaseEntry {
   items: ChangelogItem[];
 }
 
-export const CURRENT_APP_VERSION = '0.2.37';
+export const CURRENT_APP_VERSION = '0.2.38';
 
 export const CHANGELOG_ENTRIES: ReleaseEntry[] = [
+  {
+    version: '0.2.38',
+    date: 'September 2026',
+    title: 'Windows Startup & Background Launch',
+    summary: 'Automatically launch DeepScribe when you log in to Windows, with a configurable option to start silently minimized in the system tray.',
+    items: [
+      {
+        type: 'feature',
+        text: 'Start on Windows Startup',
+        detail: 'DeepScribe can now be configured to start automatically at Windows login. Toggle it on or off in Settings > General.'
+      },
+      {
+        type: 'feature',
+        text: 'Start Minimized to System Tray',
+        detail: 'When auto-start is enabled, DeepScribe can launch silently in the background so global hotkeys (such as Quick Capture Ctrl + Alt + C and Screen Annotation) are immediately ready without interrupting you.'
+      }
+    ]
+  },
   {
     version: '0.2.37',
     date: 'August 2026',

@@ -114,6 +114,8 @@ export function mergeStoredSettings(value: Partial<UserSettings>): UserSettings 
     closeToTray: typeof value.closeToTray === 'boolean'
       ? value.closeToTray
       : typeof value.minimizeToTray === 'boolean' ? value.minimizeToTray : DEFAULT_USER_SETTINGS.closeToTray,
+    autoStartOnBoot: typeof value.autoStartOnBoot === 'boolean' ? value.autoStartOnBoot : DEFAULT_USER_SETTINGS.autoStartOnBoot,
+    autoStartMinimized: typeof value.autoStartMinimized === 'boolean' ? value.autoStartMinimized : DEFAULT_USER_SETTINGS.autoStartMinimized,
     savedThemes: Array.isArray(value.savedThemes) ? value.savedThemes : [],
     startupViewMode: value.startupViewMode === 'last-used' ? 'last-used' : DEFAULT_USER_SETTINGS.startupViewMode,
     // A stored view can outlive the view itself — the graph view was removed in
@@ -268,6 +270,16 @@ export function useSettings() {
       }).catch(() => {});
     }
   }, [settings.minimizeToTray, settings.closeToTray]);
+
+  // Synchronize auto-start settings with the Electron main process
+  useEffect(() => {
+    if (window.electronAPI?.autoStart?.setSettings) {
+      window.electronAPI.autoStart.setSettings({
+        openAtLogin: settings.autoStartOnBoot ?? false,
+        openAsHidden: settings.autoStartMinimized ?? true
+      }).catch(() => {});
+    }
+  }, [settings.autoStartOnBoot, settings.autoStartMinimized]);
 
   const updateSettings = useCallback(async (partial: Partial<UserSettings>) => {
     setSettings(prev => {
