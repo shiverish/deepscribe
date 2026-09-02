@@ -33,3 +33,5 @@ dist-skills
 # SeeScribe (.NET) build-artefacten
 seescribe/**/bin/
 seescribe/**/obj/
+
+tmp/

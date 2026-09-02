@@ -14,9 +14,32 @@ export interface ReleaseEntry {
   items: ChangelogItem[];
 }
 
-export const CURRENT_APP_VERSION = '0.2.38';
+export const CURRENT_APP_VERSION = '0.2.39';
 
 export const CHANGELOG_ENTRIES: ReleaseEntry[] = [
+  {
+    version: '0.2.39',
+    date: 'September 2026',
+    title: 'Quick Capture Triage & Captures Tray',
+    summary: 'Easily view, manage, and convert raw Quick Capture entries into actionable Ready tasks directly within the Tasks view.',
+    items: [
+      {
+        type: 'feature',
+        text: 'Captures Section in Tasks View',
+        detail: 'A dedicated collapsible tray at the top of the Inbox column (and List view) displaying all unprocessed Quick Capture entries with relative timestamps and project hint badges.'
+      },
+      {
+        type: 'feature',
+        text: '1-Click Ready Task Conversion',
+        detail: 'Instantly transform raw capture notes in-place into structured Ready tasks with Goal, Context, and Acceptance Criteria, pre-assigned to the hinted project.'
+      },
+      {
+        type: 'improvement',
+        text: 'Writing Panel Quick Capture Inspector',
+        detail: 'Review and convert captured notes into Ready tasks directly while inspecting or editing notes in the Writing Panel.'
+      }
+    ]
+  },
   {
     version: '0.2.38',
     date: 'September 2026',

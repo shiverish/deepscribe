@@ -12,7 +12,7 @@ import { TasksView } from './components/Tasks/TasksView';
 import { FocusView } from './components/Focus/FocusView';
 import { resolveStartupView } from './utils/views';
 import { QuickCaptureWindow } from './components/Capture/QuickCaptureWindow';
-import { createCaptureBlock, isProcessedCapture } from './utils/quickCapture';
+import { createCaptureBlock, isCaptureBlock, isProcessedCapture } from './utils/quickCapture';
 import { SearchModal } from './components/Search/SearchModal';
 import { TrashModal } from './components/Modals/TrashModal';
 import { ExportImportModal } from './components/Modals/ExportImportModal';
@@ -1006,7 +1006,7 @@ function DeepScribeApp() {
     setFocusedLevel(path.length);
     setFocusedCardId(block.id);
     setIsWritingPanelOpen(true);
-    if (block.kind === 'task') {
+    if (block.kind === 'task' || isCaptureBlock(block)) {
       changeView('tasks');
     } else {
       changeView('columns');

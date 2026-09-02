@@ -1,7 +1,8 @@
 import { db } from '../db/db';
 import { createId } from '../db/operations';
-import type { Block } from '../types';
-import { TASK_INBOX_PROJECT_ID } from './taskBlocks';
+import { recordActivity } from '../db/activity';
+import type { Block, Project } from '../types';
+import { createTaskMetadata, getNextTaskNumber, taskContentFromParts, TASK_INBOX_PROJECT_ID } from './taskBlocks';
 
 /**
  * Quick Capture entries are ordinary blocks in the Workspace Inbox — never
@@ -124,4 +125,97 @@ export async function createCaptureBlock(payload: CreateCapturePayload): Promise
   }
 
   return block;
+}
+
+export function extractProjectHint(plainText: string): { rawText: string; hintName?: string } {
+  const match = plainText.match(/(?:\r?\n)*Project hint:\s*(.+)$/i);
+  if (match) {
+    const hintName = match[1].trim();
+    const rawText = plainText.slice(0, match.index).trim();
+    return { rawText, hintName: hintName || undefined };
+  }
+  return { rawText: plainText.trim(), hintName: undefined };
+}
+
+function stripHtmlTags(html: string): string {
+  return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Transforms an unprocessed capture block in-place into a Ready task.
+ * Assigns to the hinted project (if found) or Workspace Inbox, generates
+ * the standard prompt template, and updates the database.
+ */
+export async function convertCaptureToReadyTask(
+  captureBlock: Block,
+  projects: Project[],
+  allBlocks: Block[]
+): Promise<Block> {
+  const { rawText, hintName } = extractProjectHint(captureBlock.plainText || '');
+
+  let targetProjectId = TASK_INBOX_PROJECT_ID;
+  if (hintName) {
+    const matched = projects.find(
+      p => !p.isTrash && p.title.trim().toLowerCase() === hintName.trim().toLowerCase()
+    );
+    if (matched) {
+      targetProjectId = matched.id;
+    }
+  }
+
+  const goal = 'Turn captured note into actionable work';
+  const context = rawText || captureBlock.title;
+  const acceptanceCriteria = [
+    'Evaluate the captured note and execute the necessary actions or create concrete subtasks',
+    'Update or complete the task'
+  ];
+  const formattedContent = taskContentFromParts(goal, context, acceptanceCriteria);
+  const plainText = stripHtmlTags(formattedContent) || `${goal} ${context}`;
+
+  const tasks = allBlocks.filter(b => !b.isTrash && b.kind === 'task');
+  const position = tasks.reduce((highest, b) => b.task?.status === 'ready' ? Math.max(highest, b.task.position) : highest, -1) + 1;
+  const taskNumber = getNextTaskNumber(allBlocks);
+
+  const now = Date.now();
+  const taskMeta = {
+    ...createTaskMetadata(position, { type: 'user' }, taskNumber),
+    status: 'ready' as const,
+    readyAt: now
+  };
+
+  const updatedTags = (captureBlock.tags ?? []).filter(t => t !== CAPTURE_UNPROCESSED_TAG);
+
+  const updatedBlock: Block = {
+    ...captureBlock,
+    projectId: targetProjectId,
+    parentId: null,
+    kind: 'task',
+    task: taskMeta,
+    content: formattedContent,
+    plainText,
+    tags: updatedTags,
+    updatedAt: now
+  };
+
+  await db.blocks.put(updatedBlock);
+
+  try {
+    await recordActivity({
+      projectId: targetProjectId,
+      blockId: updatedBlock.id,
+      source: 'user',
+      action: 'task-created',
+      summary: `Task “${updatedBlock.title}” created from capture`
+    });
+  } catch {
+    // Activity logging shouldn't block task conversion
+  }
+
+  return updatedBlock;
+}
+
+export function isUnprocessedCapture(block: { tags?: string[]; kind?: string; isTrash?: boolean }): boolean {
+  if (block.isTrash || block.kind === 'task') return false;
+  const tags = block.tags ?? [];
+  return tags.includes(CAPTURE_TAG) && tags.includes(CAPTURE_UNPROCESSED_TAG);
 }

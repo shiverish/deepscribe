@@ -6,8 +6,10 @@ import {
   capturePlainText,
   captureContentHtml,
   captureTitleFromText,
+  extractProjectHint,
   isCaptureBlock,
-  isProcessedCapture
+  isProcessedCapture,
+  isUnprocessedCapture
 } from './quickCapture';
 
 describe('captureTitleFromText', () => {
@@ -60,11 +62,32 @@ describe('capturePlainText', () => {
   });
 });
 
+describe('extractProjectHint', () => {
+  it('extracts hint name and raw text when hint is present', () => {
+    const result = extractProjectHint('Need to buy milk\n\nProject hint: Personal');
+    expect(result.rawText).toBe('Need to buy milk');
+    expect(result.hintName).toBe('Personal');
+  });
+
+  it('returns raw text and undefined hint when no hint is present', () => {
+    const result = extractProjectHint('Just a simple note');
+    expect(result.rawText).toBe('Just a simple note');
+    expect(result.hintName).toBeUndefined();
+  });
+});
+
 describe('capture state', () => {
   it('recognises a capture by its tag', () => {
     expect(isCaptureBlock({ tags: [CAPTURE_TAG, CAPTURE_UNPROCESSED_TAG] })).toBe(true);
     expect(isCaptureBlock({ tags: ['idea'] })).toBe(false);
     expect(isCaptureBlock({ tags: undefined })).toBe(false);
+  });
+
+  it('recognises unprocessed captures', () => {
+    expect(isUnprocessedCapture({ tags: [CAPTURE_TAG, CAPTURE_UNPROCESSED_TAG] })).toBe(true);
+    expect(isUnprocessedCapture({ tags: [CAPTURE_TAG, CAPTURE_PROCESSED_TAG] })).toBe(false);
+    expect(isUnprocessedCapture({ tags: [CAPTURE_TAG, CAPTURE_UNPROCESSED_TAG], kind: 'task' })).toBe(false);
+    expect(isUnprocessedCapture({ tags: [CAPTURE_TAG, CAPTURE_UNPROCESSED_TAG], isTrash: true })).toBe(false);
   });
 
   it('counts an entry as processed only once an agent swapped the tag over', () => {
@@ -76,3 +99,4 @@ describe('capture state', () => {
     expect(isProcessedCapture({ tags: [CAPTURE_PROCESSED_TAG] })).toBe(false);
   });
 });
+
