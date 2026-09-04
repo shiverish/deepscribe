@@ -163,11 +163,13 @@ export async function convertCaptureToReadyTask(
     }
   }
 
-  const goal = 'Turn captured note into actionable work';
+  const goal = 'Analyze this captured note and turn it into one or more well-defined, actionable tasks';
   const context = rawText || captureBlock.title;
   const acceptanceCriteria = [
-    'Evaluate the captured note and execute the necessary actions or create concrete subtasks',
-    'Update or complete the task'
+    'Investigate the relevant project context and codebase to assess feasibility, scope, and requirements',
+    'Create concrete task(s) via create_task with a descriptive title, clear goal, context, and testable acceptance criteria',
+    'Link the newly created task(s) back to this capture with link_blocks (relates-to or derived-from)',
+    'Document the findings or created tasks and complete or transition this triage task'
   ];
   const formattedContent = taskContentFromParts(goal, context, acceptanceCriteria);
   const plainText = stripHtmlTags(formattedContent) || `${goal} ${context}`;

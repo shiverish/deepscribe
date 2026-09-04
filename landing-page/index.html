@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#071019">
+  <meta name="description" content="DeepScribe is the shared, local-first workspace where people and AI agents work from the same knowledge and move tasks forward together.">
+  <title>DeepScribe — One workspace for you and your agents</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap');
+
+    :root {
+      --ink: #071019;
+      --ink-soft: #0a1824;
+      --panel: rgba(12, 29, 42, .76);
+      --panel-solid: #0e2130;
+      --line: rgba(135, 181, 202, .16);
+      --text: #f3f7f8;
+      --muted: #91a8b4;
+      --cyan: #58edf5;
+      --cyan-soft: #9af7fb;
+      --gold: #ffd66b;
+      --gold-deep: #e79224;
+      --green: #68e4a7;
+      --font: "Manrope", system-ui, sans-serif;
+      --mono: "DM Mono", monospace;
+      --radius: 22px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      overflow-x: hidden;
+      background: var(--ink);
+      color: var(--text);
+      font-family: var(--font);
+      -webkit-font-smoothing: antialiased;
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 10;
+      opacity: .24;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.18'/%3E%3C/svg%3E");
+      mix-blend-mode: soft-light;
+    }
+    a { color: inherit; text-decoration: none; }
+    button, a { -webkit-tap-highlight-color: transparent; }
+    svg { display: block; }
+
+    .shell { width: min(1180px, calc(100% - 40px)); margin: 0 auto; }
+    .nav {
+      position: fixed;
+      z-index: 20;
+      top: 18px;
+      left: 50%;
+      width: min(1180px, calc(100% - 32px));
+      height: 66px;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 14px 0 18px;
+      border: 1px solid rgba(157, 202, 221, .16);
+      border-radius: 18px;
+      background: rgba(7, 16, 25, .74);
+      box-shadow: 0 18px 60px rgba(0, 0, 0, .28);
+      backdrop-filter: blur(18px);
+    }
+    .brand { display: flex; align-items: center; gap: 11px; font-weight: 800; letter-spacing: -.03em; }
+    .brand-mark { width: 38px; height: 38px; }
+    .brand-name { font-size: 18px; }
+    .nav-links { display: flex; align-items: center; gap: 30px; color: #b4c6ce; font-size: 13px; font-weight: 600; }
+    .nav-links a { transition: color .2s ease; }
+    .nav-links a:hover { color: white; }
+    .nav-cta { padding: 11px 17px; border-radius: 12px; background: var(--text); color: var(--ink) !important; }
+
+    .hero {
+      position: relative;
+      min-height: 920px;
+      padding: 185px 0 90px;
+      isolation: isolate;
+    }
+    .hero::before {
+      content: "";
+      position: absolute;
+      z-index: -3;
+      inset: 0 0 auto;
+      height: 840px;
+      background:
+        linear-gradient(90deg, rgba(7,16,25,.97) 0%, rgba(7,16,25,.8) 45%, rgba(7,16,25,.42) 100%),
+        linear-gradient(0deg, var(--ink) 0%, transparent 42%),
+        url('assets/deepscribe-knowledge-orbit.png') center 28% / cover no-repeat;
+      opacity: .88;
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      z-index: -2;
+      inset: 0;
+      background-image: linear-gradient(rgba(112,177,204,.045) 1px, transparent 1px), linear-gradient(90deg, rgba(112,177,204,.045) 1px, transparent 1px);
+      background-size: 56px 56px;
+      mask-image: linear-gradient(to bottom, black 0%, transparent 78%);
+    }
+    .hero-copy { width: min(760px, 100%); }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      margin-bottom: 24px;
+      color: var(--cyan-soft);
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+    }
+    .eyebrow::before { content: ""; width: 23px; height: 1px; background: var(--cyan); box-shadow: 0 0 14px var(--cyan); }
+    h1 {
+      margin: 0;
+      max-width: 850px;
+      font-size: clamp(56px, 7vw, 96px);
+      line-height: .97;
+      letter-spacing: -.065em;
+      font-weight: 700;
+    }
+    h1 em { color: var(--gold); font-style: normal; }
+    .hero-lede {
+      width: min(620px, 100%);
+      margin: 28px 0 0;
+      color: #afc0c8;
+      font-size: clamp(17px, 2vw, 20px);
+      line-height: 1.7;
+    }
+    .hero-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; margin-top: 36px; }
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      min-height: 54px;
+      padding: 0 22px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      font-weight: 700;
+      font-size: 14px;
+      transition: transform .2s ease, box-shadow .2s ease, background .2s ease;
+    }
+    .button:hover { transform: translateY(-2px); }
+    .button-primary { background: var(--gold); color: #191407; box-shadow: 0 12px 34px rgba(231,146,36,.18); }
+    .button-primary:hover { box-shadow: 0 16px 44px rgba(231,146,36,.3); }
+    .button-secondary { background: rgba(17, 39, 54, .6); color: #d9e6ea; backdrop-filter: blur(10px); }
+    .button svg { width: 17px; height: 17px; }
+    .hero-note { margin-top: 15px; color: #6f8995; font-family: var(--mono); font-size: 11px; }
+
+    .hero-pillars {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      width: min(760px, 100%);
+      margin-top: 38px;
+    }
+    .hero-pillar {
+      min-height: 104px;
+      padding: 18px;
+      border: 1px solid rgba(139, 190, 210, .16);
+      border-radius: 14px;
+      background: rgba(8, 22, 32, .66);
+      backdrop-filter: blur(12px);
+    }
+    .hero-pillar strong { display: block; margin-bottom: 7px; font-size: 13px; }
+    .hero-pillar span { display: block; color: #79919c; font-size: 11px; line-height: 1.5; }
+    .hero-pillar i { display: block; width: 18px; height: 2px; margin-bottom: 14px; background: var(--cyan); box-shadow: 0 0 10px rgba(88,237,245,.45); }
+    .hero-pillar:nth-child(2) i { background: var(--gold); box-shadow: 0 0 10px rgba(255,214,107,.4); }
+    .hero-pillar:nth-child(3) i { background: var(--green); box-shadow: 0 0 10px rgba(104,228,167,.35); }
+
+    .product-frame {
+      position: relative;
+      margin-top: 86px;
+      padding: 7px;
+      border: 1px solid rgba(112, 237, 245, .2);
+      border-radius: 25px;
+      background: linear-gradient(135deg, rgba(93, 231, 241, .1), rgba(255, 214, 107, .035));
+      box-shadow: 0 40px 100px rgba(0,0,0,.48), 0 0 0 1px rgba(255,255,255,.025) inset;
+      transform: perspective(1300px) rotateX(1.5deg);
+    }
+    .product-frame::before {
+      content: "";
+      position: absolute;
+      z-index: -1;
+      inset: -10% 14% 10%;
+      background: rgba(46, 205, 217, .16);
+      filter: blur(70px);
+    }
+    .app-window { overflow: hidden; min-height: 500px; border-radius: 19px; background: #09141e; }
+    .app-bar { height: 48px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border-bottom: 1px solid var(--line); background: #0c1b27; }
+    .traffic { display: flex; gap: 7px; }
+    .traffic i { width: 8px; height: 8px; border-radius: 50%; background: #2b4351; }
+    .app-title { color: #78909b; font: 10px var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+    .sync { display: flex; gap: 7px; align-items: center; color: #76909b; font: 9px var(--mono); }
+    .sync::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px var(--green); }
+    .app-body { display: grid; grid-template-columns: 176px minmax(0, 1fr) 330px; min-height: 452px; }
+    .sidebar { padding: 18px 12px; border-right: 1px solid var(--line); background: #0a1721; }
+    .ui-label { margin: 0 8px 12px; color: #57717e; font: 9px var(--mono); letter-spacing: .14em; text-transform: uppercase; }
+    .project { display: flex; align-items: center; gap: 9px; padding: 9px 8px; margin-bottom: 3px; border-radius: 8px; color: #879da7; font-size: 11px; }
+    .project.active { background: rgba(71,222,234,.09); color: #e5f4f6; }
+    .dot { width: 6px; height: 6px; border-radius: 50%; background: #526c78; }
+    .dot.cyan { background: var(--cyan); box-shadow: 0 0 8px rgba(88,237,245,.6); }
+    .dot.gold { background: var(--gold); }
+    .dot.green { background: var(--green); }
+    .columns { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1px; min-width: 0; background: var(--line); }
+    .column { min-width: 0; padding: 17px 13px; background: #0b1924; }
+    .column-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; color: #65808c; font: 9px var(--mono); text-transform: uppercase; }
+    .node { padding: 11px; margin-bottom: 8px; border: 1px solid rgba(134,176,193,.11); border-radius: 9px; background: #10222f; color: #a9bbc2; font-size: 10px; line-height: 1.45; }
+    .node small { display: block; margin-top: 6px; color: #4f6874; font: 8px var(--mono); }
+    .node.selected { border-color: rgba(88,237,245,.45); background: rgba(32, 122, 139, .16); color: #edfbfc; box-shadow: 0 0 22px rgba(49,199,216,.06); }
+    .editor { padding: 26px 27px; background: #0d1d29; }
+    .editor .tag { color: var(--gold); font: 9px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+    .editor h3 { margin: 14px 0 16px; font-size: 25px; line-height: 1.15; letter-spacing: -.04em; }
+    .editor p { color: #91a7b1; font-family: Georgia, serif; font-size: 13px; line-height: 1.75; }
+    .editor blockquote { margin: 22px 0; padding-left: 14px; border-left: 2px solid var(--cyan); color: #d8e6e9; font-family: Georgia, serif; font-size: 13px; line-height: 1.65; }
+    .agent-pill { display: inline-flex; align-items: center; gap: 6px; margin-top: 16px; padding: 7px 10px; border-radius: 999px; background: rgba(255,214,107,.08); color: #e5c466; font: 8px var(--mono); }
+
+    .proof { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 18px 34px; padding: 28px 0 110px; color: #718894; font: 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+    .proof span { display: flex; align-items: center; gap: 10px; }
+    .proof i { width: 4px; height: 4px; border-radius: 50%; background: var(--cyan); }
+
+    .section { padding: 120px 0; }
+    .section-head { display: grid; grid-template-columns: 1fr 1fr; gap: 70px; align-items: end; margin-bottom: 62px; }
+    .kicker { margin-bottom: 16px; color: var(--cyan); font: 11px var(--mono); letter-spacing: .14em; text-transform: uppercase; }
+    h2 { margin: 0; max-width: 650px; font-size: clamp(38px, 5vw, 62px); line-height: 1.05; letter-spacing: -.055em; }
+    .section-intro { margin: 0; color: #91a8b4; font-size: 17px; line-height: 1.75; }
+
+    .workflow { border-top: 1px solid var(--line); }
+    .step { display: grid; grid-template-columns: 100px 1fr 1fr; gap: 36px; padding: 42px 0; border-bottom: 1px solid var(--line); transition: padding .25s ease; }
+    .step:hover { padding-left: 12px; }
+    .step-number { color: var(--gold); font: 12px var(--mono); }
+    .step h3 { margin: -5px 0 0; font-size: 27px; letter-spacing: -.035em; }
+    .step p { margin: 0; max-width: 500px; color: #839ba6; line-height: 1.7; }
+
+    .features { background: #091620; border-top: 1px solid rgba(129,176,195,.1); border-bottom: 1px solid rgba(129,176,195,.1); }
+    .bento { display: grid; grid-template-columns: 1.15fr .85fr; gap: 16px; }
+    .card { position: relative; overflow: hidden; min-height: 320px; padding: 34px; border: 1px solid var(--line); border-radius: var(--radius); background: rgba(15, 36, 50, .72); }
+    .card.tall { grid-row: span 2; min-height: 656px; }
+    .card::after { content: ""; position: absolute; width: 190px; height: 190px; right: -80px; bottom: -100px; border: 1px solid rgba(88,237,245,.1); border-radius: 50%; box-shadow: 0 0 0 35px rgba(88,237,245,.025), 0 0 0 70px rgba(88,237,245,.015); }
+    .card-icon { display: grid; place-items: center; width: 40px; height: 40px; margin-bottom: 45px; border: 1px solid rgba(88,237,245,.22); border-radius: 11px; color: var(--cyan); background: rgba(88,237,245,.06); }
+    .card-icon svg { width: 19px; height: 19px; }
+    .card h3 { margin: 0 0 12px; font-size: 25px; letter-spacing: -.035em; }
+    .card p { max-width: 520px; margin: 0; color: #879fa9; line-height: 1.65; }
+    .mini-tree { margin-top: 55px; padding: 24px; border: 1px solid rgba(130,178,196,.12); border-radius: 16px; background: rgba(5,14,21,.62); }
+    .tree-row { display: flex; align-items: center; gap: 10px; min-height: 38px; color: #98adb5; font-size: 12px; }
+    .tree-row:nth-child(2) { padding-left: 25px; }
+    .tree-row:nth-child(3) { padding-left: 50px; color: white; }
+    .tree-row:nth-child(4) { padding-left: 75px; }
+    .tree-line { width: 14px; height: 1px; background: #34515e; }
+    .privacy-meter { display: grid; place-items: center; margin: 50px auto 0; width: 145px; aspect-ratio: 1; border: 1px solid rgba(255,214,107,.2); border-radius: 50%; box-shadow: 0 0 0 20px rgba(255,214,107,.025), inset 0 0 45px rgba(255,214,107,.035); }
+    .privacy-meter strong { color: var(--gold); font: 25px var(--mono); }
+    .privacy-meter span { display: block; color: #78909b; font: 8px var(--mono); text-align: center; text-transform: uppercase; }
+
+    .quote { padding: 150px 0; text-align: center; }
+    .quote-mark { color: var(--gold); font: 44px Georgia, serif; }
+    .quote blockquote { width: min(900px, 100%); margin: 10px auto 30px; font-size: clamp(30px, 4vw, 52px); line-height: 1.2; letter-spacing: -.045em; }
+    .quote p { color: #718a96; font: 11px var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+
+    .final-cta {
+      position: relative;
+      overflow: hidden;
+      margin-bottom: 34px;
+      padding: 90px 60px;
+      border: 1px solid rgba(88,237,245,.16);
+      border-radius: 28px;
+      background: #0b1d29;
+      text-align: center;
+    }
+    .final-cta::before { content: ""; position: absolute; inset: -170px 15% auto; height: 330px; border: 1px solid rgba(88,237,245,.16); border-radius: 50%; box-shadow: 0 0 0 60px rgba(88,237,245,.02), 0 0 90px rgba(88,237,245,.08); }
+    .final-cta > * { position: relative; }
+    .final-cta h2 { margin-inline: auto; }
+    .final-cta p { margin: 22px auto 30px; color: #8fa6b1; }
+    .final-cta .hero-actions { justify-content: center; margin-top: 0; }
+
+    footer { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 34px 0 45px; color: #617986; font-size: 11px; }
+    footer .brand { color: #b6c8ce; }
+    footer .brand-mark { width: 28px; height: 28px; }
+    .footer-links { display: flex; gap: 24px; }
+    .footer-links a:hover { color: white; }
+
+    .reveal { opacity: 0; transform: translateY(20px); transition: opacity .7s ease, transform .7s ease; }
+    .reveal.visible { opacity: 1; transform: none; }
+
+    @media (max-width: 900px) {
+      .nav-links a:not(.nav-cta) { display: none; }
+      .hero { min-height: auto; padding-top: 150px; }
+      .app-body { grid-template-columns: 135px 1fr; }
+      .editor { display: none; }
+      .section-head { grid-template-columns: 1fr; gap: 24px; }
+      .step { grid-template-columns: 60px 1fr; }
+      .step p { grid-column: 2; }
+      .bento { grid-template-columns: 1fr; }
+      .card.tall { grid-row: auto; min-height: 520px; }
+    }
+    @media (max-width: 620px) {
+      .shell { width: min(100% - 28px, 1180px); }
+      .nav { top: 10px; height: 58px; }
+      .brand-name { font-size: 16px; }
+      .brand-mark { width: 32px; height: 32px; }
+      .nav-cta { padding: 9px 12px; font-size: 12px; }
+      .hero { padding-top: 132px; }
+      h1 { font-size: clamp(48px, 15vw, 69px); }
+      .hero-actions { align-items: stretch; flex-direction: column; }
+      .button { width: 100%; }
+      .hero-pillars { grid-template-columns: 1fr; }
+      .hero-pillar { min-height: auto; }
+      .product-frame { margin-top: 58px; }
+      .app-window { min-height: 390px; }
+      .app-body { grid-template-columns: 1fr; min-height: 342px; }
+      .sidebar { display: none; }
+      .columns { min-height: 342px; }
+      .column { padding: 13px 9px; }
+      .node { padding: 8px; font-size: 8px; }
+      .proof { padding-bottom: 70px; }
+      .section { padding: 85px 0; }
+      .step { grid-template-columns: 42px 1fr; gap: 18px; }
+      .step h3 { font-size: 22px; }
+      .card { padding: 26px; }
+      .final-cta { padding: 70px 22px; }
+      footer { align-items: flex-start; flex-direction: column; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+    }
+  </style>
+</head>
+<body>
+  <nav class="nav" aria-label="Main navigation">
+    <a class="brand" href="#top" aria-label="DeepScribe home">
+      <svg class="brand-mark" viewBox="0 0 512 512" role="img" aria-label="DeepScribe logo">
+        <defs><linearGradient id="d" x2="1" y2="1"><stop stop-color="#4AEAF5"/><stop offset="1" stop-color="#007CA9"/></linearGradient><linearGradient id="s" x2="1" y2="1"><stop stop-color="#FFE27A"/><stop offset="1" stop-color="#E98913"/></linearGradient></defs>
+        <ellipse cx="256" cy="258" rx="193" ry="93" fill="none" stroke="#50EDF6" stroke-opacity=".5" stroke-width="5" transform="rotate(-28 256 258)"/><ellipse cx="256" cy="258" rx="193" ry="93" fill="none" stroke="#FFD25B" stroke-opacity=".5" stroke-width="5" transform="rotate(32 256 258)"/><circle cx="119" cy="157" r="11" fill="#62F6FF"/><circle cx="407" cy="349" r="11" fill="#FFE078"/><path fill="url(#d)" d="M104 157h89c61 0 97 39 97 99s-36 99-97 99h-89Zm56 49v100h29c30 0 45-17 45-50s-15-50-45-50Z"/><path fill="url(#s)" d="M421 170c-22-20-48-30-75-30-46 0-77 28-77 68 0 36 24 55 72 67 29 7 39 15 39 31 0 15-13 24-33 24-24 0-46-12-65-33l-29 45c26 29 58 43 94 43 49 0 82-29 82-71 0-39-25-57-73-69-28-7-38-14-38-29 0-13 11-21 28-21 20 0 39 9 56 25Z"/>
+      </svg>
+      <span class="brand-name">DeepScribe</span>
+    </a>
+    <div class="nav-links">
+      <a href="#workflow">How it works</a>
+      <a href="#features">Features</a>
+      <a href="https://github.com/shiverish/deepscribe" target="_blank" rel="noreferrer">GitHub</a>
+      <a class="nav-cta" href="https://github.com/shiverish/deepscribe/releases/latest">Get the app</a>
+    </div>
+  </nav>
+
+  <main id="top">
+    <section class="hero">
+      <div class="shell">
+        <div class="hero-copy reveal visible">
+          <div class="eyebrow">One workspace for humans + agents</div>
+          <h1>Move work forward. <em>Together.</em></h1>
+          <p class="hero-lede">DeepScribe gives you and your AI agents the same shared knowledge, a clear task queue, and one place to hand off work without losing context or control.</p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="https://github.com/shiverish/deepscribe/releases/latest">
+              Download for Windows
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+            </a>
+            <a class="button button-secondary" href="#workflow">See agent co-work</a>
+          </div>
+          <div class="hero-note">Open source · Local-first · Built around MCP</div>
+          <div class="hero-pillars" aria-label="DeepScribe core capabilities">
+            <div class="hero-pillar"><i></i><strong>Agent co-work</strong><span>Agents pick up work, contribute, and return results in context.</span></div>
+            <div class="hero-pillar"><i></i><strong>Tasks</strong><span>See what is ready, in flight, blocked, or waiting for review.</span></div>
+            <div class="hero-pillar"><i></i><strong>Shared knowledge</strong><span>People and agents work from one connected source of truth.</span></div>
+          </div>
+        </div>
+
+        <div class="product-frame reveal" aria-label="Preview of the DeepScribe workspace">
+          <div class="app-window">
+            <div class="app-bar"><div class="traffic"><i></i><i></i><i></i></div><div class="app-title">DeepScribe workspace</div><div class="sync">Saved locally</div></div>
+            <div class="app-body">
+              <aside class="sidebar">
+                <div class="ui-label">Workspace</div>
+                <div class="project"><span class="dot cyan"></span>Shared knowledge</div>
+                <div class="project active"><span class="dot gold"></span>Tasks</div>
+                <div class="project"><span class="dot green"></span>Agent activity</div>
+                <div class="project"><span class="dot"></span>Projects</div>
+              </aside>
+              <div class="columns">
+                <div class="column"><div class="column-head"><span>Ready</span><span>4</span></div><div class="node selected">Research launch risks<small>Context attached</small></div><div class="node">Draft onboarding copy<small>2 dependencies</small></div><div class="node">Map user journey</div></div>
+                <div class="column"><div class="column-head"><span>In flight</span><span>2</span></div><div class="node selected">Compare release paths<small>Codex · 18 min</small></div><div class="node">Check documentation<small>Claude · 7 min</small></div></div>
+                <div class="column"><div class="column-head"><span>Review</span><span>3</span></div><div class="node selected">Launch recommendation<small>Agent result</small></div><div class="node">Research summary</div><div class="node">Updated acceptance checks</div></div>
+              </div>
+              <article class="editor"><div class="tag">Task · Ready for review</div><h3>Launch recommendation</h3><p>Codex completed the task using the linked product brief, research notes, and project decisions.</p><blockquote>Recommend a staged Windows release, followed by the MCP integration guide.</blockquote><p>Three findings and two follow-up tasks were added to the shared workspace.</p><div class="agent-pill">● Codex returned a result</div></article>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="shell proof reveal"><span><i></i>Shared context</span><span><i></i>Human-owned tasks</span><span><i></i>Multi-agent ready</span><span><i></i>Local-first</span></div>
+
+    <section class="section" id="workflow">
+      <div class="shell">
+        <div class="section-head reveal"><div><div class="kicker">One continuous workflow</div><h2>Knowledge becomes work. Work becomes progress.</h2></div><p class="section-intro">Stop rebuilding context in every chat. DeepScribe connects what your team knows, what needs doing, and what your agents deliver.</p></div>
+        <div class="workflow reveal">
+          <div class="step"><div class="step-number">01</div><h3>Share the knowledge</h3><p>Connect briefs, decisions, research, and references across projects. People and agents start with the same durable context.</p></div>
+          <div class="step"><div class="step-number">02</div><h3>Turn context into tasks</h3><p>Make the next action explicit. Dependencies, ownership, status, and acceptance criteria stay visible from inbox to review.</p></div>
+          <div class="step"><div class="step-number">03</div><h3>Co-work with your agents</h3><p>Agents claim suitable work, read the linked context, leave results in the task, and hand control back to you for review.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section features" id="features">
+      <div class="shell">
+        <div class="section-head reveal"><div><div class="kicker">The co-work layer</div><h2>Everyone works from the same page.</h2></div><p class="section-intro">DeepScribe is the shared context and coordination layer between you, your projects, and the AI agents doing work on your behalf.</p></div>
+        <div class="bento">
+          <article class="card tall reveal">
+            <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 4h6v5H5zM13 15h6v5h-6zM15 4h4v5h-4zM5 15h4v5H5zM11 6.5h4M7 9v6M17 9v6M9 17.5h4"/></svg></div>
+            <h3>Shared knowledge, not repeated prompts</h3><p>Organize living project context in connected blocks. Agents can find the relevant passage, follow relationships, and contribute without flattening your structure.</p>
+            <div class="mini-tree"><div class="tree-row"><span class="dot cyan"></span>Product launch</div><div class="tree-row"><span class="tree-line"></span>Decisions &amp; constraints</div><div class="tree-row"><span class="tree-line"></span>Release strategy</div><div class="tree-row"><span class="tree-line"></span>Linked agent findings</div></div>
+          </article>
+          <article class="card reveal">
+            <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3a4 4 0 0 0-4 4v2a4 4 0 0 0-2 7.5A4 4 0 0 0 12 20M12 3a4 4 0 0 1 4 4v2a4 4 0 0 1 2 7.5A4 4 0 0 1 12 20M12 3v17M8 8h4M12 14h5"/></svg></div>
+            <h3>Agent co-work with clear handoffs</h3><p>Codex, Claude, and other MCP clients can pick up scoped work, write back results, and signal when your review is needed.</p>
+          </article>
+          <article class="card reveal">
+            <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="3" width="16" height="18" rx="3"/><path d="M8 10h8M8 14h5M8 7h.01"/></svg></div>
+            <h3>Tasks stay human-owned</h3><p>Agents can do the work, but you control priority, dependencies, assignment, and the final move from review to done.</p><div class="privacy-meter"><div><strong>REVIEW</strong><span>control returns to you</span></div></div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="quote shell reveal">
+      <div class="quote-mark">“</div><blockquote>Your agents should know what the project knows—and show you exactly what they changed.</blockquote><p>DeepScribe co-work principle</p>
+    </section>
+
+    <section class="shell final-cta reveal">
+      <div class="kicker">Give every agent the right context</div>
+      <h2>Make AI part of the workflow—not another inbox.</h2>
+      <p>Bring shared knowledge, tasks, and agent results together in DeepScribe.</p>
+      <div class="hero-actions"><a class="button button-primary" href="https://github.com/shiverish/deepscribe/releases/latest">Get DeepScribe</a><a class="button button-secondary" href="https://github.com/shiverish/deepscribe" target="_blank" rel="noreferrer">View on GitHub</a></div>
+    </section>
+  </main>
+
+  <footer class="shell">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 512 512" aria-hidden="true"><ellipse cx="256" cy="258" rx="193" ry="93" fill="none" stroke="#50EDF6" stroke-opacity=".5" stroke-width="8" transform="rotate(-28 256 258)"/><ellipse cx="256" cy="258" rx="193" ry="93" fill="none" stroke="#FFD25B" stroke-opacity=".5" stroke-width="8" transform="rotate(32 256 258)"/><path fill="#55e8f1" d="M104 157h89c61 0 97 39 97 99s-36 99-97 99h-89Zm56 49v100h29c30 0 45-17 45-50s-15-50-45-50Z"/><path fill="#ffd66b" d="M421 170c-22-20-48-30-75-30-46 0-77 28-77 68 0 36 24 55 72 67 29 7 39 15 39 31 0 15-13 24-33 24-24 0-46-12-65-33l-29 45c26 29 58 43 94 43 49 0 82-29 82-71 0-39-25-57-73-69-28-7-38-14-38-29 0-13 11-21 28-21 20 0 39 9 56 25Z"/></svg>
+      <span>DeepScribe</span>
+    </div>
+    <span>Local-first thinking, connected.</span>
+    <div class="footer-links"><a href="https://github.com/shiverish/deepscribe">GitHub</a><a href="https://github.com/shiverish/deepscribe/blob/master/LICENSE">GPL-3.0</a></div>
+  </footer>
+
+  <script>
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.12 });
+    document.querySelectorAll('.reveal:not(.visible)').forEach((el) => observer.observe(el));
+  </script>
+</body>
+</html>

@@ -14,9 +14,27 @@ export interface ReleaseEntry {
   items: ChangelogItem[];
 }
 
-export const CURRENT_APP_VERSION = '0.2.39';
+export const CURRENT_APP_VERSION = '0.2.40';
 
 export const CHANGELOG_ENTRIES: ReleaseEntry[] = [
+  {
+    version: '0.2.40',
+    date: 'September 2026',
+    title: 'Product Landing Page & Enhanced Capture Triage Instructions',
+    summary: 'Introduced the official product landing page and enhanced agent instructions for Quick Capture triage.',
+    items: [
+      {
+        type: 'feature',
+        text: 'Product Landing Page',
+        detail: 'Modern showcase landing page introducing DeepScribe architecture, orbital momentum workflow, and AI agent co-working capabilities.'
+      },
+      {
+        type: 'improvement',
+        text: 'Actionable Capture Triage Prompt',
+        detail: 'Refined the default Goal, Context, and Acceptance Criteria when converting captured notes into Ready tasks for agent triage.'
+      }
+    ]
+  },
   {
     version: '0.2.39',
     date: 'September 2026',
