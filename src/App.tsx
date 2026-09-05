@@ -326,6 +326,10 @@ function DeepScribeApp() {
 
   const activeBlockId = selectedBlockPath.length > 0 ? selectedBlockPath[selectedBlockPath.length - 1] : null;
   const activeBlock = useMemo(() => allBlocks.find(b => b.id === activeBlockId) || null, [allBlocks, activeBlockId]);
+  const activeCaptureId = useMemo(() => {
+    if (!activeBlock) return undefined;
+    return isCaptureBlock(activeBlock) ? activeBlock.id : undefined;
+  }, [activeBlock]);
   const agentEditCounts = useMemo(() => calculateAgentEditCounts(allBlocks), [allBlocks]);
   const blockedBlockIds = useMemo(() => {
     const set = new Set<string>();
@@ -1132,7 +1136,7 @@ function DeepScribeApp() {
           />
         )}
 
-        {activeView === 'inbox' && <InboxView selectedCaptureId={activeBlockId ?? undefined} blocks={allBlocks} onOpenBlock={openBlockById} onDelete={block => handleDeleteToTrash(block, 'block')} />}
+        {activeView === 'inbox' && <InboxView selectedCaptureId={activeCaptureId} blocks={allBlocks} onOpenBlock={openBlockById} onDelete={block => handleDeleteToTrash(block, 'block')} />}
 
         {activeView === 'tasks' && (
           <TasksView

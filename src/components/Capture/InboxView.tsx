@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   Inbox,
@@ -43,7 +43,6 @@ export function InboxView({
   onOpenBlock: (id: string) => void;
   onDelete: (block: Block) => void;
 }) {
-  const [selectedId, setSelectedId] = useState<string | undefined>(selectedCaptureId);
   const [answer, setAnswer] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -102,14 +101,35 @@ export function InboxView({
       .sort((a, b) => (b.capture?.processedAt ?? b.updatedAt) - (a.capture?.processedAt ?? a.updatedAt));
   }, [captures, now]);
 
-  // Selected capture fallback
-  useEffect(() => {
-    if (selectedCaptureId) {
-      setSelectedId(selectedCaptureId);
-    } else if (!selectedId && (needsDecisionCaptures.length || waitingCaptures.length || historyCaptures.length)) {
-      setSelectedId(needsDecisionCaptures[0]?.id ?? waitingCaptures[0]?.id ?? historyCaptures[0]?.id);
+  const [selectedId, setSelectedId] = useState<string | undefined>(() => {
+    if (selectedCaptureId && blocks.some(b => b.id === selectedCaptureId && !b.isTrash && captureMetadata(b))) {
+      return selectedCaptureId;
     }
-  }, [selectedCaptureId, selectedId, needsDecisionCaptures, waitingCaptures, historyCaptures]);
+    const initialCaptures = blocks.filter(b => !b.isTrash && captureMetadata(b));
+    return initialCaptures[0]?.id;
+  });
+
+  const lastExternalIdRef = useRef<string | undefined>(selectedCaptureId);
+
+  // Synchronize when selectedCaptureId prop changes from the outside (e.g. from search navigation)
+  useEffect(() => {
+    if (selectedCaptureId !== lastExternalIdRef.current) {
+      lastExternalIdRef.current = selectedCaptureId;
+      if (selectedCaptureId && captures.some(b => b.id === selectedCaptureId)) {
+        setSelectedId(selectedCaptureId);
+      }
+    }
+  }, [selectedCaptureId, captures]);
+
+  // Fallback if current selectedId is missing or deleted
+  useEffect(() => {
+    if (!selectedId || !captures.some(b => b.id === selectedId)) {
+      const fallback = needsDecisionCaptures[0]?.id ?? waitingCaptures[0]?.id ?? historyCaptures[0]?.id;
+      if (fallback && fallback !== selectedId) {
+        setSelectedId(fallback);
+      }
+    }
+  }, [selectedId, captures, needsDecisionCaptures, waitingCaptures, historyCaptures]);
 
   const selected = captures.find(b => b.id === selectedId);
   const meta = selected ? captureMetadata(selected) : undefined;
