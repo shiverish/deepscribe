@@ -14,19 +14,20 @@ export interface ReleaseEntry {
   items: ChangelogItem[];
 }
 
-export const CURRENT_APP_VERSION = '0.2.42';
+export const CURRENT_APP_VERSION = '0.2.43';
 
 export const CHANGELOG_ENTRIES: ReleaseEntry[] = [
   {
-    version: '0.2.42',
+    version: '0.2.43',
     date: 'September 2026',
-    title: 'Proposal-First Quick Capture & Decision Inbox',
-    summary: 'Quick Capture is back to a clean decision flow: write and move on. Agents propose suggestions without touching your workspace until you approve.',
+    title: 'Restored Classic Quick Capture in Tasks',
+    summary: 'Restored the streamlined Quick Capture workflow embedded directly within Tasks and Writing Panel, removing the separate Inbox view.',
     items: [
-      { type: 'feature', text: 'Proposal-first decision flow', detail: 'Agents analyze captures and prepare concrete suggestions without modifying your workspace. Review the rationale, diff previews, and criteria under "Needs your decision", then approve with one click.' },
-      { type: 'improvement', text: 'Distraction-free Quick Capture', detail: 'The main capture interface focuses entirely on your thought. Project hints are tucked under "More options". Closes cleanly with a calming confirmation.' },
-      { type: 'improvement', text: 'Clean single-list Inbox & notification badge', detail: 'Replaced technical status tabs with a single list: Needs your decision, Waiting captures (with Analyze now), and collapsible History. Badge alerts you only when your decision is needed.' },
-      { type: 'fix', text: 'Reliable capture saving and draft recovery', detail: 'Quick Capture waits for confirmed workspace storage before closing. Drafts survive focus changes and app restarts; repeated save requests do not duplicate notes.' }
+      {
+        type: 'improvement',
+        text: 'Classic Quick Capture restored',
+        detail: 'Captures appear in their dedicated collapsible section inside Tasks with 1-click Ready task conversion, without a separate Inbox view.'
+      }
     ]
   },
   {

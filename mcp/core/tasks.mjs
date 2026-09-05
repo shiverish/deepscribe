@@ -311,7 +311,6 @@ export function createTaskClaim(input) {
  * @returns {T}
  */
 export function redactTaskClaim(block) {
-  if (block?.capture) block = { ...block, capture: { ...block.capture, receipts: undefined, claimRequests: undefined, requestId: undefined, claim: block.capture.claim ? { ...block.capture.claim, token: '[redacted]' } : undefined } };
   if (!block?.task?.claim) return block;
   return { ...block, task: { ...block.task, claim: { ...block.task.claim, token: '[redacted]' } } };
 }

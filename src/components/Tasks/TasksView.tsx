@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react'
 import { Archive, ArrowRight, Bot, Camera, Check, CheckCheck, ChevronDown, ChevronRight, Columns3, Copy, Filter, FolderArchive, Layers, List, PanelRightClose, PanelRightOpen, Plus, Search, Trash2, User } from 'lucide-react';
 import type { Block, Project, TaskAgentTarget, TaskStatus } from '../../types';
 import { formatTaskHumanId, taskCreatorLabel, TASK_AGENT_LABELS, TASK_AGENT_TARGETS, TASK_STATUSES, TASK_STATUS_LABELS, TASK_INBOX_PROJECT_ID } from '../../utils/taskBlocks';
+import { extractProjectHint, isUnprocessedCapture, convertCaptureToReadyTask } from '../../utils/quickCapture';
 import { copyAgentReference } from '../../utils/agentReferences';
 import { archiveDoneTasks, archiveUserTask, createUserTask, relocateUserTask, updateUserTaskAgent, updateUserTaskStatus, bulkUpdateTaskStatus, bulkRelocateTasks, bulkUpdateTaskAgent, bulkDeleteTasks, bulkMarkTasksRead } from '../../utils/taskManagement';
 import { hasUnseenAgentEdits } from '../../utils/agentEdits';
@@ -11,6 +12,7 @@ import { isNoProjectsSelected } from '../../utils/projectFilter';
 import { ProjectFilterDropdown } from './ProjectFilterDropdown';
 import { ClearSearchButton } from '../Search/ClearSearchButton';
 import { FloatingBulkActionBar } from './FloatingBulkActionBar';
+import { CapturesSection } from './CapturesSection';
 import './Tasks.css';
 
 interface TasksViewProps {
@@ -197,6 +199,38 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, selected
       })
       .sort((left, right) => (left.task?.position ?? left.order) - (right.task?.position ?? right.order) || left.createdAt - right.createdAt);
   }, [blocks, selectedProjectIds, isNoneProjectsSelected, query]);
+
+  const captures = useMemo(() => {
+    return blocks.filter(block => isUnprocessedCapture(block));
+  }, [blocks]);
+
+  const filteredCaptures = useMemo(() => {
+    if (isNoneProjectsSelected) return [];
+    return captures.filter(capture => {
+      const q = query.trim().toLocaleLowerCase('en-US');
+      if (q) {
+        const titleAndText = `${capture.title} ${capture.plainText}`.toLocaleLowerCase('en-US');
+        if (!titleAndText.includes(q)) return false;
+      }
+      if (selectedProjectIds.length > 0) {
+        if (selectedProjectIds.includes(TASK_INBOX_PROJECT_ID)) return true;
+        const { hintName } = extractProjectHint(capture.plainText || '');
+        if (!hintName) return false;
+        const matchedProject = projects.find(p => !p.isTrash && p.title.trim().toLowerCase() === hintName.trim().toLowerCase());
+        if (!matchedProject || !selectedProjectIds.includes(matchedProject.id)) return false;
+      }
+      return true;
+    });
+  }, [captures, query, selectedProjectIds, isNoneProjectsSelected, projects]);
+
+  const handleConvertCapture = useCallback(async (capture: Block) => {
+    try {
+      await convertCaptureToReadyTask(capture, projects, blocks);
+      setError(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not convert capture to task.');
+    }
+  }, [projects, blocks]);
 
   const selectedTasks = useMemo(() => {
     return tasks.filter(t => selectedTaskIds.has(t.id));
@@ -942,7 +976,16 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, selected
                   )}
                 </header>
                 <div className="task-lane-content">
-
+                  {status === 'inbox' && (
+                    <CapturesSection
+                      captures={filteredCaptures}
+                      projects={projects}
+                      allBlocks={blocks}
+                      onOpenCapture={onOpenTask}
+                      onConvertCapture={handleConvertCapture}
+                      onDeleteCapture={deleteTask}
+                    />
+                  )}
                   {laneTasks.length === 0 ? (
                     <div className="task-lane-empty-placeholder">
                       <span>No tasks in this stage</span>
@@ -999,7 +1042,17 @@ export const TasksView: React.FC<TasksViewProps> = ({ projects, blocks, selected
         </div>
       ) : (
         <div className="task-list">
-
+          {(statusFilter === 'all' || statusFilter === 'inbox') && (
+            <CapturesSection
+              captures={filteredCaptures}
+              projects={projects}
+              allBlocks={blocks}
+              onOpenCapture={onOpenTask}
+              onConvertCapture={handleConvertCapture}
+              onDeleteCapture={deleteTask}
+              className="captures-section-list"
+            />
+          )}
           {groupBy === 'none' ? (
             tasks.map(task => {
               const isNew = hasUnseenAgentEdits(task);

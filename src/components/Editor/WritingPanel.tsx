@@ -11,10 +11,11 @@ import { initialTagComposerState, tagComposerReducer } from '../../utils/tagComp
 import { getBlockDependencyStatus, detectCircularDependency, sanitizeDependsOn, isBlockCompleted } from '../../utils/dependencyUtils';
 import { getStoredPrintSettingsSync, loadStoredPrintSettings, saveStoredPrintSettings, type BlockPrintSettings } from '../../utils/printDocument';
 import { canTransitionTask, formatTaskHumanId, taskCreatorLabel, TASK_AGENT_LABELS, TASK_AGENT_TARGETS, TASK_STATUSES, TASK_STATUS_LABELS, validateTaskReady } from '../../utils/taskBlocks';
+import { isUnprocessedCapture, convertCaptureToReadyTask } from '../../utils/quickCapture';
 import { copyAgentReference } from '../../utils/agentReferences';
 import { saveProjectDraft } from '../../db/operations';
 import { PROJECT_COLOR_PALETTE, DEFAULT_PROJECT_COLOR } from '../../utils/projectColors';
-import { Check, Loader2, AlertCircle, FileText, Folder, FolderOpen, Paperclip, PanelRightClose, Edit3, Plus, Tag as TagIcon, Settings2, Trash2, Link2, ArrowUpRight, ArrowRight, X, History, Lock, CheckCircle2, Clock, Bot, ClipboardCopy, Printer, Copy, CheckCheck } from 'lucide-react';
+import { Check, Loader2, AlertCircle, FileText, Folder, FolderOpen, Paperclip, PanelRightClose, Edit3, Plus, Tag as TagIcon, Settings2, Trash2, Link2, ArrowUpRight, ArrowRight, X, History, Lock, CheckCircle2, Clock, Bot, ClipboardCopy, Printer, Copy, CheckCheck, Zap } from 'lucide-react';
 import './Editor.css';
 
 interface WritingPanelProps {
@@ -752,6 +753,29 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
             </div>
           )}
 
+          {isBlock && activeItem && 'tags' in activeItem && isUnprocessedCapture(activeItem as Block) && (
+            <section className="capture-inspector-panel">
+              <div className="capture-inspector-heading">
+                <span>
+                  <Zap size={14} />
+                  <span>Quick Capture</span>
+                </span>
+                <button
+                  type="button"
+                  className="task-inspector-advance-btn ready"
+                  title="Convert this capture into a Ready task"
+                  onClick={async () => {
+                    if (activeItem && 'projectId' in activeItem) {
+                      await convertCaptureToReadyTask(activeItem as Block, taskProjects, allWorkspaceBlocks);
+                    }
+                  }}
+                >
+                  <Zap size={12} />
+                  <span>Convert to Ready Task</span>
+                </button>
+              </div>
+            </section>
+          )}
 
           {isBlock && taskMetadata && (
             <section className="task-inspector-panel">

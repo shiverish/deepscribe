@@ -1,4 +1,4 @@
-export type ActiveView = 'columns' | 'tasks' | 'stats' | 'focus' | 'inbox';
+export type ActiveView = 'columns' | 'tasks' | 'stats' | 'focus';
 export type StartupViewMode = 'fixed' | 'last-used';
 
 export interface Project {
@@ -93,73 +93,6 @@ export interface TaskMetadata {
   claim?: TaskClaim;
 }
 
-export interface CaptureProposalOperation {
-  type: 'knowledge' | 'task' | 'append' | 'existing';
-  projectId?: string;
-  parentId?: string | null;
-  title?: string;
-  content?: string;
-  goal?: string;
-  context?: string;
-  acceptanceCriteria?: string[];
-  tags?: string[];
-  blockId?: string;
-  expectedUpdatedAt?: number;
-}
-
-export interface CaptureProposal {
-  id: string;
-  version: number;
-  agentId: string;
-  agentTarget?: string;
-  customAgentName?: string;
-  summary: string;
-  rationale?: string;
-  operations: CaptureProposalOperation[];
-  diffPreview?: {
-    targetBlockTitle: string;
-    targetBlockId: string;
-    originalContent: string;
-    appendedContent: string;
-  };
-  conflict?: boolean;
-  conflictReason?: string;
-  createdAt: number;
-  updatedAt?: number;
-}
-
-export type CaptureStatus = 'pending' | 'processing' | 'needs-input' | 'proposal' | 'processed' | 'kept' | 'dismissed';
-
-export type CaptureQuestion = { question: string; askedAt: number; answer?: string; answeredAt?: number };
-export type CaptureResult = { blockId: string; projectId?: string; title: string; action: string };
-
-export interface CaptureMetadata {
-  status: CaptureStatus;
-  rawText?: string;
-  requestId?: string;
-  projectHintName?: string;
-  claim?: {
-    ownerId: string;
-    agentTarget?: string;
-    customAgentName?: string;
-    token: string;
-    requestId: string;
-    claimedAt: number;
-    expiresAt: number;
-    sourceUpdatedAt?: number;
-  };
-  activeProposal?: CaptureProposal;
-  proposals?: CaptureProposal[];
-  questions: CaptureQuestion[];
-  results?: CaptureResult[];
-  summary?: string;
-  error?: string;
-  processedAt?: number;
-  claimRequests?: Array<{ agentId: string; requestId: string }>;
-  receipts?: Array<{ agentId: string; requestId: string; fingerprint: string; result: unknown }>;
-  needsImmediateReview?: boolean;
-}
-
 export interface Block {
   id: string;
   projectId: string;
@@ -177,7 +110,6 @@ export interface Block {
   trashedWithProject?: boolean;
   tags: string[];
   dependsOn?: string[];
-  capture?: CaptureMetadata;
   kind?: 'task';
   task?: TaskMetadata;
   /** Canonical creator for every block kind. Absent on rows predating the field. */
@@ -383,11 +315,6 @@ export interface UserSettings {
   /** Follows the switcher, so 'last-used' has something to restore. */
   lastActiveView: ActiveView;
   webhooks: WebhookEndpoint[];
-  captureProcessor?: {
-    agent: 'codex' | 'gemini' | 'claude' | 'none';
-    customName?: string;
-    intervalMinutes: number;
-  };
   lastSeenWhatsNewVersion?: string;
 }
 
@@ -434,9 +361,5 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
   startupViewMode: 'fixed',
   startupView: 'columns',
   lastActiveView: 'columns',
-  webhooks: [],
-  captureProcessor: {
-    agent: 'codex',
-    intervalMinutes: 15
-  }
+  webhooks: []
 };

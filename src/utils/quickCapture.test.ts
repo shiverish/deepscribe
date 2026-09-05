@@ -98,10 +98,5 @@ describe('capture state', () => {
   it('leaves an ordinary block alone even if it carries the processed tag', () => {
     expect(isProcessedCapture({ tags: [CAPTURE_PROCESSED_TAG] })).toBe(false);
   });
-
-  it('rejects regular notes from being treated as captures for active view routing', () => {
-    expect(isCaptureBlock({ tags: ['project', 'meeting'] })).toBe(false);
-    expect(isCaptureBlock({ tags: [] })).toBe(false);
-  });
 });
 

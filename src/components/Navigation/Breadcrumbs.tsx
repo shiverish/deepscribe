@@ -18,14 +18,12 @@ import {
   CheckSquare,
   BarChart3,
   Crosshair,
-  Inbox,
   Camera,
   ArrowUpCircle
 } from 'lucide-react';
 
 /** Keyed by view id, so a new view cannot be added without giving it an icon. */
 const VIEW_ICONS: Record<ActiveView, React.ComponentType<{ size?: number }>> = {
-  inbox: Inbox,
   columns: Columns3,
   tasks: CheckSquare,
   stats: BarChart3,
@@ -48,7 +46,6 @@ interface BreadcrumbsProps {
   onToggleWritingPanel: () => void;
   updaterState?: UpdaterState | null;
   onInstallUpdate?: () => void;
-  inboxActionCount?: number;
 }
 
 export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
@@ -66,8 +63,7 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
   isWritingPanelOpen,
   onToggleWritingPanel,
   updaterState,
-  onInstallUpdate,
-  inboxActionCount
+  onInstallUpdate
 }) => {
   const isUpdateDownloaded = updaterState?.status === 'downloaded';
 
@@ -110,7 +106,6 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
         <div className="view-switcher-group">
           {VIEW_DEFINITIONS.map(view => {
             const Icon = VIEW_ICONS[view.id];
-            const showBadge = view.id === 'inbox' && (inboxActionCount ?? 0) > 0;
             return (
               <button
                 key={view.id}
@@ -121,11 +116,6 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
               >
                 <Icon size={13} />
                 <span>{view.label}</span>
-                {showBadge && (
-                  <span className="view-switch-badge">
-                    {inboxActionCount}
-                  </span>
-                )}
               </button>
             );
           })}

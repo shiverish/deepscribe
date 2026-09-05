@@ -62,6 +62,9 @@
   font-size: 0.75rem;
 }
 
+.capture-inspector-panel { margin: 0 24px 12px; padding: 10px 12px; border: 1px solid rgba(245, 158, 11, .35); border-radius: 8px; background: rgba(245, 158, 11, .06); }
+.capture-inspector-heading { display: flex; align-items: center; justify-content: space-between; font-size: .78rem; font-weight: 650; color: #f59e0b; }
+.capture-inspector-heading > span { display: flex; align-items: center; gap: 6px; }
 
 .task-inspector-panel { margin: 0 24px 12px; padding: 12px; border: 1px solid rgba(167, 139, 250, .35); border-radius: 8px; background: rgba(109, 40, 217, .08); }
 .task-inspector-heading, .task-inspector-heading > span, .task-status-actions { display: flex; align-items: center; gap: 7px; }

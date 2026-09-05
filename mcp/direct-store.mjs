@@ -1,4 +1,3 @@
-import { CAPTURE_METHODS, CAPTURE_PROCESSOR_KEY, prepareCaptureOperation, captureWriteRefusal } from './core/captures.mjs';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -946,20 +945,6 @@ export class DirectWorkspaceStore {
     const optionalStr = (key) => typeof params[key] === 'string' ? params[key] : undefined;
     const clampLimit = (val, fallback = 50) => Math.max(1, Math.min(100, typeof val === 'number' ? Math.floor(val) : fallback));
 
-    if (CAPTURE_METHODS.includes(method)) {
-      this.open();
-      this.database.exec('BEGIN IMMEDIATE');
-      try {
-        const prepared = prepareCaptureOperation(method, params, { blocks: this.getAllBlocks(), projects: this.getAllProjects(), links: this.getAllLinks(), processor: this.getSetting(CAPTURE_PROCESSOR_KEY)?.value });
-        for (const block of prepared.blocks) this.saveBlock(block);
-        for (const link of prepared.links) this.saveLink(link);
-        for (const revision of prepared.revisions) this.saveRevision(revision);
-        for (const activity of prepared.activities) this.database.prepare('INSERT INTO activities (id, json) VALUES (?, ?)').run(activity.id, JSON.stringify(activity));
-        if (prepared.processor) this.saveSetting(prepared.processor);
-        this.database.exec('COMMIT');
-        return prepared.result;
-      } catch (error) { this.database.exec('ROLLBACK'); throw error; }
-    }
     switch (method) {
       case 'status': {
         const projects = this.getAllProjects().filter(p => !p.isTrash && !p.systemKind);
@@ -1763,7 +1748,7 @@ export class DirectWorkspaceStore {
         const blockId = requireString('blockId');
         const block = this.getBlock(blockId);
         if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
-        const updateRefusal = captureWriteRefusal(block) ?? taskProtectedFieldRefusal(block, params) ?? taskClaimWriteRefusal(block, params);
+        const updateRefusal = taskProtectedFieldRefusal(block, params) ?? taskClaimWriteRefusal(block, params);
         if (updateRefusal) throw new Error(updateRefusal);
         if (typeof params.content === 'string' && (block.taskCount > 0 || containsMarkdownTask(params.content))) throw new Error('Agents cannot create or edit inline todos.');
         this.recordBlockRevision(block, 'user', 'State before agent edit');
@@ -1794,7 +1779,7 @@ export class DirectWorkspaceStore {
         const text = requireString('text');
         const block = this.getBlock(blockId);
         if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
-        const appendRefusal = captureWriteRefusal(block) ?? taskClaimWriteRefusal(block, params);
+        const appendRefusal = taskClaimWriteRefusal(block, params);
         if (appendRefusal) throw new Error(appendRefusal);
         if (containsMarkdownTask(text)) throw new Error('Agents cannot create inline todos.');
         this.recordBlockRevision(block, 'user', 'State before agent addition');
@@ -1899,8 +1884,7 @@ export class DirectWorkspaceStore {
         const revisionId = requireString('revisionId');
         const revision = this.getBlockRevision(revisionId);
         const block = revision ? this.getBlock(revision.blockId) : null;
-        if (captureWriteRefusal(block)) throw new Error('Agents cannot restore capture source revisions.');
-      if (block?.kind === 'task' || revision?.kind === 'task') throw new Error('Agents cannot restore task revisions.');
+        if (block?.kind === 'task' || revision?.kind === 'task') throw new Error('Agents cannot restore task revisions.');
         return this.restoreBlockRevision(revisionId);
       }
 

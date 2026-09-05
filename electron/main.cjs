@@ -1,4 +1,3 @@
-const { createCaptureSaveBroker } = require('./capture-save.cjs');
 const { app, BrowserWindow, dialog, ipcMain, shell, Tray, Menu, globalShortcut, desktopCapturer, screen, nativeImage } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const crypto = require('crypto');
@@ -272,13 +271,18 @@ function registerScreenCaptureIpc() {
     return { ok: true };
   });
 
-  const captureSaves = createCaptureSaveBroker();
-  ipcMain.on('deepscribe:capture:ack', (event, result) => {
-    if (mainWindow && event.sender === mainWindow.webContents) captureSaves.acknowledge(result);
-  });
   ipcMain.handle('deepscribe:capture:save', async (_event, payload) => {
-    if (!mainWindow || mainWindow.isDestroyed()) throw new Error('DeepScribe is not ready to store this capture yet.');
-    return captureSaves.save(payload, request => mainWindow.webContents.send('deepscribe:capture:save-request', request));
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      throw new Error('DeepScribe is not ready to store this capture yet.');
+    }
+    // Deliberately no show() or focus(): capturing must not pull the app to the
+    // front. The main window persists the entry wherever it is, hidden or not.
+    mainWindow.webContents.send('deepscribe:capture:save-request', {
+      text: typeof payload?.text === 'string' ? payload.text : '',
+      projectHintName: typeof payload?.projectHintName === 'string' ? payload.projectHintName : undefined
+    });
+    closeQuickCapture();
+    return { ok: true };
   });
 
   ipcMain.handle('deepscribe:screen:trigger-overlay', async () => {
@@ -1133,7 +1137,7 @@ function openQuickCapture() {
   captureWindow.once('focus', () => {
     if (!captureWindow || captureWindow.isDestroyed()) return;
     captureWindow.on('blur', () => {
-      if (captureWindow && !captureWindow.isDestroyed()) captureWindow.hide();
+      if (captureWindow && !captureWindow.isDestroyed()) captureWindow.close();
     });
   });
 
