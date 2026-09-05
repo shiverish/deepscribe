@@ -39,6 +39,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     open: () => ipcRenderer.invoke('deepscribe:capture:open'),
     close: () => ipcRenderer.invoke('deepscribe:capture:close'),
     save: payload => ipcRenderer.invoke('deepscribe:capture:save', payload),
+    acknowledge: result => ipcRenderer.send('deepscribe:capture:ack', result),
     onSaveRequest: handler => {
       const listener = (_event, payload) => handler(payload);
       ipcRenderer.on('deepscribe:capture:save-request', listener);

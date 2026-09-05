@@ -86,3 +86,15 @@ describe('archive validation', () => {
     expect(imported?.claim).toBeUndefined();
   });
 });
+
+it('preserves capture questions and results while removing imported leases and replay IDs', () => {
+  const archive = validArchive();
+  Object.assign(archive.blocks[0], {
+    tags: ['capture', 'capture-unprocessed'],
+    capture: { status: 'processing', requestId: 'old-save', claim: { token: 'secret', ownerId: 'agent', expiresAt: 999999 }, claimRequests: [{ agentId: 'agent', requestId: 'old' }], receipts: [{ requestId: 'old' }], questions: [{ question: 'Where?', askedAt: 1, answer: 'Here', answeredAt: 2 }], results: [{ blockId: 'child', title: 'Result', action: 'existing' }] }
+  });
+  const metadata = parseProjectArchive(archive).blocks[0].capture;
+  expect(metadata?.status).toBe('pending');
+  expect(metadata?.claim).toBeUndefined(); expect(metadata?.requestId).toBeUndefined(); expect(metadata?.receipts).toBeUndefined(); expect(metadata?.claimRequests).toBeUndefined();
+  expect(metadata?.questions?.[0].answer).toBe('Here'); expect(metadata?.results?.[0].blockId).toBe('child');
+});

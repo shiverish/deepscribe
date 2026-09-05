@@ -1,3 +1,5 @@
+import { CAPTURE_METHODS, captureWriteRefusal } from '../../mcp/core/captures.mjs';
+import { executeCaptureOperation } from '../utils/captureProcessing';
 import { db } from '../db/db';
 import { containsMarkdownTask, contentStatsFromHtml, escapeHtml } from '../../mcp/core/markdown.mjs';
 import { contentToHtml } from '../../mcp/core/html.mjs';
@@ -742,7 +744,7 @@ async function updateBlock(params: JsonObject) {
   const blockId = requiredString(params, 'blockId');
   const block = await db.blocks.get(blockId);
   if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
-  const refusal = taskProtectedFieldRefusal(block, params) ?? taskClaimWriteRefusal(block, params);
+  const refusal = captureWriteRefusal(block) ?? taskProtectedFieldRefusal(block, params) ?? taskClaimWriteRefusal(block, params);
   if (refusal) throw new Error(refusal);
   if (typeof params.content === 'string' && (block.taskCount > 0 || containsMarkdownTask(params.content))) throw new Error('Agents cannot create or edit inline todos.');
 
@@ -775,7 +777,7 @@ async function appendToBlock(params: JsonObject) {
   const text = requiredString(params, 'text');
   const block = await db.blocks.get(blockId);
   if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
-  const refusal = taskClaimWriteRefusal(block, params);
+  const refusal = captureWriteRefusal(block) ?? taskClaimWriteRefusal(block, params);
   if (refusal) throw new Error(refusal);
   if (containsMarkdownTask(text)) throw new Error('Agents cannot create inline todos.');
 
@@ -1201,7 +1203,7 @@ async function uploadAttachment(params: JsonObject) {
   if (!block || block.isTrash) throw new Error('Blok niet gevonden.');
   const project = await db.projects.get(block.projectId);
   if (!project || project.isTrash) throw new Error('Project niet gevonden.');
-  const refusal = taskClaimWriteRefusal(block, params);
+  const refusal = captureWriteRefusal(block) ?? taskClaimWriteRefusal(block, params);
   if (refusal) throw new Error(refusal);
 
   const upload = await prepareAttachmentUpload(params);
@@ -1280,6 +1282,7 @@ async function removeAttachmentFile(localPath: string | undefined): Promise<void
 export async function handleMcpBridgeRequest(method: string, rawParams: unknown): Promise<unknown> {
   const params = asObject(rawParams);
 
+  if (CAPTURE_METHODS.includes(method)) return executeCaptureOperation(method, params);
   switch (method) {
     case 'status':
       return {
@@ -1578,6 +1581,7 @@ export async function handleMcpBridgeRequest(method: string, rawParams: unknown)
       const revisionId = requiredString(params, 'revisionId');
       const revision = await getBlockRevision(revisionId);
       const block = revision ? await db.blocks.get(revision.blockId) : undefined;
+      if (captureWriteRefusal(block)) throw new Error('Agents cannot restore capture source revisions.');
       if (block?.kind === 'task' || revision?.kind === 'task') throw new Error('Agents cannot restore task revisions.');
       return await restoreBlockRevision(revisionId);
     }

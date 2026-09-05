@@ -49,6 +49,16 @@
   font-weight: 600;
 }
 
+.view-switch-badge {
+  background: var(--accent-color, #3b82f6);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 9px;
+  line-height: 1.2;
+}
+
 .breadcrumb-trail {
   min-width: 0;
   display: flex;

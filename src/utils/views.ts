@@ -19,7 +19,8 @@ export const VIEW_DEFINITIONS: ViewDefinition[] = [
   { id: 'columns', label: 'Columns', title: 'Columns View', shortcut: 'Ctrl+1' },
   { id: 'tasks', label: 'Tasks', title: 'Tasks View', shortcut: 'Ctrl+2' },
   { id: 'stats', label: 'Stats', title: 'Statistics View', shortcut: 'Ctrl+3' },
-  { id: 'focus', label: 'Focus', title: 'Focus View', shortcut: 'Ctrl+4' }
+  { id: 'focus', label: 'Focus', title: 'Focus View', shortcut: 'Ctrl+4' },
+  { id: 'inbox', label: 'Inbox', title: 'Capture Inbox', shortcut: 'Ctrl+5' }
 ];
 
 /** Where the app lands when nothing else decides for it. */

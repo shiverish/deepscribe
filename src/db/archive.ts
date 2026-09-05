@@ -1,3 +1,4 @@
+import { importCaptureMetadata } from '../../mcp/core/captures.mjs';
 import type { Attachment, Block, BlockRevision, Project, RevisionSource, TaskMetadata } from '../types';
 import { sanitizeTags } from '../utils/tagUtils';
 import { normalizeTaskMetadata } from '../utils/taskBlocks';
@@ -96,6 +97,7 @@ export function parseProjectArchive(raw: unknown): ProjectArchive {
       trashedWithProject: false,
       tags,
       dependsOn: Array.isArray(entry.dependsOn) ? entry.dependsOn.filter((d): d is string => typeof d === 'string' && Boolean(d.trim())) : undefined,
+      ...(entry.capture && !task ? { capture: importCaptureMetadata(entry.capture) } : {}),
       ...(task ? { kind: 'task' as const, task } : {}),
       lastAgentEditAt: typeof entry.lastAgentEditAt === 'number' && Number.isFinite(entry.lastAgentEditAt) ? entry.lastAgentEditAt : undefined,
       lastSeenAgentEditAt: typeof entry.lastSeenAgentEditAt === 'number' && Number.isFinite(entry.lastSeenAgentEditAt) ? entry.lastSeenAgentEditAt : undefined,
@@ -148,6 +150,7 @@ export function parseProjectArchive(raw: unknown): ProjectArchive {
       content: typeof entry.content === 'string' ? entry.content : '<p></p>',
       plainText: typeof entry.plainText === 'string' ? entry.plainText : '',
       tags: sanitizeTags(Array.isArray(entry.tags) ? entry.tags.filter((tag): tag is string => typeof tag === 'string') : []),
+      ...(entry.capture && !task ? { capture: importCaptureMetadata(entry.capture) } : {}),
       ...(task ? { kind: 'task' as const, task } : {}),
       source: entry.source as RevisionSource,
       summary: typeof entry.summary === 'string' ? entry.summary : undefined,

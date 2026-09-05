@@ -31,6 +31,17 @@ npm run dev
 - Gewone blokbijlagen worden onder `attachments\<project-id>` in de actieve workspace geplaatst en zijn begrensd op 25 MB per bestand.
 - In de browserontwikkelmodus vraagt DeepScribe om persistente browseropslag; wis browserdata alleen met een recente export.
 
+## Quick Capture & Inbox
+
+- **Snel vastleggen:** Druk op `Ctrl+Alt+C` (of klik op het bliksemicoon) om overal snel een gedachte vast te leggen en direct weer door te gaan.
+- **Geen afleiding:** Het invoerveld vraagt alleen om je gedachte. Een optioneel doellabel/projecthint kan worden gekozen via **More options**. Na opslaan sluit het venster direct met de melding *"Saved. Codex will prepare a suggestion."*
+- **Proposal-first:** Agents analyseren captures en doen voorstellen via `propose_capture`, maar voeren nul wijzigingen automatisch door in je workspace zonder jouw expliciete goedkeuring.
+- **Eén overzichtelijke Inbox:** In plaats van tabbladen toont de Inbox drie rustige secties:
+  1. **Needs your decision:** Concrete voorstellen van agents (met diff-weergave, taakdoelen en acceptatiecriteria) en gerichte verduidelijkingsvragen. Acties: **Approve**, **Edit suggestion**, **Keep as loose note**, of **Dismiss**.
+  2. **Waiting captures:** Compact overzicht van captures die wachten op analyse, inclusief een **Analyze now** knop om directe verwerking aan te vragen.
+  3. **History:** Inklapbare geschiedenis van verwerkte, bewaarde of afgewezen captures.
+- **Badge:** De tellerbadge op de navigatie telt uitsluitend items die jouw actieve beslissing vereisen.
+
 ## DeepScribe MCP voor agents
 
 De desktop-app bevat een lokale bridge waarmee Codex en andere MCP-clients projecten, blokken, ideeën, concepten en todo's gestructureerd kunnen lezen en bijwerken. De bridge luistert uitsluitend op `127.0.0.1`, gebruikt per appstart een willekeurig toegangstoken en is alleen beschikbaar terwijl de Electron-app draait.
@@ -43,7 +54,7 @@ De MCP-tool `search` scoort op passageniveau in plaats van op hele documenten, z
 
 Naast blokken worden ook projecten doorzocht: titel, beschrijving en scratchpad. Projecttreffers zijn te herkennen aan `resultType: 'project'`; bloktreffers dragen `resultType: 'block'`. De filters `projectId` en `tags` gelden voor beide.
 
-Het zoekvenster in de app gebruikt voorlopig nog de oudere ranking op blokniveau en toont geen projecttreffers; dit betreft uitsluitend de MCP-zoekopdracht.
+Het zoekvenster en MCP gebruiken dezelfde lokale ranking op passageniveau en doorzoeken ook projecten.
 
 ## Relaties tussen blokken
 
@@ -110,3 +121,13 @@ De tests bewaken onder andere cyclische boomstructuren, verplaatsen, project- en
 
 DeepScribe is gelicentieerd onder de [GNU General Public License v3.0 (GPLv3)](LICENSE).
 
+
+## Capture Inbox
+
+Quick Capture (`Ctrl+Alt+C`) bewaart tekst als bronblok. Opslaan zet de capture direct klaar voor verwerking; een aparte verwerkingstaak is niet nodig. Het venster sluit pas na bevestigde workspaceopslag. Concepttekst blijft bij focusverlies en herstart bewaard, totdat je opslaat of **Discard** kiest.
+
+Open **Inbox** (`Ctrl+5`) voor **Pending**, **Needs input** en **Processed**. Hier staan de oorspronkelijke tekst, vragen van de agent en links naar resultaten. Een antwoord zet de capture opnieuw klaar. De laatste processorcontrole is zichtbaar; zonder beschikbare agent blijven captures wachten.
+
+Agents gebruiken `list_captures`, `get_capture`, `claim_next_capture`, `renew_capture_claim` en `complete_capture`. Claims duren vijftien minuten. Lees projectcontext en mogelijke duplicaten voordat je wijzigingen voorbereidt. `complete_capture` verwerkt maximaal twintig wijzigingen atomair: nieuwe kennis, aanvullingen, taken in Inbox of verwijzingen naar bestaande resultaten. Voor bestaande bestemmingen is `expectedUpdatedAt` verplicht. Een herhaalde `requestId` met dezelfde inhoud levert hetzelfde resultaat zonder dubbele writes. Brontekst blijft behouden; afgeleide resultaten krijgen een `derived-from`-relatie naar de capture.
+
+De externe **DeepScribe Capture Processing**-heartbeat controleert elke vijftien minuten en verwerkt maximaal vijf captures per run. Deze heartbeat wordt buiten de applicatie ingesteld en vereist beschikbare MCP-tools. Hij ordent informatie en bereidt taken voor, zonder vervolgwerk uit te voeren. Nieuwe vragen en technische blokkades worden gemeld; lege of ongewijzigde wachtrijen blijven stil. SeeScribe-screenshots houden hun bestaande flow.

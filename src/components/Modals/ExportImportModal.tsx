@@ -147,6 +147,7 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
       const blocks = data.blocks.map(block => ({
         ...block,
         id: blockIdMap.get(block.id)!,
+        capture: block.capture ? { ...block.capture, projectHintName: block.capture.projectHintName, results: (block.capture.results ?? []).map(result => ({ ...result, blockId: blockIdMap.get(result.blockId) ?? result.blockId, projectId: blockIdMap.has(result.blockId) ? projectId : result.projectId })) } : undefined,
         projectId,
         parentId: block.parentId ? blockIdMap.get(block.parentId)! : null
       }));

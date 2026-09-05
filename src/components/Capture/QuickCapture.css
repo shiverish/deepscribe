@@ -127,3 +127,67 @@
   opacity: 0.6;
   cursor: default;
 }
+
+.quick-capture-more-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary, #b8b0a4);
+  font-size: 0.72rem;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+
+.quick-capture-more-btn:hover {
+  color: var(--text-primary, #faf6ee);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.quick-capture-more-btn svg.open {
+  transform: rotate(180deg);
+}
+
+.quick-capture-more-panel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  border-radius: 6px;
+  font-size: 0.72rem;
+}
+
+.quick-capture-confirmation {
+  position: absolute;
+  inset: 0;
+  background: var(--bg-surface, #1a1816);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 20px;
+  text-align: center;
+  z-index: 10;
+  border-radius: 10px;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.quick-capture-confirmation-icon {
+  color: #10B981;
+}
+
+.quick-capture-confirmation-text {
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--text-primary, #faf6ee);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
+}

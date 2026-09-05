@@ -14,9 +14,21 @@ export interface ReleaseEntry {
   items: ChangelogItem[];
 }
 
-export const CURRENT_APP_VERSION = '0.2.40';
+export const CURRENT_APP_VERSION = '0.2.41';
 
 export const CHANGELOG_ENTRIES: ReleaseEntry[] = [
+  {
+    version: '0.2.41',
+    date: 'September 2026',
+    title: 'Proposal-First Quick Capture & Decision Inbox',
+    summary: 'Quick Capture is back to a clean decision flow: write and move on. Agents propose suggestions without touching your workspace until you approve.',
+    items: [
+      { type: 'feature', text: 'Proposal-first decision flow', detail: 'Agents analyze captures and prepare concrete suggestions without modifying your workspace. Review the rationale, diff previews, and criteria under "Needs your decision", then approve with one click.' },
+      { type: 'improvement', text: 'Distraction-free Quick Capture', detail: 'The main capture interface focuses entirely on your thought. Project hints are tucked under "More options". Closes cleanly with a calming confirmation.' },
+      { type: 'improvement', text: 'Clean single-list Inbox & notification badge', detail: 'Replaced technical status tabs with a single list: Needs your decision, Waiting captures (with Analyze now), and collapsible History. Badge alerts you only when your decision is needed.' },
+      { type: 'fix', text: 'Reliable capture saving and draft recovery', detail: 'Quick Capture waits for confirmed workspace storage before closing. Drafts survive focus changes and app restarts; repeated save requests do not duplicate notes.' }
+    ]
+  },
   {
     version: '0.2.40',
     date: 'September 2026',

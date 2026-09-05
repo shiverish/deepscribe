@@ -13,7 +13,7 @@ const server = new McpServer({
   name: 'deepscribe',
   version: '0.2.7'
 }, {
-  instructions: 'DeepScribe stores projects, nested knowledge blocks and user-managed tasks. Read before writing and preserve existing content. Agents may use create_task to capture concrete future work, risks or ideas after checking for duplicates; tasks can be attached directly to a project via projectId or placed into Workspace Inbox when omitted, and start in Inbox status assigned to Any agent (or a specified assigneeTarget). Never create an administrative task before performing a directly requested change. Agents must not move, organize, assign, delete or restore tasks or create inline todos. Use list_tasks/get_task to read tasks. When the user asks you to work on a specific task, claim it with claim_work_item before you start: that is the only way a task reaches In progress, and it takes the lease that keeps other agents off it. Renew the lease on long work and finish with transition_work_item to review, done or blocked, including a real summary. Report progress on an unclaimed task with update_task_status. Drive these status changes yourself; do not ask the user for permission to move a task you were told to work on. A task still in Inbox cannot be claimed, so say so and let the user set it to Ready. Agents may write a task body with append_to_block (preferred, it preserves what is already there) or update_block, for example to leave a delivery report; a task title, its dependencies, its assignment, its position and its status stay user-owned. While another agent holds an active claim on a task, writing to it requires the agentId and claimToken of that claim. Attach files with upload_attachment rather than leaving a local path in the text: pass sourcePath for a file on disk or data with base64 content and a fileName, one file per call, at most 25 MB, and reuse the same requestId when you retry an upload whose result you did not see. Read them back with list_attachments and read_attachment. Format block content as readable Markdown with blank lines between sections and one list item per line. Quick Capture entries are raw notes the user dumped into the Workspace Inbox: ordinary blocks tagged capture and capture-unprocessed, never tasks. Read them with list_blocks on the Workspace Inbox project. To process one, create a proper task with create_task, link that task back to the entry with link_blocks using derived-from, and swap capture-unprocessed for capture-processed with update_block passing only tags, which leaves the captured text untouched. Never reword or delete the original entry. One entry may yield several tasks, and an entry that is a note rather than work may become a plain block instead. When the intent is unclear, leave the entry unprocessed and append a question to it rather than guessing a task.'
+  instructions: 'DeepScribe stores projects, nested knowledge blocks and user-managed tasks. Read before writing and preserve existing content. Agents may use create_task to capture concrete future work, risks or ideas after checking for duplicates; tasks can be attached directly to a project via projectId or placed into Workspace Inbox when omitted, and start in Inbox status assigned to Any agent (or a specified assigneeTarget). Never create an administrative task before performing a directly requested change. Agents must not move, organize, assign, delete or restore tasks or create inline todos. Use list_tasks/get_task to read tasks. When the user asks you to work on a specific task, claim it with claim_work_item before you start: that is the only way a task reaches In progress, and it takes the lease that keeps other agents off it. Renew the lease on long work and finish with transition_work_item to review, done or blocked, including a real summary. Report progress on an unclaimed task with update_task_status. Drive these status changes yourself; do not ask the user for permission to move a task you were told to work on. A task still in Inbox cannot be claimed, so say so and let the user set it to Ready. Agents may write a task body with append_to_block (preferred, it preserves what is already there) or update_block, for example to leave a delivery report; a task title, its dependencies, its assignment, its position and its status stay user-owned. While another agent holds an active claim on a task, writing to it requires the agentId and claimToken of that claim. Attach files with upload_attachment rather than leaving a local path in the text: pass sourcePath for a file on disk or data with base64 content and a fileName, one file per call, at most 25 MB, and reuse the same requestId when you retry an upload whose result you did not see. Read them back with list_attachments and read_attachment. Format block content as readable Markdown with blank lines between sections and one list item per line. Text captures are immutable source notes, not administrative tasks. Use list_captures and get_capture, claim_next_capture with agentId and requestId, then read relevant projects and search for duplicates. Propose suggestions with propose_capture. DeepScribe never modifies content without explicit user approval. Prepare knowledge, append, task or existing-result operations as proposals. Renew capture claims during long processing. Ask questions with outcome needs-input; the user answers in Inbox. Prepare new tasks in Inbox without executing them.'
 });
 
 function bridgeFileCandidates() {
@@ -353,6 +353,51 @@ registerTool('update_project_scratchpad', {
     append: z.boolean().optional()
   },
   annotations: write
+});
+
+const captureIdentity = { agentId: z.string().min(1), requestId: z.string().min(1) };
+registerTool('list_captures', {
+  title: 'List captures', description: 'Read text captures across projects. Processing leases that expired are pending again. Does not mark a processor check.',
+  inputSchema: { status: z.enum(['pending', 'processing', 'needs-input', 'processed']).optional(), limit: z.number().int().min(1).max(100).optional() }, annotations: readOnly
+});
+registerTool('get_capture', {
+  title: 'Read capture', description: 'Read original text, questions and results without exposing a claim token.',
+  inputSchema: { captureId: z.string().min(1) }, annotations: readOnly
+});
+registerTool('claim_next_capture', {
+  title: 'Claim next capture', description: 'Atomically claim the oldest pending text capture for 15 minutes. Also records the processor check when the queue is empty. Reuse requestId for a retry of the same claim. Returns capture:null if empty.',
+  inputSchema: captureIdentity, annotations: write
+});
+registerTool('renew_capture_claim', {
+  title: 'Renew capture claim', description: 'Extend your current capture claim by 15 minutes.',
+  inputSchema: { captureId: z.string().min(1), agentId: z.string().min(1), claimToken: z.string().min(1) }, annotations: write
+});
+const captureDestination = { projectId: z.string().min(1), parentId: z.string().nullable().optional(), title: z.string().min(1), tags: z.array(z.string()).max(20).optional() };
+registerTool('propose_capture', {
+  title: 'Propose capture result', description: 'Propose where and how to file or process a text capture. DeepScribe stores this suggestion as a proposal for user approval without modifying any blocks directly. Rationale explains why this action is suggested. Knowledge uses Markdown; append preserves existing content; task requires goal/context/acceptanceCriteria and starts in Inbox; existing links an already suitable destination. Needs-input and error apply no operations. Reuse requestId with identical content to safely retry.',
+  inputSchema: {
+    ...captureIdentity, captureId: z.string().min(1), claimToken: z.string().min(1),
+    outcome: z.enum(['proposal', 'needs-input', 'error']).optional(), summary: z.string().min(1), rationale: z.string().optional(), question: z.string().optional(), error: z.string().optional(),
+    operations: z.array(z.discriminatedUnion('type', [
+      z.object({ type: z.literal('knowledge'), ...captureDestination, content: z.string().min(1) }),
+      z.object({ type: z.literal('task'), ...captureDestination, projectId: z.string().min(1).optional(), goal: z.string().min(1), context: z.string().min(1), acceptanceCriteria: z.array(z.string().min(1)).min(1) }),
+      z.object({ type: z.literal('append'), blockId: z.string().min(1), expectedUpdatedAt: z.number().optional(), content: z.string().min(1) }),
+      z.object({ type: z.literal('existing'), blockId: z.string().min(1), expectedUpdatedAt: z.number().optional() })
+    ])).max(20).optional()
+  }, annotations: write
+});
+registerTool('complete_capture', {
+  title: 'Complete capture processing', description: 'Legacy capture completion. Safely stores prepared suggestions as a proposal for user approval without modifying blocks directly.',
+  inputSchema: {
+    ...captureIdentity, captureId: z.string().min(1), claimToken: z.string().min(1),
+    outcome: z.enum(['processed', 'needs-input', 'error']), summary: z.string().min(1), question: z.string().optional(), error: z.string().optional(),
+    operations: z.array(z.discriminatedUnion('type', [
+      z.object({ type: z.literal('knowledge'), ...captureDestination, content: z.string().min(1) }),
+      z.object({ type: z.literal('task'), ...captureDestination, projectId: z.string().min(1).optional(), goal: z.string().min(1), context: z.string().min(1), acceptanceCriteria: z.array(z.string().min(1)).min(1) }),
+      z.object({ type: z.literal('append'), blockId: z.string().min(1), expectedUpdatedAt: z.number().optional(), content: z.string().min(1) }),
+      z.object({ type: z.literal('existing'), blockId: z.string().min(1), expectedUpdatedAt: z.number().optional() })
+    ])).max(20).optional()
+  }, annotations: write
 });
 
 registerTool('create_block', {

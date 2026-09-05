@@ -77,3 +77,11 @@ Do not create a relation when duplicate titles make it ambiguous. Explain that r
 - “Koppel dit aan X”: create a verified wiki relation from the current or named source block to X.
 - “Wat staat er over X?”: search, read the strongest matches, and synthesize without writing.
 - “Formatteer dit blok”: preserve all meaning while replacing the full body with clean, structured Markdown.
+
+## Process text captures: propose suggestions
+
+Use the registered capture tools; text captures are immutable source blocks. `list_captures` and `get_capture` expose their original text, questions, proposals, and results. Claim the oldest pending entry with `claim_next_capture(agentId, requestId)`; retain its `claimToken` and renew with `renew_capture_claim` before the 15-minute lease expires.
+
+Read the relevant project context and search for existing blocks. Propose a concrete plan using `propose_capture` (or `complete_capture`) with a stable `requestId`, a plain-language `summary`, a clear `rationale`, and prepared `operations` (knowledge, append, task, or existing-result). DeepScribe operates in a proposal-first model: DeepScribe makes no changes to the user's workspace until the user explicitly approves the proposal in the Inbox. Supply the observed `expectedUpdatedAt` for every existing destination so DeepScribe can detect concurrent edits. If the destination or intent is ambiguous, submit with `outcome: 'needs-input'` and a clear question, without operations. The user replies in the Inbox. Report technical failure with `outcome: 'error'`.
+
+DeepScribe Inbox presents your proposal clearly with diff previews, task goals, and acceptance criteria. The user can approve, edit, keep as a loose note, or dismiss. Once approved, DeepScribe commits the changes atomically. Preserve Dutch source content and all original capture wording. Never process SeeScribe tasks through this text-capture protocol.

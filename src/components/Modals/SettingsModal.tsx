@@ -384,7 +384,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             onClick={() => setActiveTab('ai')}
           >
             <Bot size={16} />
-            <span>AI & Integrations</span>
+            <span>Agents</span>
           </button>
         </div>
 
@@ -1072,6 +1072,40 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
           {activeTab === 'ai' && (
             <div className="settings-section">
+              {/* Capture Processor Setting */}
+              <div className="setting-item">
+                <div className="setting-info">
+                  <label>Capture Processor</label>
+                  <span className="setting-description">
+                    Select the agent that analyzes Quick Captures and prepares suggestions for your approval. Nothing changes without your explicit approval.
+                  </span>
+                </div>
+                <div className="setting-control-group" style={{ marginTop: '8px' }}>
+                  {(['codex', 'gemini', 'claude', 'none'] as const).map(agent => (
+                    <button
+                      key={agent}
+                      type="button"
+                      className={`setting-chip ${(settings.captureProcessor?.agent ?? 'codex') === agent ? 'active' : ''}`}
+                      onClick={() => {
+                        const next = {
+                          agent,
+                          intervalMinutes: 15,
+                          customName: agent === 'gemini' ? 'Antigravity' : agent === 'claude' ? 'Claude' : agent === 'codex' ? 'Codex' : undefined
+                        };
+                        onUpdateSettings({ captureProcessor: next });
+                      }}
+                    >
+                      {agent === 'codex' ? 'Codex' : agent === 'gemini' ? 'Antigravity / Gemini' : agent === 'claude' ? 'Claude' : 'None — save captures only'}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ marginTop: '8px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                  {(settings.captureProcessor?.agent ?? 'codex') === 'none'
+                    ? 'Captures are saved locally to your Inbox without automated agent review.'
+                    : `${(settings.captureProcessor?.agent ?? 'codex') === 'gemini' ? 'Antigravity' : (settings.captureProcessor?.agent ?? 'codex') === 'claude' ? 'Claude' : 'Codex'} prepares suggestions. Checks every 15 minutes.`}
+                </div>
+              </div>
+
               {/* Status Banner */}
               <div className="setting-item">
                 <div style={{

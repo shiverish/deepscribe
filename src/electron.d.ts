@@ -38,10 +38,11 @@ declare global {
         onBlockCreated: (handler: (block: unknown) => void) => () => void;
       };
       quickCapture?: {
+        acknowledge: (result: { requestId: string; ok: boolean; error?: string }) => void;
         open: () => Promise<{ ok: boolean }>;
         close: () => Promise<{ ok: boolean }>;
-        save: (payload: { text: string; projectHintName?: string }) => Promise<{ ok: boolean }>;
-        onSaveRequest: (handler: (payload: { text: string; projectHintName?: string }) => void) => () => void;
+        save: (payload: { text: string; projectHintName?: string; requestId: string }) => Promise<{ ok: boolean }>;
+        onSaveRequest: (handler: (payload: { text: string; projectHintName?: string; requestId: string }) => void) => () => void;
       };
       tray?: {
         minimizeToTray: () => Promise<void>;

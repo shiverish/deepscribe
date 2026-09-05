@@ -1,3 +1,5 @@
+import { CAPTURE_METHODS } from '../mcp/core/captures.mjs';
+import { InboxView } from './components/Capture/InboxView';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, requestPersistentStorage, seedDemoDataIfEmpty } from './db/db';
@@ -210,8 +212,17 @@ function DeepScribeApp() {
   useEffect(() => {
     if (!window.electronAPI?.quickCapture?.onSaveRequest) return;
     return window.electronAPI.quickCapture.onSaveRequest(payload => {
-      createCaptureBlock({ text: payload?.text ?? '', projectHintName: payload?.projectHintName })
-        .catch(error => console.error('Failed to store a Quick Capture entry:', error));
+      void (async () => {
+        try {
+          await repository.initialize();
+          const block = await createCaptureBlock(payload);
+          if (!block) throw new Error('Enter some text before saving.');
+          await repository.flush();
+          window.electronAPI?.quickCapture?.acknowledge({ requestId: payload.requestId, ok: true });
+        } catch (error) {
+          window.electronAPI?.quickCapture?.acknowledge({ requestId: payload.requestId, ok: false, error: error instanceof Error ? error.message : 'Could not save capture.' });
+        }
+      })();
     });
   }, []);
 
@@ -288,7 +299,10 @@ function DeepScribeApp() {
 
     const unsubscribe = window.deepScribeMcp.onRequest(request => {
       handleMcpBridgeRequest(request.method, request.params)
-        .then(result => window.deepScribeMcp?.respond({ id: request.id, ok: true, result }))
+        .then(async result => {
+          if (CAPTURE_METHODS.includes(request.method)) await repository.flush();
+          window.deepScribeMcp?.respond({ id: request.id, ok: true, result });
+        })
         .catch((error: unknown) => window.deepScribeMcp?.respond({
           id: request.id,
           ok: false,
@@ -1006,7 +1020,10 @@ function DeepScribeApp() {
     setFocusedLevel(path.length);
     setFocusedCardId(block.id);
     setIsWritingPanelOpen(true);
-    if (block.kind === 'task' || isCaptureBlock(block)) {
+    if (block.kind !== 'task' && isCaptureBlock(block)) {
+      setIsWritingPanelOpen(false);
+      changeView('inbox');
+    } else if (block.kind === 'task') {
       changeView('tasks');
     } else {
       changeView('columns');
@@ -1059,6 +1076,14 @@ function DeepScribeApp() {
     changeView('tasks');
   }, [changeView]);
 
+  const inboxActionCount = useMemo(() => {
+    return allBlocks.filter(b => {
+      if (b.isTrash || !b.tags?.includes('capture') || b.tags.includes('capture-processed')) return false;
+      const status = b.capture?.status;
+      return status === 'proposal' || status === 'needs-input' || Boolean(b.capture?.activeProposal && !['processed', 'kept', 'dismissed'].includes(status || ''));
+    }).length;
+  }, [allBlocks]);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100vw', height: '100vh', background: 'var(--bg-dark)' }}>
       <Breadcrumbs
@@ -1073,10 +1098,11 @@ function DeepScribeApp() {
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenWorkspace={() => setIsWorkspaceOpen(true)}
         onTriggerScreenAnnotation={handleTriggerScreenAnnotation}
-        isWritingPanelOpen={isWritingPanelOpen}
+        isWritingPanelOpen={isWritingPanelOpen && activeView !== 'inbox'}
         onToggleWritingPanel={() => setIsWritingPanelOpen(prev => !prev)}
         updaterState={updaterState}
         onInstallUpdate={handleInstallUpdate}
+        inboxActionCount={inboxActionCount}
       />
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }}>
@@ -1105,6 +1131,8 @@ function DeepScribeApp() {
             onDrop={handleDrop}
           />
         )}
+
+        {activeView === 'inbox' && <InboxView selectedCaptureId={activeBlockId ?? undefined} blocks={allBlocks} onOpenBlock={openBlockById} onDelete={block => handleDeleteToTrash(block, 'block')} />}
 
         {activeView === 'tasks' && (
           <TasksView
@@ -1141,7 +1169,7 @@ function DeepScribeApp() {
 
 
         <WritingPanel
-          isOpen={isWritingPanelOpen}
+          isOpen={isWritingPanelOpen && activeView !== 'inbox'}
           activeItem={activeInspectorItem}
           itemType={activeInspectorType}
           pathSegments={pathSegments}
