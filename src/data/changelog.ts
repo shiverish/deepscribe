@@ -14,11 +14,11 @@ export interface ReleaseEntry {
   items: ChangelogItem[];
 }
 
-export const CURRENT_APP_VERSION = '0.2.41';
+export const CURRENT_APP_VERSION = '0.2.42';
 
 export const CHANGELOG_ENTRIES: ReleaseEntry[] = [
   {
-    version: '0.2.41',
+    version: '0.2.42',
     date: 'September 2026',
     title: 'Proposal-First Quick Capture & Decision Inbox',
     summary: 'Quick Capture is back to a clean decision flow: write and move on. Agents propose suggestions without touching your workspace until you approve.',
