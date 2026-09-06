@@ -47,6 +47,7 @@ class WorkspaceStore {
     this.database = null;
     this.workspacePath = null;
     this.manifest = null;
+    this.lastKnownDataVersion = null;
   }
 
   configuredPath() {
@@ -75,6 +76,7 @@ class WorkspaceStore {
     fs.mkdirSync(path.join(this.workspacePath, 'attachments'), { recursive: true });
     this.database = new DatabaseSync(path.join(this.workspacePath, 'workspace.sqlite'));
     this.database.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL;');
+    this.lastKnownDataVersion = Number(this.database.prepare('PRAGMA data_version').get().data_version);
     this.database.exec(`
       CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, json TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS blocks (
@@ -114,11 +116,15 @@ class WorkspaceStore {
   status() {
     this.open();
     const count = table => Number(this.database.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get().count);
+    const currentDataVersion = Number(this.database.prepare('PRAGMA data_version').get().data_version);
+    const hasExternalChanges = this.lastKnownDataVersion !== null && currentDataVersion !== this.lastKnownDataVersion;
     return {
       state: 'ready',
       path: this.workspacePath,
       workspaceId: this.manifest.workspaceId,
       formatVersion: this.manifest.formatVersion,
+      dataVersion: currentDataVersion,
+      hasExternalChanges,
       encrypted: false,
       counts: {
         projects: Number(this.database.prepare("SELECT COUNT(*) AS count FROM projects WHERE json_extract(json, '$.systemKind') IS NULL").get().count),
@@ -130,6 +136,7 @@ class WorkspaceStore {
 
   loadSnapshot() {
     this.open();
+    this.lastKnownDataVersion = Number(this.database.prepare('PRAGMA data_version').get().data_version);
     const read = table => this.database.prepare(`SELECT json FROM ${table}`).all().map(row => JSON.parse(row.json));
     return {
       projects: read('projects'), blocks: read('blocks'), attachments: read('attachments'),
@@ -161,6 +168,7 @@ class WorkspaceStore {
         for (const item of snapshot[table] ?? []) insertSimple[table].run(item.id ?? item.key, JSON.stringify(item));
       }
       this.database.exec('COMMIT;');
+      this.lastKnownDataVersion = Number(this.database.prepare('PRAGMA data_version').get().data_version);
     } catch (error) {
       this.database.exec('ROLLBACK;');
       throw error;
@@ -177,6 +185,7 @@ class WorkspaceStore {
     this.database.exec('PRAGMA wal_checkpoint(TRUNCATE);');
     this.database.close();
     this.database = null;
+    this.lastKnownDataVersion = null;
   }
 
   move(destinationParent) {

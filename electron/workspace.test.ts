@@ -7,7 +7,7 @@ import path from 'node:path';
 const require = createRequire(import.meta.url);
 const { WorkspaceStore } = require('./workspace.cjs') as {
   WorkspaceStore: new (paths: { userDataPath: string; documentsPath: string }) => {
-    status(): { path: string; encrypted: boolean; counts: { projects: number; blocks: number } };
+    status(): { path: string; encrypted: boolean; counts: { projects: number; blocks: number }; hasExternalChanges?: boolean; dataVersion?: number };
     saveSnapshot(snapshot: Record<string, unknown[]>): void;
     loadSnapshot(): { projects: Array<{ id: string }>; blocks: Array<{ id: string }> };
     move(destination: string): { path: string; previousPath: string };
@@ -39,6 +39,30 @@ describe('plaintext workspace store', () => {
     expect(store.status().encrypted).toBe(false);
     expect(store.status().counts).toMatchObject({ projects: 1, blocks: 1 });
     expect(store.loadSnapshot().blocks[0].id).toBe('block');
+    store.close();
+  });
+
+  it('detects external changes via data_version', () => {
+    const root = temporaryRoot();
+    const store = new WorkspaceStore({ userDataPath: path.join(root, 'user'), documentsPath: path.join(root, 'docs') });
+    store.saveSnapshot({
+      projects: [{ id: 'project', title: 'Project' }],
+      blocks: [],
+      attachments: [], settings: [], activities: [], templates: []
+    });
+    expect(store.status().hasExternalChanges).toBe(false);
+
+    // Simulate an external connection modifying the SQLite database directly
+    const { DatabaseSync } = require('node:sqlite');
+    const externalDb = new DatabaseSync(path.join(store.status().path, 'workspace.sqlite'));
+    externalDb.exec("INSERT INTO projects (id, json) VALUES ('external', '{\"id\":\"external\"}')");
+    externalDb.close();
+
+    expect(store.status().hasExternalChanges).toBe(true);
+
+    // After loading snapshot, changes are acknowledged
+    store.loadSnapshot();
+    expect(store.status().hasExternalChanges).toBe(false);
     store.close();
   });
 

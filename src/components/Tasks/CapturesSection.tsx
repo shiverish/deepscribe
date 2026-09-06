@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronRight, FileText, Inbox, Loader2, Plus, Trash2, Zap } from 'lucide-react';
-import type { Block, Project } from '../../types';
-import { extractProjectHint } from '../../utils/quickCapture';
+import { Bot, ChevronDown, ChevronRight, FileText, Inbox, Loader2, Plus, Trash2, Zap } from 'lucide-react';
+import type { Block, Project, TaskAgentTarget } from '../../types';
+import { extractProjectHint, updateCaptureProjectHint } from '../../utils/quickCapture';
 import { getProjectColor, DEFAULT_PROJECT_COLOR } from '../../utils/projectColors';
+import { db } from '../../db/db';
+import { repository } from '../../db/repository';
+import { CaptureContextMenu } from './CaptureContextMenu';
 
 export interface CapturesSectionProps {
   captures: Block[];
@@ -28,6 +31,14 @@ function formatRelativeTime(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
+const CAPTURE_AGENT_LABELS: Record<string, string> = {
+  openai: 'Codex',
+  claude: 'Claude',
+  gemini: 'Gemini',
+  custom: 'Custom',
+  any: 'Any agent'
+};
+
 export const CapturesSection: React.FC<CapturesSectionProps> = ({
   captures,
   projects,
@@ -45,6 +56,34 @@ export const CapturesSection: React.FC<CapturesSectionProps> = ({
   });
 
   const [convertingId, setConvertingId] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    capture: Block;
+  } | null>(null);
+
+  const handleUpdateAgent = async (capture: Block, agent: TaskAgentTarget) => {
+    await db.blocks.update(capture.id, {
+      captureAgentTarget: agent,
+      updatedAt: Date.now()
+    });
+    await repository.flush();
+  };
+
+  const handleUpdateProject = async (capture: Block, projectId: string | null) => {
+    const targetProject = projectId ? projects.find(p => p.id === projectId) : undefined;
+    const { html, plainText } = updateCaptureProjectHint(
+      capture.content,
+      capture.plainText || '',
+      targetProject?.title
+    );
+    await db.blocks.update(capture.id, {
+      content: html,
+      plainText,
+      updatedAt: Date.now()
+    });
+    await repository.flush();
+  };
 
   const toggleCollapsed = () => {
     setIsCollapsed(prev => {
@@ -136,7 +175,16 @@ export const CapturesSection: React.FC<CapturesSectionProps> = ({
                     key={capture.id}
                     className="capture-card"
                     onClick={() => onOpenCapture(capture.id)}
-                    title="Click to view and edit in Writing Panel"
+                    onContextMenu={e => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setContextMenu({
+                        x: e.clientX,
+                        y: e.clientY,
+                        capture
+                      });
+                    }}
+                    title="Click to view and edit in Writing Panel (Right-click for options)"
                   >
                     <div className="capture-card-top">
                       <div className="capture-time">
@@ -144,12 +192,23 @@ export const CapturesSection: React.FC<CapturesSectionProps> = ({
                         <span>{formatRelativeTime(capture.createdAt)}</span>
                       </div>
 
-                      {hintName && (
-                        <div className="capture-hint-pill" title={`Project hint: ${hintName}`}>
-                          <span className="project-color-pip" style={{ backgroundColor: projectColor }} />
-                          <span className="capture-hint-name">{hintName}</span>
-                        </div>
-                      )}
+                      <div className="capture-card-badges">
+                        {hintName && (
+                          <div className="capture-hint-pill" title={`Project hint: ${hintName}`}>
+                            <span className="project-color-pip" style={{ backgroundColor: projectColor }} />
+                            <span className="capture-hint-name">{hintName}</span>
+                          </div>
+                        )}
+                        {capture.captureAgentTarget && capture.captureAgentTarget !== 'none' && (
+                          <div
+                            className="capture-agent-pill"
+                            title={`Agent: ${CAPTURE_AGENT_LABELS[capture.captureAgentTarget] || capture.captureAgentTarget}`}
+                          >
+                            <Bot size={10} />
+                            <span>{CAPTURE_AGENT_LABELS[capture.captureAgentTarget] || capture.captureAgentTarget}</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     <div className="capture-card-content">
@@ -213,6 +272,21 @@ export const CapturesSection: React.FC<CapturesSectionProps> = ({
             </div>
           )}
         </div>
+      )}
+
+      {contextMenu && (
+        <CaptureContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          capture={contextMenu.capture}
+          projects={projects}
+          onClose={() => setContextMenu(null)}
+          onOpen={onOpenCapture}
+          onConvert={onConvertCapture}
+          onDelete={onDeleteCapture}
+          onUpdateAgent={handleUpdateAgent}
+          onUpdateProject={handleUpdateProject}
+        />
       )}
     </section>
   );

@@ -2,18 +2,35 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Inbox } from 'lucide-react';
 import { db } from '../../db/db';
+import type { TaskAgentTarget } from '../../types';
 import { TASK_INBOX_PROJECT_ID } from '../../utils/taskBlocks';
 import './QuickCapture.css';
 
+const LAST_PROJECT_KEY = 'deepscribe:quick-capture:last-project';
+const LAST_AGENT_KEY = 'deepscribe:quick-capture:last-agent';
+
 /**
- * The capture surface: one text field and nothing that has to be filled in.
+ * The capture surface: one text field and configurable project and agent dropdowns.
  * It does not write to the database itself — the text goes to the main window,
  * which owns the workspace and persists it — so this window can close the
  * moment you press save and hand focus straight back to where you were.
  */
 export const QuickCaptureWindow: React.FC = () => {
   const [text, setText] = useState('');
-  const [projectHintId, setProjectHintId] = useState<string>(TASK_INBOX_PROJECT_ID);
+  const [projectHintId, setProjectHintId] = useState<string>(() => {
+    try {
+      return localStorage.getItem(LAST_PROJECT_KEY) || TASK_INBOX_PROJECT_ID;
+    } catch {
+      return TASK_INBOX_PROJECT_ID;
+    }
+  });
+  const [agentTarget, setAgentTarget] = useState<TaskAgentTarget>(() => {
+    try {
+      return (localStorage.getItem(LAST_AGENT_KEY) as TaskAgentTarget) || 'none';
+    } catch {
+      return 'none';
+    }
+  });
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -46,10 +63,18 @@ export const QuickCaptureWindow: React.FC = () => {
     setIsSaving(true);
     setError(null);
     try {
+      try {
+        localStorage.setItem(LAST_PROJECT_KEY, projectHintId);
+        localStorage.setItem(LAST_AGENT_KEY, agentTarget);
+      } catch {
+        // Ignore localStorage errors
+      }
+
       const hint = sortedProjects.find(project => project.id === projectHintId);
       await window.electronAPI?.quickCapture?.save({
         text,
-        projectHintName: hint?.title
+        projectHintName: hint?.title,
+        agentTarget
       });
     } catch {
       // Keep the window open with the text intact rather than losing it.
@@ -90,15 +115,36 @@ export const QuickCaptureWindow: React.FC = () => {
       {error && <div className="quick-capture-error">{error}</div>}
 
       <div className="quick-capture-footer">
-        <label className="quick-capture-hint">
-          <span>Project hint</span>
-          <select value={projectHintId} onChange={event => setProjectHintId(event.target.value)}>
-            <option value={TASK_INBOX_PROJECT_ID}>None</option>
-            {sortedProjects.map(project => (
-              <option key={project.id} value={project.id}>{project.title}</option>
-            ))}
-          </select>
-        </label>
+        <div className="quick-capture-dropdowns">
+          <label className="quick-capture-hint">
+            <span>Project</span>
+            <select
+              className="quick-capture-select quick-capture-select-project"
+              value={projectHintId}
+              onChange={event => setProjectHintId(event.target.value)}
+            >
+              <option value={TASK_INBOX_PROJECT_ID}>None</option>
+              {sortedProjects.map(project => (
+                <option key={project.id} value={project.id}>{project.title}</option>
+              ))}
+            </select>
+          </label>
+
+          <label className="quick-capture-hint">
+            <span>Agent</span>
+            <select
+              className="quick-capture-select quick-capture-select-agent"
+              value={agentTarget}
+              onChange={event => setAgentTarget(event.target.value as TaskAgentTarget)}
+            >
+              <option value="none">None</option>
+              <option value="openai">Codex</option>
+              <option value="claude">Claude</option>
+              <option value="gemini">Gemini</option>
+              <option value="any">Any</option>
+            </select>
+          </label>
+        </div>
 
         <div className="quick-capture-actions">
           <span className="quick-capture-keys"><kbd>Ctrl</kbd> + <kbd>Enter</kbd></span>

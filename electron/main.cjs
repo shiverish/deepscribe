@@ -279,7 +279,8 @@ function registerScreenCaptureIpc() {
     // front. The main window persists the entry wherever it is, hidden or not.
     mainWindow.webContents.send('deepscribe:capture:save-request', {
       text: typeof payload?.text === 'string' ? payload.text : '',
-      projectHintName: typeof payload?.projectHintName === 'string' ? payload.projectHintName : undefined
+      projectHintName: typeof payload?.projectHintName === 'string' ? payload.projectHintName : undefined,
+      agentTarget: typeof payload?.agentTarget === 'string' ? payload.agentTarget : undefined
     });
     closeQuickCapture();
     return { ok: true };
@@ -1102,7 +1103,7 @@ function openQuickCapture() {
 
   const cursorPoint = screen.getCursorScreenPoint();
   const display = screen.getDisplayNearestPoint(cursorPoint);
-  const width = 520;
+  const width = 580;
   const height = 260;
   const x = Math.round(display.workArea.x + (display.workArea.width - width) / 2);
   const y = Math.round(display.workArea.y + display.workArea.height * 0.28);

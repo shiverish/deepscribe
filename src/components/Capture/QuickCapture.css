@@ -59,24 +59,49 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: nowrap;
+}
+
+.quick-capture-dropdowns {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-shrink: 1;
 }
 
 .quick-capture-hint {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   font-size: 0.72rem;
   color: var(--text-secondary, #b8b0a4);
+  white-space: nowrap;
 }
 
-.quick-capture-hint select {
-  max-width: 150px;
+.quick-capture-hint select,
+.quick-capture-select {
   padding: 4px 6px;
   border-radius: 5px;
   border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.12));
   background: var(--bg-dark, #141312);
   color: var(--text-primary, #faf6ee);
   font-size: 0.72rem;
+  text-overflow: ellipsis;
+  outline: none;
+}
+
+.quick-capture-select-project {
+  max-width: 110px;
+}
+
+.quick-capture-select-agent {
+  max-width: 88px;
+}
+
+.quick-capture-hint select:focus,
+.quick-capture-select:focus {
+  border-color: var(--accent-color, #3b82f6);
 }
 
 .quick-capture-actions {
@@ -84,11 +109,17 @@
   align-items: center;
   gap: 8px;
   margin-left: auto;
+  flex-shrink: 0;
 }
 
 .quick-capture-keys {
   font-size: 0.68rem;
   color: var(--text-muted, #8a8279);
+  white-space: nowrap;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
 }
 
 .quick-capture-keys kbd {

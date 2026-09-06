@@ -112,6 +112,7 @@ export interface Block {
   dependsOn?: string[];
   kind?: 'task';
   task?: TaskMetadata;
+  captureAgentTarget?: TaskAgentTarget;
   /** Canonical creator for every block kind. Absent on rows predating the field. */
   creator?: BlockCreator;
   lastAgentEditAt?: number;
@@ -163,6 +164,8 @@ export interface WorkspaceStatus {
   path: string;
   workspaceId: string;
   formatVersion: number;
+  dataVersion?: number;
+  hasExternalChanges?: boolean;
   encrypted: false;
   counts: { projects: number; blocks: number; attachments: number };
   previousPath?: string;

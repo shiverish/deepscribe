@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useReducer, useMemo } from 'react';
-import type { Project, Block, Attachment, SaveStatus, PathSegment, TaskMetadata, TaskStatus } from '../../types';
+import type { Project, Block, Attachment, SaveStatus, PathSegment, TaskMetadata, TaskStatus, TaskAgentTarget } from '../../types';
 import type { BlockReferences } from '../../utils/references';
 import { TipTapEditor, type TipTapEditorHandle } from './TipTapEditor';
 import { TagBadge } from '../Navigation/TagBadge';
@@ -11,9 +11,11 @@ import { initialTagComposerState, tagComposerReducer } from '../../utils/tagComp
 import { getBlockDependencyStatus, detectCircularDependency, sanitizeDependsOn, isBlockCompleted } from '../../utils/dependencyUtils';
 import { getStoredPrintSettingsSync, loadStoredPrintSettings, saveStoredPrintSettings, type BlockPrintSettings } from '../../utils/printDocument';
 import { canTransitionTask, formatTaskHumanId, taskCreatorLabel, TASK_AGENT_LABELS, TASK_AGENT_TARGETS, TASK_STATUSES, TASK_STATUS_LABELS, validateTaskReady } from '../../utils/taskBlocks';
-import { isUnprocessedCapture, convertCaptureToReadyTask } from '../../utils/quickCapture';
+import { isUnprocessedCapture, convertCaptureToReadyTask, extractProjectHint, updateCaptureProjectHint } from '../../utils/quickCapture';
 import { copyAgentReference } from '../../utils/agentReferences';
 import { saveProjectDraft } from '../../db/operations';
+import { db } from '../../db/db';
+import { repository } from '../../db/repository';
 import { PROJECT_COLOR_PALETTE, DEFAULT_PROJECT_COLOR } from '../../utils/projectColors';
 import { Check, Loader2, AlertCircle, FileText, Folder, FolderOpen, Paperclip, PanelRightClose, Edit3, Plus, Tag as TagIcon, Settings2, Trash2, Link2, ArrowUpRight, ArrowRight, X, History, Lock, CheckCircle2, Clock, Bot, ClipboardCopy, Printer, Copy, CheckCheck, Zap } from 'lucide-react';
 import './Editor.css';
@@ -42,7 +44,8 @@ interface WritingPanelProps {
     tags: string[],
     dependsOn?: string[],
     scratchpad?: string,
-    task?: TaskMetadata
+    task?: TaskMetadata,
+    captureAgentTarget?: TaskAgentTarget
   ) => Promise<void>;
   tagSuggestions?: Array<{ tag: string; count: number }>;
   onRenameProjectTag?: (from: string, to: string) => Promise<number>;
@@ -99,6 +102,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
   const [projectColor, setProjectColor] = useState<string>(DEFAULT_PROJECT_COLOR);
   const [taskMetadata, setTaskMetadata] = useState<TaskMetadata | undefined>();
   const [taskErrors, setTaskErrors] = useState<string[]>([]);
+  const [captureAgentTarget, setCaptureAgentTarget] = useState<TaskAgentTarget>('none');
   const [scratchpadCopied, setScratchpadCopied] = useState(false);
   const [taskRefCopied, setTaskRefCopied] = useState(false);
   const [tagComposer, dispatchTagComposer] = useReducer(tagComposerReducer, initialTagComposerState);
@@ -200,6 +204,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
     dependsOn: [] as string[],
     scratchpad: '',
     taskMetadata: undefined as TaskMetadata | undefined,
+    captureAgentTarget: 'none' as TaskAgentTarget,
     isDirty: false,
     itemType: null as 'project' | 'block' | null
   });
@@ -215,10 +220,11 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
       dependsOn,
       scratchpad,
       taskMetadata,
+      captureAgentTarget,
       isDirty,
       itemType
     };
-  }, [title, htmlContent, plainTextContent, taskCount, completedTaskCount, tags, dependsOn, scratchpad, taskMetadata, isDirty, itemType]);
+  }, [title, htmlContent, plainTextContent, taskCount, completedTaskCount, tags, dependsOn, scratchpad, taskMetadata, captureAgentTarget, isDirty, itemType]);
 
   const flushSave = useCallback(async () => {
     const currentId = activeItemIdRef.current;
@@ -239,7 +245,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
       setTags(finalTags);
     }
 
-    const { title, htmlContent, plainTextContent, taskCount, completedTaskCount, itemType, dependsOn: currentDependsOn, scratchpad: currentScratchpad, taskMetadata: currentTask } = draftRef.current;
+    const { title, htmlContent, plainTextContent, taskCount, completedTaskCount, itemType, dependsOn: currentDependsOn, scratchpad: currentScratchpad, taskMetadata: currentTask, captureAgentTarget: currentCaptureAgent } = draftRef.current;
 
     // Reset dirty flag BEFORE async save so any typing during save marks state dirty again
     setIsDirty(false);
@@ -248,7 +254,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
 
     try {
       if (itemType) {
-        await onSaveItem(currentId, itemType, title, htmlContent, plainTextContent, taskCount, completedTaskCount, finalTags, currentDependsOn, currentScratchpad, currentTask);
+        await onSaveItem(currentId, itemType, title, htmlContent, plainTextContent, taskCount, completedTaskCount, finalTags, currentDependsOn, currentScratchpad, currentTask, currentCaptureAgent);
       }
     } finally {
       isSavingRef.current = false;
@@ -285,6 +291,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
         let nextDependsOn: string[] = [];
         let nextScratchpad = '';
         let nextTaskMetadata: TaskMetadata | undefined;
+        let nextCaptureAgentTarget: TaskAgentTarget = 'none';
 
         if (itemType === 'block') {
           const b = activeItem as Block;
@@ -296,6 +303,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
           nextDependsOn = sanitizeDependsOn(b.dependsOn);
           nextScratchpad = '';
           nextTaskMetadata = b.kind === 'task' && b.task ? { ...b.task } : undefined;
+          nextCaptureAgentTarget = b.captureAgentTarget || 'none';
           observedHashtagsRef.current = new Set(extractHashtags(b.content || ''));
         } else {
           const p = activeItem as Project;
@@ -307,6 +315,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
           nextDependsOn = [];
           nextScratchpad = p.scratchpad || '';
           nextTaskMetadata = undefined;
+          nextCaptureAgentTarget = 'none';
           observedHashtagsRef.current = new Set();
           setProjectColor(p.color || DEFAULT_PROJECT_COLOR);
         }
@@ -321,6 +330,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
           dependsOn: nextDependsOn,
           scratchpad: nextScratchpad,
           taskMetadata: nextTaskMetadata,
+          captureAgentTarget: nextCaptureAgentTarget,
           isDirty: false,
           itemType
         };
@@ -333,6 +343,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
         setDependsOn(nextDependsOn);
         setScratchpad(nextScratchpad);
         setTaskMetadata(nextTaskMetadata);
+        setCaptureAgentTarget(nextCaptureAgentTarget);
         setTaskErrors([]);
         setIsDirty(false);
         loadedUpdatedAtRef.current = activeItem.updatedAt;
@@ -444,6 +455,53 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
         color: newColor,
         scratchpad: draftRef.current.scratchpad
       });
+    }
+  };
+
+  const captureHintName = useMemo(() => {
+    return extractProjectHint(plainTextContent || '').hintName;
+  }, [plainTextContent]);
+
+  const currentCaptureProjectId = useMemo(() => {
+    if (!captureHintName) return '';
+    const match = taskProjects.find(p => !p.isTrash && p.title.trim().toLowerCase() === captureHintName.trim().toLowerCase());
+    return match?.id || '';
+  }, [captureHintName, taskProjects]);
+
+  const handleCaptureProjectChange = async (projectId: string) => {
+    const selectedProj = projectId ? taskProjects.find(p => p.id === projectId) : undefined;
+    const { html, plainText } = updateCaptureProjectHint(
+      draftRef.current.htmlContent,
+      draftRef.current.plainTextContent,
+      selectedProj?.title
+    );
+    setHtmlContent(html);
+    setPlainTextContent(plainText);
+    draftRef.current.htmlContent = html;
+    draftRef.current.plainTextContent = plainText;
+    draftRef.current.isDirty = true;
+    setIsDirty(true);
+    if (isBlock && activeItem) {
+      await db.blocks.update(activeItem.id, {
+        content: html,
+        plainText: plainText,
+        updatedAt: Date.now()
+      });
+      await repository.flush();
+    }
+  };
+
+  const handleCaptureAgentChange = async (target: TaskAgentTarget) => {
+    setCaptureAgentTarget(target);
+    draftRef.current.captureAgentTarget = target;
+    draftRef.current.isDirty = true;
+    setIsDirty(true);
+    if (isBlock && activeItem) {
+      await db.blocks.update(activeItem.id, {
+        captureAgentTarget: target,
+        updatedAt: Date.now()
+      });
+      await repository.flush();
     }
   };
 
@@ -766,13 +824,45 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                   title="Convert this capture into a Ready task"
                   onClick={async () => {
                     if (activeItem && 'projectId' in activeItem) {
-                      await convertCaptureToReadyTask(activeItem as Block, taskProjects, allWorkspaceBlocks);
+                      await flushSave();
+                      const currentBlock = await db.blocks.get(activeItem.id);
+                      if (currentBlock) {
+                        await convertCaptureToReadyTask(currentBlock, taskProjects, allWorkspaceBlocks);
+                      }
                     }
                   }}
                 >
                   <Zap size={12} />
                   <span>Convert to Ready Task</span>
                 </button>
+              </div>
+
+              <div className="task-metadata-grid" style={{ marginTop: 10 }}>
+                <label>
+                  <span>Project</span>
+                  <select
+                    value={currentCaptureProjectId}
+                    onChange={event => void handleCaptureProjectChange(event.target.value)}
+                  >
+                    <option value="">None (Workspace Inbox)</option>
+                    {taskProjects.filter(project => !project.isTrash && project.systemKind !== 'task-inbox').map(project => (
+                      <option key={project.id} value={project.id}>{project.title}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Agent</span>
+                  <select
+                    value={captureAgentTarget}
+                    onChange={event => void handleCaptureAgentChange(event.target.value as TaskAgentTarget)}
+                  >
+                    <option value="none">None</option>
+                    <option value="openai">Codex</option>
+                    <option value="claude">Claude</option>
+                    <option value="gemini">Gemini</option>
+                    <option value="any">Any agent</option>
+                  </select>
+                </label>
               </div>
             </section>
           )}
@@ -1020,6 +1110,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                 setCompletedTaskCount(restoredBlock.completedTaskCount);
                 setTags(restoredBlock.tags);
                 setTaskMetadata(restoredBlock.kind === 'task' ? restoredBlock.task : undefined);
+                setCaptureAgentTarget(restoredBlock.captureAgentTarget || 'none');
                 draftRef.current = {
                   title: restoredBlock.title,
                   htmlContent: restoredBlock.content,
@@ -1030,6 +1121,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                   dependsOn: restoredBlock.dependsOn || [],
                   scratchpad: '',
                   taskMetadata: restoredBlock.kind === 'task' ? restoredBlock.task : undefined,
+                  captureAgentTarget: restoredBlock.captureAgentTarget || 'none',
                   isDirty: false,
                   itemType: 'block'
                 };

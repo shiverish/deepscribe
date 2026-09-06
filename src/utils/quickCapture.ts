@@ -1,7 +1,7 @@
 import { db } from '../db/db';
 import { createId } from '../db/operations';
 import { recordActivity } from '../db/activity';
-import type { Block, Project } from '../types';
+import type { Block, Project, TaskAgentTarget } from '../types';
 import { createTaskMetadata, getNextTaskNumber, taskContentFromParts, TASK_INBOX_PROJECT_ID } from './taskBlocks';
 
 /**
@@ -75,6 +75,7 @@ export interface CreateCapturePayload {
   text: string;
   /** Optional and never required — the user may already know where it belongs. */
   projectHintName?: string;
+  agentTarget?: TaskAgentTarget;
 }
 
 /**
@@ -103,6 +104,7 @@ export async function createCaptureBlock(payload: CreateCapturePayload): Promise
     attachmentCount: 0,
     isTrash: false,
     tags: [CAPTURE_TAG, CAPTURE_UNPROCESSED_TAG],
+    captureAgentTarget: payload.agentTarget,
     creator: { type: 'user' },
     createdAt: now,
     updatedAt: now
@@ -135,6 +137,38 @@ export function extractProjectHint(plainText: string): { rawText: string; hintNa
     return { rawText, hintName: hintName || undefined };
   }
   return { rawText: plainText.trim(), hintName: undefined };
+}
+
+/**
+ * Updates or removes the embedded "Project hint: <Title>" in a capture block's
+ * HTML content and plain text. If `projectTitle` is undefined, empty, or whitespace,
+ * any existing project hint is removed.
+ */
+export function updateCaptureProjectHint(
+  html: string,
+  plainText: string,
+  projectTitle?: string
+): { html: string; plainText: string } {
+  const trimmedProject = projectTitle?.trim() || undefined;
+
+  const { rawText } = extractProjectHint(plainText);
+  const nextPlainText = trimmedProject
+    ? (rawText ? `${rawText}\n\nProject hint: ${trimmedProject}` : `Project hint: ${trimmedProject}`)
+    : rawText;
+
+  const cleanHtml = html
+    .replace(/<p[^>]*>(?:<[^>]+>)*Project hint:[\s\S]*?<\/p>/gi, '')
+    .trim();
+
+  let nextHtml: string;
+  if (trimmedProject) {
+    const hintHtml = `<p><em>Project hint: ${escapeHtml(trimmedProject)}</em></p>`;
+    nextHtml = cleanHtml ? `${cleanHtml}${hintHtml}` : hintHtml;
+  } else {
+    nextHtml = cleanHtml || '<p></p>';
+  }
+
+  return { html: nextHtml, plainText: nextPlainText };
 }
 
 function stripHtmlTags(html: string): string {
@@ -179,9 +213,14 @@ export async function convertCaptureToReadyTask(
   const taskNumber = getNextTaskNumber(allBlocks);
 
   const now = Date.now();
+  const agentTarget: TaskAgentTarget = (captureBlock.captureAgentTarget && captureBlock.captureAgentTarget !== 'none')
+    ? captureBlock.captureAgentTarget
+    : 'any';
+
   const taskMeta = {
     ...createTaskMetadata(position, { type: 'user' }, taskNumber),
     status: 'ready' as const,
+    agentTarget,
     readyAt: now
   };
 

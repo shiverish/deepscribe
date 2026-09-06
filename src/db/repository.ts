@@ -14,7 +14,7 @@ export interface DataRepository {
   initialize(): Promise<WorkspaceStatus | null>;
   snapshot(): Promise<WorkspaceSnapshot>;
   flush(): Promise<void>;
-  reload(): Promise<WorkspaceStatus | null>;
+  reload(force?: boolean): Promise<WorkspaceStatus | null>;
   status(): WorkspaceStatus | null;
   subscribe(listener: () => void): () => void;
 }
@@ -158,8 +158,24 @@ export const repository: DataRepository = {
     }
     await saveNow();
   },
-  async reload() {
+  async reload(force = false) {
     if (!initialized || !window.electronAPI?.workspace || applyingSnapshot) return currentStatus;
+    // Always flush any pending local writes or in-flight save first so local data is never overwritten
+    if (syncTimer !== null) {
+      window.clearTimeout(syncTimer);
+      syncTimer = null;
+      await saveNow();
+    } else if (syncPromise) {
+      await syncPromise;
+    }
+
+    // Only reload from disk if external processes actually modified the database (or force requested)
+    const status = await window.electronAPI.workspace.status();
+    if (!force && status.hasExternalChanges === false) {
+      currentStatus = status;
+      return currentStatus;
+    }
+
     const workspaceSnapshot = await window.electronAPI.workspace.load();
     await applySnapshot(workspaceSnapshot);
     currentStatus = await window.electronAPI.workspace.status();

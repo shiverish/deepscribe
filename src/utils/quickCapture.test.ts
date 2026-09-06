@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import 'fake-indexeddb/auto';
+import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { db } from '../db/db';
+import type { Project } from '../types';
+import { TASK_INBOX_PROJECT_ID } from './taskBlocks';
 import {
   CAPTURE_PROCESSED_TAG,
   CAPTURE_TAG,
@@ -6,10 +10,13 @@ import {
   capturePlainText,
   captureContentHtml,
   captureTitleFromText,
+  convertCaptureToReadyTask,
+  createCaptureBlock,
   extractProjectHint,
   isCaptureBlock,
   isProcessedCapture,
-  isUnprocessedCapture
+  isUnprocessedCapture,
+  updateCaptureProjectHint
 } from './quickCapture';
 
 describe('captureTitleFromText', () => {
@@ -97,6 +104,123 @@ describe('capture state', () => {
 
   it('leaves an ordinary block alone even if it carries the processed tag', () => {
     expect(isProcessedCapture({ tags: [CAPTURE_PROCESSED_TAG] })).toBe(false);
+  });
+});
+
+describe('createCaptureBlock and convertCaptureToReadyTask with agent target and project hint', () => {
+  beforeEach(async () => {
+    db.close();
+    await db.delete();
+    await db.open();
+    await db.blocks.clear();
+  });
+
+  afterAll(async () => {
+    db.close();
+    await db.delete();
+  });
+
+  it('preserves captureAgentTarget when creating a capture block', async () => {
+    const block = await createCaptureBlock({
+      text: 'Research new LLM capabilities',
+      projectHintName: 'AI Roadmap',
+      agentTarget: 'openai'
+    });
+
+    expect(block).not.toBeNull();
+    expect(block?.captureAgentTarget).toBe('openai');
+    const stored = await db.blocks.get(block!.id);
+    expect(stored?.captureAgentTarget).toBe('openai');
+  });
+
+  it('converts capture with specific agent to a Ready task assigned to that agent', async () => {
+    const projects: Project[] = [
+      { id: 'proj-ai', title: 'AI Roadmap', description: '', color: '#3b82f6', order: 0, tags: [], isTrash: false, createdAt: 1, updatedAt: 1 }
+    ];
+
+    const capture = await createCaptureBlock({
+      text: 'Build new agent feature',
+      projectHintName: 'AI Roadmap',
+      agentTarget: 'claude'
+    });
+    expect(capture).not.toBeNull();
+
+    const readyTask = await convertCaptureToReadyTask(capture!, projects, [capture!]);
+    expect(readyTask.kind).toBe('task');
+    expect(readyTask.projectId).toBe('proj-ai');
+    expect(readyTask.task?.status).toBe('ready');
+    expect(readyTask.task?.agentTarget).toBe('claude');
+  });
+
+  it('converts capture with none agent to a Ready task assigned to any', async () => {
+    const projects: Project[] = [];
+
+    const capture = await createCaptureBlock({
+      text: 'Unassigned task note',
+      agentTarget: 'none'
+    });
+    expect(capture).not.toBeNull();
+
+    const readyTask = await convertCaptureToReadyTask(capture!, projects, [capture!]);
+    expect(readyTask.kind).toBe('task');
+    expect(readyTask.projectId).toBe(TASK_INBOX_PROJECT_ID);
+    expect(readyTask.task?.status).toBe('ready');
+    expect(readyTask.task?.agentTarget).toBe('any');
+  });
+
+  it('converts capture without agent specified to a Ready task assigned to any', async () => {
+    const projects: Project[] = [];
+
+    const capture = await createCaptureBlock({
+      text: 'Capture without agent field'
+    });
+    expect(capture).not.toBeNull();
+
+    const readyTask = await convertCaptureToReadyTask(capture!, projects, [capture!]);
+    expect(readyTask.task?.agentTarget).toBe('any');
+  });
+
+  describe('updateCaptureProjectHint', () => {
+    it('appends a project hint when none existed', () => {
+      const html = '<p>Initial capture text</p>';
+      const plain = 'Initial capture text';
+      const updated = updateCaptureProjectHint(html, plain, 'DeepScribe');
+
+      expect(updated.plainText).toBe('Initial capture text\n\nProject hint: DeepScribe');
+      expect(updated.html).toBe('<p>Initial capture text</p><p><em>Project hint: DeepScribe</em></p>');
+    });
+
+    it('replaces an existing project hint with a new one', () => {
+      const html = '<p>Call supplier</p><p><em>Project hint: Old Project</em></p>';
+      const plain = 'Call supplier\n\nProject hint: Old Project';
+      const updated = updateCaptureProjectHint(html, plain, 'New Project');
+
+      expect(updated.plainText).toBe('Call supplier\n\nProject hint: New Project');
+      expect(updated.html).toBe('<p>Call supplier</p><p><em>Project hint: New Project</em></p>');
+    });
+
+    it('removes an existing project hint when projectTitle is undefined or empty', () => {
+      const html = '<p>Call supplier</p><p><em>Project hint: Old Project</em></p>';
+      const plain = 'Call supplier\n\nProject hint: Old Project';
+      const updated = updateCaptureProjectHint(html, plain, undefined);
+
+      expect(updated.plainText).toBe('Call supplier');
+      expect(updated.html).toBe('<p>Call supplier</p>');
+
+      const updatedEmpty = updateCaptureProjectHint(html, plain, '   ');
+      expect(updatedEmpty.plainText).toBe('Call supplier');
+      expect(updatedEmpty.html).toBe('<p>Call supplier</p>');
+    });
+
+    it('handles empty body text gracefully when adding and removing hints', () => {
+      const updated = updateCaptureProjectHint('', '', 'Website');
+      expect(updated.plainText).toBe('Project hint: Website');
+      expect(updated.html).toBe('<p><em>Project hint: Website</em></p>');
+
+      const cleared = updateCaptureProjectHint(updated.html, updated.plainText, '');
+      expect(cleared.plainText).toBe('');
+      expect(cleared.html).toBe('<p></p>');
+    });
   });
 });
 

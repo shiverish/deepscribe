@@ -909,6 +909,7 @@ export class DirectWorkspaceStore {
       updatedAt: block.updatedAt,
       kind: safeBlock.kind,
       task: safeBlock.task,
+      captureAgentTarget: block.captureAgentTarget,
       creator: block.creator
     };
   }

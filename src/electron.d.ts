@@ -40,8 +40,8 @@ declare global {
       quickCapture?: {
         open: () => Promise<{ ok: boolean }>;
         close: () => Promise<{ ok: boolean }>;
-        save: (payload: { text: string; projectHintName?: string }) => Promise<{ ok: boolean }>;
-        onSaveRequest: (handler: (payload: { text: string; projectHintName?: string }) => void) => () => void;
+        save: (payload: { text: string; projectHintName?: string; agentTarget?: string }) => Promise<{ ok: boolean }>;
+        onSaveRequest: (handler: (payload: { text: string; projectHintName?: string; agentTarget?: string }) => void) => () => void;
       };
       tray?: {
         minimizeToTray: () => Promise<void>;

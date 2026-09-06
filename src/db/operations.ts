@@ -1,5 +1,5 @@
 import { db } from './db';
-import type { Block, Project, TaskMetadata } from '../types';
+import type { Block, Project, TaskAgentTarget, TaskMetadata } from '../types';
 import { parseTag, sanitizeTags } from '../utils/tagUtils';
 import { sanitizeDependsOn } from '../utils/dependencyUtils';
 import { invalidateChunks } from '../utils/semanticSearch';
@@ -22,6 +22,7 @@ export interface BlockDraftUpdate {
   tags: string[];
   dependsOn?: string[];
   task?: TaskMetadata;
+  captureAgentTarget?: TaskAgentTarget;
 }
 
 export async function saveBlockDraft(blockId: string, draft: BlockDraftUpdate): Promise<void> {
@@ -30,6 +31,7 @@ export async function saveBlockDraft(blockId: string, draft: BlockDraftUpdate): 
     tags: sanitizeTags(draft.tags),
     dependsOn: draft.dependsOn ? sanitizeDependsOn(draft.dependsOn) : undefined,
     task: draft.task ? { ...draft.task } : undefined,
+    ...(draft.captureAgentTarget !== undefined ? { captureAgentTarget: draft.captureAgentTarget } : {}),
     updatedAt: Date.now()
   });
   await syncBlockWikiLinks(blockId);

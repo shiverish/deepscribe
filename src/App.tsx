@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, requestPersistentStorage, seedDemoDataIfEmpty } from './db/db';
 import { createId, deleteTagFromProject, markBlockSubtreeAsRead, markProjectAsRead, renameTagInProject, saveBlockDraft, saveProjectDraft, trashBlock, trashProject } from './db/operations';
-import type { Project, Block, Attachment, BlockTemplate, PathSegment, SaveStatus, DragTarget, ActiveView, TaskMetadata } from './types';
+import type { Project, Block, Attachment, BlockTemplate, PathSegment, SaveStatus, DragTarget, ActiveView, TaskMetadata, TaskAgentTarget } from './types';
 import { Breadcrumbs } from './components/Navigation/Breadcrumbs';
 import { UpdateNotification, type UpdaterState } from './components/Navigation/UpdateNotification';
 import { HorizontalLayout, type ColumnData } from './components/Navigation/HorizontalLayout';
@@ -209,9 +209,17 @@ function DeepScribeApp() {
   // does not bring the app forward — capturing should not interrupt anything.
   useEffect(() => {
     if (!window.electronAPI?.quickCapture?.onSaveRequest) return;
-    return window.electronAPI.quickCapture.onSaveRequest(payload => {
-      createCaptureBlock({ text: payload?.text ?? '', projectHintName: payload?.projectHintName })
-        .catch(error => console.error('Failed to store a Quick Capture entry:', error));
+    return window.electronAPI.quickCapture.onSaveRequest(async payload => {
+      try {
+        await createCaptureBlock({
+          text: payload?.text ?? '',
+          projectHintName: payload?.projectHintName,
+          agentTarget: payload?.agentTarget as TaskAgentTarget | undefined
+        });
+        await repository.flush();
+      } catch (error) {
+        console.error('Failed to store a Quick Capture entry:', error);
+      }
     });
   }, []);
 
@@ -673,7 +681,8 @@ function DeepScribeApp() {
     tags: string[],
     dependsOn?: string[],
     scratchpad?: string,
-    task?: TaskMetadata
+    task?: TaskMetadata,
+    captureAgentTarget?: TaskAgentTarget
   ) => {
     setSaveStatus({ state: 'saving' });
     try {
@@ -705,7 +714,8 @@ function DeepScribeApp() {
           completedTaskCount,
           tags,
           dependsOn,
-          task
+          task,
+          captureAgentTarget
         });
         const block = await db.blocks.get(itemId);
         if (block) {

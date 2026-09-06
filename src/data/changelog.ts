@@ -14,9 +14,32 @@ export interface ReleaseEntry {
   items: ChangelogItem[];
 }
 
-export const CURRENT_APP_VERSION = '0.2.43';
+export const CURRENT_APP_VERSION = '0.2.44';
 
 export const CHANGELOG_ENTRIES: ReleaseEntry[] = [
+  {
+    version: '0.2.44',
+    date: 'September 2026',
+    title: 'Configurable Project & Agent Targets for Quick Capture',
+    summary: 'Configure Project and Agent targets directly in Quick Capture, the Writing Panel inspector, or via the capture card right-click context menu.',
+    items: [
+      {
+        type: 'feature',
+        text: 'Quick Capture configuration',
+        detail: 'Select Project and Agent targets when creating captures with automatic preference memory.'
+      },
+      {
+        type: 'feature',
+        text: 'Writing Panel inspector & card context menu',
+        detail: 'Easily change Project and Agent targets on existing captures from the Writing Panel or via right-click context menu on capture cards.'
+      },
+      {
+        type: 'fix',
+        text: 'Reliable capture persistence',
+        detail: 'Immediate disk flush and external data version tracking prevents capture disappearance upon window focus.'
+      }
+    ]
+  },
   {
     version: '0.2.43',
     date: 'September 2026',
