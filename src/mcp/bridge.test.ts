@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 import { db } from '../db/db';
 import type { Block, Project } from '../types';
 import { formatDailyPlanContent, formatWorkItemContent, handleMcpBridgeRequest, markdownToHtml } from './bridge';
-import { createTaskMetadata, taskCreatorLabel, TASK_INBOX_PROJECT_ID } from '../utils/taskBlocks';
+import { createTaskMetadata, formatTaskHumanId, taskCreatorLabel, TASK_INBOX_PROJECT_ID } from '../utils/taskBlocks';
 
 async function insertUserTask(projectId: string, parentId: string | null, title: string, task: Block['task'], dependsOn?: string[]) {
   const now = Date.now();
@@ -937,4 +937,57 @@ describe('DeepScribe MCP export_block', () => {
     expect(claim.block.id).toBe(task.id);
     expect(claim.block.task?.status).toBe('in-progress');
   });
+
+  it('assigns sequential TSK numbers to tasks created via create_capture (SeeScribe)', async () => {
+    const capture1 = await handleMcpBridgeRequest('create_capture', {
+      title: 'Fix alignment in navigation',
+      content: '<p>Observed misaligned button on 1080p</p>',
+      agentId: 'seescribe',
+      agentTarget: 'custom',
+      customAgentName: 'SeeScribe',
+      requestId: 'req-capture-1',
+      assignTo: 'any'
+    }) as Block;
+
+    expect(capture1.kind).toBe('task');
+    expect(capture1.task?.taskNumber).toBe(1);
+    expect(formatTaskHumanId(capture1.task?.taskNumber)).toBe('#TSK-1');
+
+    // Second capture gets the next task number
+    const capture2 = await handleMcpBridgeRequest('create_capture', {
+      title: 'Missing translation in settings',
+      content: '<p>Label is not translated</p>',
+      agentId: 'seescribe',
+      agentTarget: 'custom',
+      customAgentName: 'SeeScribe',
+      requestId: 'req-capture-2',
+      assignTo: 'any'
+    }) as Block;
+
+    expect(capture2.kind).toBe('task');
+    expect(capture2.task?.taskNumber).toBe(2);
+    expect(formatTaskHumanId(capture2.task?.taskNumber)).toBe('#TSK-2');
+
+    // Retrieval by TSK-1 and TSK-2 works
+    const fetched1 = await handleMcpBridgeRequest('get_task', { taskId: 'TSK-1' }) as Block;
+    expect(fetched1.id).toBe(capture1.id);
+
+    const fetched2 = await handleMcpBridgeRequest('get_task', { taskId: 'TSK-2' }) as Block;
+    expect(fetched2.id).toBe(capture2.id);
+
+    // Replaying create_capture with same requestId returns the task with its taskNumber intact
+    const replayed = await handleMcpBridgeRequest('create_capture', {
+      title: 'Fix alignment in navigation',
+      content: '<p>Observed misaligned button on 1080p</p>',
+      agentId: 'seescribe',
+      agentTarget: 'custom',
+      customAgentName: 'SeeScribe',
+      requestId: 'req-capture-1',
+      assignTo: 'any'
+    }) as Block;
+
+    expect(replayed.id).toBe(capture1.id);
+    expect(replayed.task?.taskNumber).toBe(1);
+  });
 });
+

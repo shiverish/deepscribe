@@ -75,6 +75,20 @@ async function applySnapshot(snapshot: WorkspaceSnapshot): Promise<void> {
       ? snapshot.projects
       : [...snapshot.projects, createTaskInboxProject()];
     const blocks = snapshot.blocks.map(normalizeSnapshotBlock);
+    let maxTaskNumber = 0;
+    for (const block of blocks) {
+      if (block.kind === 'task' && typeof block.task?.taskNumber === 'number' && block.task.taskNumber > maxTaskNumber) {
+        maxTaskNumber = block.task.taskNumber;
+      }
+    }
+    const unassignedTasks = blocks.filter(block => block.kind === 'task' && block.task && typeof block.task.taskNumber !== 'number');
+    if (unassignedTasks.length > 0) {
+      unassignedTasks.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+      for (const block of unassignedTasks) {
+        maxTaskNumber += 1;
+        block.task!.taskNumber = maxTaskNumber;
+      }
+    }
     await db.transaction('rw', [db.projects, db.blocks, db.attachments, db.settings, db.activities, db.templates, db.revisions, db.links], async () => {
       await Promise.all([db.links.clear(), db.revisions.clear(), db.attachments.clear(), db.activities.clear(), db.templates.clear(), db.settings.clear(), db.blocks.clear(), db.projects.clear()]);
       if (projects.length) await db.projects.bulkAdd(projects);

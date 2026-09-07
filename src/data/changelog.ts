@@ -14,9 +14,22 @@ export interface ReleaseEntry {
   items: ChangelogItem[];
 }
 
-export const CURRENT_APP_VERSION = '0.2.44';
+export const CURRENT_APP_VERSION = '0.2.45';
 
 export const CHANGELOG_ENTRIES: ReleaseEntry[] = [
+  {
+    version: '0.2.45',
+    date: 'September 2026',
+    title: 'Task ID Assignment for SeeScribe Captures',
+    summary: 'Screen captures submitted via SeeScribe now correctly receive sequential task numbers (#TSK-xxx) and human identifiers.',
+    items: [
+      {
+        type: 'fix',
+        text: 'Sequential task number for SeeScribe captures',
+        detail: 'Assigned sequential TSK numbers to tasks created via SeeScribe capture bridge and auto-healed legacy unnumbered tasks upon workspace load.'
+      }
+    ]
+  },
   {
     version: '0.2.44',
     date: 'September 2026',

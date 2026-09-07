@@ -1085,23 +1085,32 @@ async function createCapture(params: JsonObject) {
       && block.task?.creator?.type === 'agent'
       && block.task.creator.agentId === agentId
       && block.task.creator.requestId === requestId).first();
-    if (replay) return { block: replay, created: false };
+    if (replay) {
+      if (replay.task && typeof replay.task.taskNumber !== 'number') {
+        const allBlocks = await db.blocks.toArray();
+        const taskNumber = getNextTaskNumber(allBlocks);
+        replay.task.taskNumber = taskNumber;
+        await db.blocks.update(replay.id, { task: replay.task });
+      }
+      return { block: replay, created: false };
+    }
 
     if (projectId === TASK_INBOX_PROJECT_ID && !await db.projects.get(TASK_INBOX_PROJECT_ID)) {
       await db.projects.add(createTaskInboxProject(now));
     }
 
-    const siblings = await db.blocks.filter(block => !block.isTrash && block.projectId === projectId && block.kind === 'task').toArray();
+    const allBlocks = await db.blocks.toArray();
+    const siblings = allBlocks.filter(block => !block.isTrash && block.projectId === projectId && block.kind === 'task');
     const position = siblings.reduce((highest, block) => Math.max(highest, block.task?.position ?? -1), -1) + 1;
-    const order = await db.blocks.filter(block => !block.isTrash && block.projectId === projectId && block.parentId === null).count();
+    const order = allBlocks.filter(block => !block.isTrash && block.projectId === projectId && block.parentId === null).length;
+    const taskNumber = getNextTaskNumber(allBlocks);
 
     const task = createTaskMetadata(position, {
       type: 'agent', agentTarget: claimantTarget, agentId, requestId,
       ...(claimantTarget === 'custom' ? { customAgentName } : {})
-    });
+    }, taskNumber, assignTo as TaskMetadata['agentTarget']);
     task.status = 'ready';
     task.readyAt = now;
-    task.agentTarget = assignTo as TaskMetadata['agentTarget'];
 
     const errors = validateTaskReady(title, rawContent, task);
     if (errors.length) throw new Error(errors.join(' '));
