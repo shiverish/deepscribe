@@ -14,5 +14,6 @@ public enum DrawingTool
     Ellipse,
     Highlighter,
     TextBadge,
-    Eraser
+    Eraser,
+    Text
 }

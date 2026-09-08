@@ -342,6 +342,17 @@
                             </Border>
                         </StackPanel>
                     </RadioButton>
+                    <RadioButton Style="{StaticResource ToolButton}" GroupName="DrawingTools"
+                                 IsChecked="{Binding ActiveTool, Converter={StaticResource EnumToBool}, ConverterParameter={x:Static enums:DrawingTool.Text}, Mode=TwoWay}"
+                                 Command="{Binding SelectToolCommand}" CommandParameter="{x:Static enums:DrawingTool.Text}"
+                                 ToolTip="Note (7, T)">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="💬 Note" Margin="0,0,5,0"/>
+                            <Border Background="#16161C" CornerRadius="3" Padding="3,0" VerticalAlignment="Center">
+                                <TextBlock Text="7" FontSize="10" Foreground="#94A3B8" FontWeight="Bold"/>
+                            </Border>
+                        </StackPanel>
+                    </RadioButton>
                 </StackPanel>
 
 

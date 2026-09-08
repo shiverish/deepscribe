@@ -81,6 +81,25 @@ public class AnnotationMarkdownTests
     }
 
     [Fact]
+    public void Describe_formats_text_note_with_coordinates_and_content()
+    {
+        var note = new Annotation
+        {
+            Tool = DrawingTool.Text,
+            Order = 1,
+            Start = new AnnotationPoint(150, 200),
+            Bounds = new AnnotationRect(150, 200, 180, 40),
+            Text = "Dit veld moet verplicht worden"
+        };
+
+        var markdown = AnnotationMarkdown.Describe(BuildCapture(note));
+
+        markdown.Should().Contain("Tekstnotitie");
+        markdown.Should().Contain("(150, 200)");
+        markdown.Should().Contain("Dit veld moet verplicht worden");
+    }
+
+    [Fact]
     public void Describe_notes_the_moment_within_a_recording()
     {
         var marked = new Annotation

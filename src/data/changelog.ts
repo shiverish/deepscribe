@@ -14,9 +14,27 @@ export interface ReleaseEntry {
   items: ChangelogItem[];
 }
 
-export const CURRENT_APP_VERSION = '0.2.45';
+export const CURRENT_APP_VERSION = '0.2.46';
 
 export const CHANGELOG_ENTRIES: ReleaseEntry[] = [
+  {
+    version: '0.2.46',
+    date: 'September 2026',
+    title: 'Text Note Tool in SeeScribe',
+    summary: 'Added an interactive Text Note (💬 Note) annotation tool to the SeeScribe overlay canvas.',
+    items: [
+      {
+        type: 'feature',
+        text: 'Interactive text notes on screen captures',
+        detail: 'Place, type, drag, re-edit, and delete text notes directly on the screen capture canvas with multi-line support and shortcut keys (7 and T).'
+      },
+      {
+        type: 'improvement',
+        text: 'Structured text note metadata',
+        detail: 'Formatted on-screen text notes into task markdown descriptions and attached structured JSON annotation metadata for agents.'
+      }
+    ]
+  },
   {
     version: '0.2.45',
     date: 'September 2026',

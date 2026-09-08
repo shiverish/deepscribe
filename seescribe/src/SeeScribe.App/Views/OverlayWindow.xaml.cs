@@ -7,6 +7,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using SeeScribe.App.ViewModels;
+using SeeScribe.App.Views.Controls;
 using SeeScribe.Core.Enums;
 using SeeScribe.Core.Models;
 using Bitmap = System.Drawing.Bitmap;
@@ -208,12 +209,23 @@ public partial class OverlayWindow : Window
     {
         if (e.LeftButton != MouseButtonState.Pressed) return;
 
+        if (e.OriginalSource is DependencyObject depObj && FindParent<TextNoteCard>(depObj) != null)
+        {
+            return;
+        }
+
         _startPoint = e.GetPosition(VectorCanvas);
 
         if (_viewModel.ActiveTool == DrawingTool.TextBadge)
         {
             // Place step badge at click point
             PlaceStepBadge(_startPoint);
+            return;
+        }
+
+        if (_viewModel.ActiveTool == DrawingTool.Text)
+        {
+            PlaceTextNote(_startPoint);
             return;
         }
 
@@ -405,6 +417,73 @@ public partial class OverlayWindow : Window
         _annotations.Add(annotation);
     }
 
+    private void PlaceTextNote(Point position)
+    {
+        CommitActiveTextNotes();
+
+        var annotation = NewAnnotation(DrawingTool.Text);
+        annotation.Start = new AnnotationPoint(position.X, position.Y);
+        annotation.Bounds = new AnnotationRect(position.X, position.Y, 120, 36);
+
+        var card = new TextNoteCard
+        {
+            Annotation = annotation
+        };
+        card.SetAccentColor(_viewModel.SelectedColor);
+
+        Canvas.SetLeft(card, position.X);
+        Canvas.SetTop(card, position.Y);
+
+        card.Committed += (s, text) =>
+        {
+            if (!_annotations.Contains(annotation))
+            {
+                annotation.Order = _annotations.Count + 1;
+                _annotations.Add(annotation);
+                _actionHistory.Add(card);
+            }
+            card.UpdateAnnotationBounds();
+        };
+
+        card.Cancelled += (s, e) =>
+        {
+            VectorCanvas.Children.Remove(card);
+            _annotations.Remove(annotation);
+            _actionHistory.Remove(card);
+        };
+
+        card.DeleteRequested += (s, e) =>
+        {
+            VectorCanvas.Children.Remove(card);
+            _annotations.Remove(annotation);
+            _actionHistory.Remove(card);
+        };
+
+        VectorCanvas.Children.Add(card);
+        card.BeginEdit();
+    }
+
+    private void CommitActiveTextNotes()
+    {
+        foreach (var card in VectorCanvas.Children.OfType<TextNoteCard>().ToList())
+        {
+            if (card.IsEditing)
+            {
+                card.CommitEdit();
+            }
+        }
+    }
+
+    private static T? FindParent<T>(DependencyObject? child) where T : DependencyObject
+    {
+        while (child != null)
+        {
+            if (child is T parent) return parent;
+            child = VisualTreeHelper.GetParent(child);
+        }
+        return null;
+    }
+
     private void UndoLastAction()
     {
         if (_actionHistory.Count == 0) return;
@@ -424,7 +503,7 @@ public partial class OverlayWindow : Window
         else if (last is UIElement element)
         {
             VectorCanvas.Children.Remove(element);
-            if (_viewModel.StepBadgeCounter > 1)
+            if (element is not TextNoteCard && _viewModel.StepBadgeCounter > 1)
             {
                 _viewModel.StepBadgeCounter--;
             }
@@ -442,7 +521,7 @@ public partial class OverlayWindow : Window
 
     private void RootGrid_PreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
-        if (!Toolbar.IsMouseOver)
+        if (!Toolbar.IsMouseOver && FindParent<TextNoteCard>(e.OriginalSource as DependencyObject) == null)
         {
             Focus();
         }
@@ -452,10 +531,22 @@ public partial class OverlayWindow : Window
     {
         if (e.Key == Key.Escape)
         {
-            if (Keyboard.FocusedElement is TextBox || e.OriginalSource is TextBox)
+            var isTextBox = Keyboard.FocusedElement is TextBox || e.OriginalSource is TextBox;
+            if (isTextBox)
             {
-                Focus();
-                e.Handled = true;
+                var tb = (Keyboard.FocusedElement as TextBox) ?? (e.OriginalSource as TextBox);
+                var noteCard = FindParent<TextNoteCard>(tb);
+                if (noteCard != null)
+                {
+                    noteCard.CancelEdit();
+                    Focus();
+                    e.Handled = true;
+                }
+                else
+                {
+                    Focus();
+                    e.Handled = true;
+                }
             }
             else
             {
@@ -482,7 +573,18 @@ public partial class OverlayWindow : Window
             if (isTextBox)
             {
                 var tb = (Keyboard.FocusedElement as TextBox) ?? (e.OriginalSource as TextBox);
-                if (tb?.AcceptsReturn == true)
+                var noteCard = FindParent<TextNoteCard>(tb);
+                if (noteCard != null)
+                {
+                    if ((Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+                    {
+                        noteCard.CommitEdit();
+                        Focus();
+                        e.Handled = true;
+                    }
+                    // Without Ctrl, let the multi-line TextBox handle Enter to insert a newline.
+                }
+                else if (tb?.AcceptsReturn == true)
                 {
                     if ((Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
                     {
@@ -536,6 +638,12 @@ public partial class OverlayWindow : Window
                     _viewModel.SelectTool(DrawingTool.Highlighter);
                     e.Handled = true;
                     break;
+                case Key.D7:
+                case Key.NumPad7:
+                case Key.T:
+                    _viewModel.SelectTool(DrawingTool.Text);
+                    e.Handled = true;
+                    break;
             }
         }
     }
@@ -573,6 +681,12 @@ public partial class OverlayWindow : Window
 
     private byte[] GenerateComposedImage()
     {
+        CommitActiveTextNotes();
+        foreach (var card in VectorCanvas.Children.OfType<TextNoteCard>())
+        {
+            card.PrepareForExport();
+        }
+
         Toolbar.Visibility = Visibility.Hidden;
         UpdateLayout();
 

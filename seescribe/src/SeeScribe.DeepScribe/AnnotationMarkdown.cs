@@ -90,6 +90,7 @@ public static class AnnotationMarkdown
             DrawingTool.Pen => "Penlijn",
             DrawingTool.Highlighter => "Markering",
             DrawingTool.TextBadge => annotation.BadgeNumber is { } number ? $"Stap {number}" : "Badge",
+            DrawingTool.Text => "Tekstnotitie",
             _ => "Annotatie"
         };
 
@@ -99,6 +100,10 @@ public static class AnnotationMarkdown
                 $"wijst naar ({Round(end.X)}, {Round(end.Y)})",
             DrawingTool.TextBadge when annotation.Start is { } start =>
                 $"op ({Round(start.X)}, {Round(start.Y)})",
+            DrawingTool.Text when annotation.Start is { } start =>
+                $"op ({Round(start.X)}, {Round(start.Y)})",
+            DrawingTool.Text =>
+                $"op ({Round(annotation.Bounds.X)}, {Round(annotation.Bounds.Y)})",
             _ => $"over het gebied ({Round(annotation.Bounds.X)}, {Round(annotation.Bounds.Y)}) tot " +
                  $"({Round(annotation.Bounds.X + annotation.Bounds.Width)}, {Round(annotation.Bounds.Y + annotation.Bounds.Height)})"
         };

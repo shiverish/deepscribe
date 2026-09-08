@@ -280,4 +280,39 @@ public class AnnotationPayloadTests : IDisposable
         decoded.Should().Contain("\"Rectangle\"");
         decoded.Should().NotContain("\"tool\":2");
     }
+
+    [Fact]
+    public async Task Annotation_data_serializes_text_notes_with_tool_name_and_content()
+    {
+        var handler = new RecordingHandler();
+        var writer = new DeepScribeCaptureWriter(new DeepScribeBridgeClient(new HttpClient(handler)));
+
+        var capture = new CaptureResult
+        {
+            PromptText = "test text note",
+            Annotations =
+            {
+                new Annotation
+                {
+                    Tool = Core.Enums.DrawingTool.Text,
+                    Order = 1,
+                    Start = new AnnotationPoint(50, 100),
+                    Bounds = new AnnotationRect(50, 100, 200, 50),
+                    Text = "Fix spacing here"
+                }
+            }
+        };
+
+        await writer.WriteAsync(capture, CaptureDestination.Inbox);
+
+        var json = handler.Calls
+            .Single(call => call.Method == "create_attachment"
+                && call.Params.GetProperty("fileType").GetString() == "application/json")
+            .Params.GetProperty("base64").GetString()!;
+
+        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(json));
+
+        decoded.Should().Contain("\"Text\"");
+        decoded.Should().Contain("\"Fix spacing here\"");
+    }
 }
