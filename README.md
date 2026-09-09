@@ -1,8 +1,8 @@
 # DeepScribe
 
-DeepScribe is een local-first schrijf- en kennisapp met een hiërarchische Miller-columnnavigatie. De desktop-app bewaart een verplaatsbare SQLite-workspace lokaal op de computer; de browserontwikkelmodus gebruikt IndexedDB via Dexie.
+DeepScribe is a local-first writing and knowledge app with hierarchical Miller column navigation. The desktop app stores a portable SQLite workspace locally on the computer; the browser development mode uses IndexedDB through Dexie.
 
-## Starten
+## Getting Started
 
 ```bash
 npm install
@@ -11,92 +11,91 @@ npm run dev
 
 ## Standalone Desktop App (Electron)
 
-- **Snel starten (ontwikkelmodus):** Dubbelklik op `start-deepscribe.bat` of voer `npm run app:dev` uit.
-- **Standalone Windows-installer bouwen:** Voer `npm run app:build` uit. Dit maakt de installer en update-metadata aan in `dist-electron`.
-- **Automatische Updates:** De app controleert bij het opstarten op de achtergrond op updates en kan ook handmatig worden gecontroleerd via **Instellingen → Algemeen → Versie & Updates**. Zodra een update binnen is, kan deze met één klik worden geïnstalleerd met automatische back-up/flush van actieve wijzigingen.
-- **PWA (Progressive Web App):** De web-app bevat een Web App Manifest (`public/manifest.json`), waardoor je de app ook direct vanuit Chrome of Edge als app op je computer kunt installeren via "App installeren".
+- **Quick start (development mode):** Double-click `start-deepscribe.bat` or run `npm run app:dev`.
+- **Build the standalone Windows installer:** Run `npm run app:build`. This creates the installer and update metadata in `dist-electron`.
+- **Automatic Updates:** The app checks for updates in the background at startup. You can also check manually through **Settings → General → Version & Updates**. Once an update has been downloaded, it can be installed with one click after automatically backing up and flushing active changes.
+- **PWA (Progressive Web App):** The web app includes a Web App Manifest (`public/manifest.json`), allowing you to install it directly from Chrome or Edge using "Install app."
 
+## Local Data and Backups
 
-## Lokale data en back-ups
+- By default, the desktop app stores `workspace.json`, `workspace.sqlite`, and all attachments under `Documents\DeepScribe\Workspace`.
+- Through **Settings → General → Data Storage**, you can open the workspace folder or safely copy it to another location and switch to that copy.
+- The workspace is not yet encrypted. Protect the selected folder with appropriate Windows and disk permissions.
+- On the first desktop launch, existing IndexedDB data is migrated to the workspace after confirmation; the old storage is retained as a safety copy.
+- Regularly create a `.deepscribe` archive of every important project through **Export & Import**.
+- Importing never overwrites an existing project: project, block, and attachment IDs are regenerated.
+- An import is rolled back completely if validation or a database operation fails.
+- Images inserted directly into the editor are limited to 5 MB per file.
+- Images can be inserted at the desired text position using the upload button or drag and drop.
+- Regular block attachments are stored under `attachments\<project-id>` in the active workspace and are limited to 25 MB per file.
+- In browser development mode, DeepScribe requests persistent browser storage; only clear browser data when you have a recent export.
 
-- De desktop-app bewaart `workspace.json`, `workspace.sqlite` en alle bijlagen standaard onder `Documenten\DeepScribe\Workspace`.
-- Via **Instellingen → Algemeen → Dataopslag** kun je de workspacemap openen of veilig naar een andere locatie kopiëren en omschakelen.
-- De workspace is nog niet versleuteld. Bescherm de gekozen map met passende Windows- en schijfrechten.
-- Bij de eerste desktopstart wordt bestaande IndexedDB-data na bevestiging naar de workspace gemigreerd; de oude opslag blijft als veiligheidskopie behouden.
-- Maak regelmatig via **Exporteren & Importeren** een `.deepscribe`-archief van ieder belangrijk project.
-- Importeren overschrijft nooit een bestaand project: project-, blok- en bijlage-id's worden opnieuw aangemaakt.
-- Import wordt volledig teruggedraaid als validatie of een databasebewerking mislukt.
-- Afbeeldingen die direct in de editor worden geplaatst zijn begrensd op 5 MB per bestand.
-- Afbeeldingen kunnen via de uploadknop of met drag-and-drop op de gewenste tekstpositie worden ingevoegd.
-- Gewone blokbijlagen worden onder `attachments\<project-id>` in de actieve workspace geplaatst en zijn begrensd op 25 MB per bestand.
-- In de browserontwikkelmodus vraagt DeepScribe om persistente browseropslag; wis browserdata alleen met een recente export.
+## DeepScribe MCP for Agents
 
-## DeepScribe MCP voor agents
+The desktop app includes a local bridge that allows Codex and other MCP clients to read and update projects, blocks, ideas, concepts, and todos in a structured way. The bridge listens only on `127.0.0.1`, uses a random access token for each app session, and is available only while the Electron app is running.
 
-De desktop-app bevat een lokale bridge waarmee Codex en andere MCP-clients projecten, blokken, ideeën, concepten en todo's gestructureerd kunnen lezen en bijwerken. De bridge luistert uitsluitend op `127.0.0.1`, gebruikt per appstart een willekeurig toegangstoken en is alleen beschikbaar terwijl de Electron-app draait.
+Available actions include listing projects and blocks, searching by text or tags, creating or appending to regular knowledge blocks, reading user-managed task blocks, updating task status, and reading linked files. Agents can create tasks with `create_task`; these tasks enter Inbox with the creating agent recorded as their origin. Agents can also update a task's content and tags, preferably with `append_to_block`, for example to add a delivery report. A task's title, dependencies, assignment, position, and status remain user-controlled and are changed only through `update_task_status` and the claim tools. While another agent holds a valid claim on a task, write operations are refused unless that agent's `agentId` and `claimToken` are provided. Agents cannot create or complete inline todos. Markdown supplied by agents is safely converted into real headings, paragraphs, links, code, and lists in the editor; meaningful line breaks remain visible where appropriate. Attachments are exposed as `deepscribe://attachment/<id>` MCP resources; local file paths are never shared. Text files are returned as text, while other formats are returned as base64-encoded binary resources. Write operations do not delete content, and tool descriptions instruct agents to read first and preserve existing content wherever possible.
 
-Beschikbare acties zijn onder andere projecten en blokken tonen, zoeken op tekst of tags, gewone kennisblokken aanmaken of aanvullen, gebruikerstaakblokken lezen, taakstatus bijwerken en gekoppelde bestanden lezen. Agents kunnen taken aanmaken met `create_task`; zulke taken komen in Inbox terecht met de aanmakende agent als herkomst. Agents kunnen ook de inhoud en tags van een taak bijwerken, bij voorkeur met `append_to_block`, bijvoorbeeld om een opleververslag achter te laten. De titel, afhankelijkheden, toewijzing, positie en status van een taak blijven van de gebruiker en lopen uitsluitend via `update_task_status` en de claimtools. Zolang een andere agent een geldige claim op een taak heeft, worden schrijfacties geweigerd tenzij de eigen `agentId` en `claimToken` worden meegegeven. Inline todo's kunnen agents niet aanmaken of afvinken. Door agents aangeleverde Markdown wordt veilig omgezet naar echte koppen, alinea's, links, code en lijsten in de editor; enkele betekenisvolle regeleinden blijven zichtbaar. Bijlagen worden aangeboden als `deepscribe://attachment/<id>` MCP-resources; lokale bestandspaden worden niet gedeeld. Tekstuele bestanden worden als tekst doorgegeven en andere formaten als base64-gecodeerde binaire resource. Schrijfacties verwijderen niets en de toolbeschrijvingen sturen agents aan om eerst te lezen en bestaande inhoud zo veel mogelijk te behouden.
+## Search for Agents
 
-## Zoeken voor agents
+The MCP tool `search` scores individual passages rather than entire documents, allowing a relevant paragraph inside a long block to be found. Each result includes a snippet, score, the heading containing the match, and the reason for the match.
 
-De MCP-tool `search` scoort op passageniveau in plaats van op hele documenten, zodat één relevante alinea in een lang blok ook gevonden wordt. Ieder resultaat bevat een snippet, een score, de kop waaronder de treffer staat en de reden van de match.
+Projects are searched alongside blocks, including their title, description, and scratchpad. Project matches have `resultType: 'project'`; block matches have `resultType: 'block'`. The `projectId` and `tags` filters apply to both.
 
-Naast blokken worden ook projecten doorzocht: titel, beschrijving en scratchpad. Projecttreffers zijn te herkennen aan `resultType: 'project'`; bloktreffers dragen `resultType: 'block'`. De filters `projectId` en `tags` gelden voor beide.
+The in-app search window currently still uses the older block-level ranking and does not show project matches; this limitation applies only to the in-app search, not the MCP search tool.
 
-Het zoekvenster in de app gebruikt voorlopig nog de oudere ranking op blokniveau en toont geen projecttreffers; dit betreft uitsluitend de MCP-zoekopdracht.
+## Relations Between Blocks
 
-## Relaties tussen blokken
+Blocks can be related to one another, including across project boundaries. Relations are stored as references to block IDs rather than titles, so renaming a block does not break them.
 
-Blokken kunnen aan elkaar gerelateerd worden, ook over projectgrenzen heen. Relaties worden opgeslagen als verwijzingen naar blok-id, niet naar titel, dus een blok hernoemen breekt ze niet.
+- In the editor, write a reference as `[[Block title]]`. When the block is saved, the reference is resolved once and converted into a relation. A title that does not exist, or that belongs to multiple blocks, deliberately remains unresolved instead of linking to the wrong block.
+- In addition to the neutral `relates-to` type, DeepScribe supports `supports`, `contradicts`, `derived-from`, and `source-of`. A deliberately created typed relation is not removed when the text changes.
+- The references panel shows outgoing references and backlinks, including their relation type and an indicator when the other block belongs to a different project.
+- Agents use `link_blocks` to create a relation and `get_related` to traverse the graph from a block. Both outgoing links and backlinks count as a step; each result reports its direction, type, distance, and whether it crosses a project boundary.
+- Permanently deleting a block or project also removes its associated relations.
 
-- In de editor schrijf je een verwijzing als `[[Bloktitel]]`. Bij opslaan wordt die eenmalig omgezet naar een relatie. Een titel die niet bestaat, of die door meerdere blokken wordt gedragen, blijft bewust onopgelost in plaats van naar het verkeerde blok te wijzen.
-- Naast het neutrale `relates-to` bestaan de typen `supports`, `contradicts`, `derived-from` en `source-of`. Een getypeerde relatie die bewust is gelegd, verdwijnt niet wanneer de tekst verandert.
-- Het referentiepaneel toont uitgaande verwijzingen en backlinks, met het relatietype en een markering wanneer het andere blok in een ander project staat.
-- Agents gebruiken `link_blocks` om een relatie te leggen en `get_related` om vanaf een blok door de graaf te lopen. Zowel uitgaande links als backlinks tellen als stap; ieder resultaat meldt richting, type, afstand en of het cross-project is.
-- Bij het definitief verwijderen van een blok of project worden de bijbehorende relaties opgeruimd.
+## Outgoing Webhooks
 
-## Uitgaande webhooks
+DeepScribe can send task and block events as JSON to external automations such as n8n, Discord, or Home Assistant. Endpoints are managed under **Settings → Agents → Outgoing Webhooks**.
 
-DeepScribe kan taak- en blokgebeurtenissen als JSON naar externe automatiseringen sturen, bijvoorbeeld n8n, Discord of Home Assistant. Endpoints worden beheerd onder **Instellingen → Agents → Outgoing Webhooks**.
+- For each endpoint, choose which events are sent: `task.status_changed`, `task.created`, `block.created`, and `block.updated`.
+- The payload includes `event`, `timestamp`, `projectId`, `blockId`, `taskId`, `oldStatus`, `newStatus`, `title`, `tags`, and `metadata`.
+- Delivery is asynchronous and does not block the interface; a slow or unreachable endpoint does not delay saving.
+- Authentication is optional: use either an `Authorization: Bearer` header or an `X-DeepScribe-Signature` containing an HMAC-SHA256 signature of the request body.
+- Only `http` and `https` URLs are accepted, with a five-second timeout. Failed deliveries are logged and do not affect other endpoints.
+- Blocks in the trash do not emit events.
 
-- Per endpoint kies je zelf welke gebeurtenissen worden verstuurd: `task.status_changed`, `task.created`, `block.created` en `block.updated`.
-- De payload bevat `event`, `timestamp`, `projectId`, `blockId`, `taskId`, `oldStatus`, `newStatus`, `title`, `tags` en `metadata`.
-- Verzending gebeurt asynchroon en blokkeert de interface niet; een traag of onbereikbaar endpoint vertraagt het opslaan niet.
-- Authenticatie is optioneel: een `Authorization: Bearer`-header of een `X-DeepScribe-Signature` met een HMAC-SHA256 over de body.
-- Alleen `http`- en `https`-URL's worden geaccepteerd, met een time-out van vijf seconden. Een mislukte levering wordt gelogd en heeft geen gevolgen voor de andere endpoints.
-- Blokken in de prullenbak versturen geen gebeurtenissen.
+Blocks created or modified by an agent through MCP receive a **New from agent** badge until the block has been opened and visible for a short time. Unread changes propagate upward as a counter through all parent blocks to the project. The border, badge, and optional glow use a separate global agent alert color that can be customized under **Settings → Appearance**.
 
-Blokken die via MCP door een agent zijn aangemaakt of gewijzigd krijgen een badge **Nieuw van agent** totdat het blok geopend en kort zichtbaar is geweest. Ongelezen wijzigingen druppelen met een teller omhoog door alle bovenliggende blokken tot aan het project. De rand, badge en optionele glow gebruiken een aparte, globale agent-alertkleur die onder **Instellingen → Uiterlijk** kan worden aangepast.
-
-Registreer de lokale STDIO-server eenmalig bij Codex vanuit deze projectmap:
+Register the local STDIO server with Codex once from this project directory:
 
 ```powershell
 codex mcp add deepscribe -- node "K:\Apps\DeepScribe\mcp\server.mjs"
 ```
 
-Start of herstart vervolgens DeepScribe met `npm run app:dev` of de desktop-app en open een nieuwe Codex-taak. Controleer de verbinding met `/mcp` of laat de agent de DeepScribe-tool `status` uitvoeren. De STDIO-opzet volgt de [officiële OpenAI-documentatie voor lokale MCP-servers](https://learn.chatgpt.com/docs/extend/mcp).
+Then start or restart DeepScribe with `npm run app:dev` or the desktop app and open a new Codex task. Check the connection with `/mcp`, or ask the agent to run the DeepScribe `status` tool. The STDIO setup follows the [official OpenAI documentation for local MCP servers](https://learn.chatgpt.com/docs/extend/mcp).
 
-### Claude Desktop-extensie
+### Claude Desktop Extension
 
-Bouw het installeerbare MCP Bundle met:
+Build the installable MCP Bundle with:
 
 ```powershell
 npm run mcpb:build
 ```
 
-Dit maakt `dist-mcpb/DeepScribe-<versie>.mcpb`. Installeer dat bestand in Claude Desktop via **Settings → Extensions → Advanced settings → Install Extension**. De bundel bevat de MCP-server en alle Node-afhankelijkheden; een losse Node-installatie of verwijzing naar deze projectmap is niet nodig. DeepScribe zelf moet wel draaien wanneer Claude de tools gebruikt.
+This creates `dist-mcpb/DeepScribe-<version>.mcpb`. Install that file in Claude Desktop through **Settings → Extensions → Advanced settings → Install Extension**. The bundle contains the MCP server and all Node dependencies; a separate Node installation or reference to this project directory is not required. DeepScribe itself must still be running when Claude uses the tools.
 
-### ChatGPT-skill
+### ChatGPT Skill
 
-De herbruikbare Agent Skill staat in `integrations/chatgpt/deepscribe`. Bouw een uploadbaar archief met:
+The reusable Agent Skill is located at `integrations/chatgpt/deepscribe`. Build an uploadable archive with:
 
 ```powershell
 npm run skill:build
 ```
 
-Upload `dist-skills/DeepScribe-Skill-<versie>.zip` via **Plugins → Skills → Create → Upload**. De skill leert ChatGPT hoe het DeepScribe veilig leest, bijwerkt en formatteert, maar levert zelf geen netwerkverbinding met de lokale app; daarvoor moeten de DeepScribe-tools afzonderlijk als ondersteunde MCP-app beschikbaar zijn.
+Upload `dist-skills/DeepScribe-Skill-<version>.zip` through **Plugins → Skills → Create → Upload**. The skill teaches ChatGPT how to read, update, and format DeepScribe data safely, but it does not provide a network connection to the local app. The DeepScribe tools must be made available separately as a supported MCP app.
 
-## Controles
+## Checks
 
 ```bash
 npm run lint
@@ -104,9 +103,9 @@ npm test
 npm run build
 ```
 
-De tests bewaken onder andere cyclische boomstructuren, verplaatsen, project- en blokherstel, definitief verwijderen en archiefvalidatie.
+The tests cover cyclic tree structures, moving records, restoring projects and blocks, permanent deletion, archive validation, and other behavior.
 
-## Licentie
+## License
 
-DeepScribe is gelicentieerd onder de [GNU General Public License v3.0 (GPLv3)](LICENSE).
+DeepScribe is licensed under the [GNU General Public License v3.0 (GPLv3)](LICENSE).
 
