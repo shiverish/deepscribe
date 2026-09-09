@@ -54,37 +54,59 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [updateFeedback, setUpdateFeedback] = useState<string | null>(null);
   const [isRecordingHotkey, setIsRecordingHotkey] = useState(false);
 
-  const handleRecordKeyDown = (e: React.KeyboardEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.key === 'Escape') {
+  useEffect(() => {
+    if (!isRecordingHotkey) return;
+
+    const handleWindowKeyDown = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (e.key === 'Escape') {
+        setIsRecordingHotkey(false);
+        return;
+      }
+
+      // If only a modifier was pressed, wait for the actual key
+      if (['Control', 'Shift', 'Alt', 'Meta', 'AltGraph'].includes(e.key)) {
+        return;
+      }
+
+      const parts: string[] = [];
+      if (e.ctrlKey) parts.push('Ctrl');
+      if (e.altKey) parts.push('Alt');
+      if (e.shiftKey) parts.push('Shift');
+      if (e.metaKey) parts.push('Super');
+
+      let keyName = e.key;
+      if (keyName === ' ' || keyName === 'Spacebar') {
+        keyName = 'Space';
+      } else if (e.code && e.code.startsWith('Key')) {
+        keyName = e.code.slice(3).toUpperCase();
+      } else if (e.code && e.code.startsWith('Digit')) {
+        keyName = e.code.slice(5);
+      } else if (e.code && /^F[1-9][0-2]?$/i.test(e.code)) {
+        keyName = e.code.toUpperCase();
+      } else if (/^F[1-9][0-2]?$/i.test(keyName)) {
+        keyName = keyName.toUpperCase();
+      } else if (keyName.length === 1) {
+        keyName = keyName.toUpperCase();
+      }
+
+      // Require at least one modifier or an F-key to prevent capturing normal letter keys globally
+      const isFKey = /^F[1-9][0-2]?$/i.test(keyName);
+      if (parts.length === 0 && !isFKey) {
+        return;
+      }
+
+      parts.push(keyName);
+      const shortcut = parts.join('+');
+      onUpdateSettings({ globalHotkeyToggle: shortcut });
       setIsRecordingHotkey(false);
-      return;
-    }
-    if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) {
-      return;
-    }
-    const parts: string[] = [];
-    if (e.ctrlKey) parts.push('Ctrl');
-    if (e.altKey) parts.push('Alt');
-    if (e.shiftKey) parts.push('Shift');
-    if (e.metaKey) parts.push('Super');
+    };
 
-    let keyName = e.key;
-    if (keyName === ' ') keyName = 'Space';
-    else if (keyName.length === 1) keyName = keyName.toUpperCase();
-
-    // Require at least one modifier or an F-key to prevent capturing normal letter keys globally
-    const isFKey = /^F[1-9][0-2]?$/i.test(keyName);
-    if (parts.length === 0 && !isFKey) {
-      return;
-    }
-
-    parts.push(keyName);
-    const shortcut = parts.join('+');
-    onUpdateSettings({ globalHotkeyToggle: shortcut });
-    setIsRecordingHotkey(false);
-  };
+    window.addEventListener('keydown', handleWindowKeyDown, true);
+    return () => window.removeEventListener('keydown', handleWindowKeyDown, true);
+  }, [isRecordingHotkey, onUpdateSettings]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -183,13 +205,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        if (isRecordingHotkey) return;
         e.preventDefault();
         onClose();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, isRecordingHotkey, onClose]);
 
   useEffect(() => {
     if (!isOpen || !window.electronAPI?.workspace) return;
@@ -1064,44 +1087,48 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <span className="setting-description">Bring DeepScribe to the front or minimize it to the system tray from anywhere in Windows. Available while DeepScribe is running, including from the tray.</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    type="text"
+                    value={isRecordingHotkey ? 'Press keys (Esc to cancel)...' : (settings.globalHotkeyToggle || 'Ctrl+Alt+D')}
+                    readOnly={isRecordingHotkey}
+                    onChange={e => onUpdateSettings({ globalHotkeyToggle: e.target.value })}
+                    placeholder="e.g. Ctrl+Alt+D"
+                    style={{
+                      width: isRecordingHotkey ? '220px' : '130px',
+                      padding: '5px 10px',
+                      borderRadius: '6px',
+                      background: isRecordingHotkey ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.12)',
+                      border: isRecordingHotkey ? '1.5px solid #3B82F6' : '1px solid rgba(59, 130, 246, 0.3)',
+                      color: isRecordingHotkey ? '#93C5FD' : '#60A5FA',
+                      fontSize: '0.82rem',
+                      fontWeight: 600,
+                      fontFamily: 'monospace',
+                      textAlign: 'center',
+                      outline: 'none',
+                      transition: 'all 0.15s ease'
+                    }}
+                    title={isRecordingHotkey ? 'Press keys on keyboard (Esc to cancel)' : 'Type shortcut or click Record'}
+                  />
                   {isRecordingHotkey ? (
-                    <div
-                      tabIndex={0}
-                      autoFocus
-                      onKeyDown={handleRecordKeyDown}
-                      onBlur={() => setIsRecordingHotkey(false)}
+                    <button
+                      type="button"
+                      className="btn-secondary"
                       style={{
-                        padding: '5px 12px',
+                        padding: '4px 10px',
+                        fontSize: '0.78rem',
                         borderRadius: '6px',
-                        background: 'rgba(59, 130, 246, 0.2)',
-                        border: '1.5px solid #3B82F6',
-                        color: '#93C5FD',
-                        fontSize: '0.82rem',
-                        fontWeight: 600,
-                        fontFamily: 'monospace',
-                        outline: 'none',
+                        border: '1px solid var(--border-subtle, rgba(255, 255, 255, 0.15))',
+                        background: 'rgba(255, 255, 255, 0.05)',
+                        color: 'var(--text-primary)',
                         cursor: 'pointer'
                       }}
-                      title="Press key combination on your keyboard (Esc to cancel)"
+                      onClick={() => setIsRecordingHotkey(false)}
+                      title="Cancel recording"
                     >
-                      Press shortcut... (Esc to cancel)
-                    </div>
+                      Cancel
+                    </button>
                   ) : (
                     <>
-                      <kbd
-                        style={{
-                          padding: '4px 10px',
-                          borderRadius: '6px',
-                          background: 'rgba(59, 130, 246, 0.15)',
-                          border: '1px solid rgba(59, 130, 246, 0.3)',
-                          color: '#60A5FA',
-                          fontSize: '0.82rem',
-                          fontWeight: 600,
-                          fontFamily: 'monospace'
-                        }}
-                      >
-                        {settings.globalHotkeyToggle || 'Ctrl+Alt+D'}
-                      </kbd>
                       <button
                         type="button"
                         className="btn-secondary"
@@ -1115,9 +1142,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           cursor: 'pointer'
                         }}
                         onClick={() => setIsRecordingHotkey(true)}
-                        title="Click to record a new global shortcut"
+                        title="Click to record a new global shortcut by pressing keys"
                       >
-                        Change
+                        Record
                       </button>
                       {settings.globalHotkeyToggle && settings.globalHotkeyToggle !== 'Ctrl+Alt+D' && (
                         <button

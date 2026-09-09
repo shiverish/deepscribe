@@ -1332,6 +1332,7 @@ function createWindow() {
     },
     autoHideMenuBar: true
   });
+  mainWindow.setMenu(null);
 
   const isDev = process.env.NODE_ENV === 'development' || process.argv.includes('--dev');
   if (isDev) {
@@ -1435,6 +1436,7 @@ if (!gotTheLock) {
   });
 
   app.whenReady().then(() => {
+    Menu.setApplicationMenu(null);
     createWindow();
     applyTrayBehavior();
 

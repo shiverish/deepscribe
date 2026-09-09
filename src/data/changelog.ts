@@ -14,9 +14,27 @@ export interface ReleaseEntry {
   items: ChangelogItem[];
 }
 
-export const CURRENT_APP_VERSION = '0.2.48';
+export const CURRENT_APP_VERSION = '0.2.49';
 
 export const CHANGELOG_ENTRIES: ReleaseEntry[] = [
+  {
+    version: '0.2.49',
+    date: 'September 2026',
+    title: 'Hotkey Recorder & Capture Improvements',
+    summary: 'Fixed global shortcut recording to reliably capture Alt key combinations via window capture listener and disabled native menu activation.',
+    items: [
+      {
+        type: 'fix',
+        text: 'Reliable hotkey recording for Alt key combinations',
+        detail: 'Fixed key capture to reliably record combinations like Alt+D by using window-level capture phase listeners, code-based key mapping, and disabling native menu bar activation.'
+      },
+      {
+        type: 'improvement',
+        text: 'Direct manual typing for global hotkeys',
+        detail: 'Added direct text input support alongside key recording so shortcuts can also be typed manually.'
+      }
+    ]
+  },
   {
     version: '0.2.48',
     date: 'September 2026',
