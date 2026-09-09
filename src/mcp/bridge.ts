@@ -17,6 +17,9 @@ import { canTransitionTask, createTaskClaim, createTaskInboxProject, createTaskM
 import { exportBlockAsHtml, exportBlockAsMarkdown, exportBlockAsText, type ExportFormat } from '../utils/exportUtils';
 import { BLOCK_PRINT_PRESETS, loadStoredPrintSettings, normalizeBlockPrintSettings, saveStoredPrintSettings } from '../utils/printDocument';
 import { attachmentReplayRefusal, MAX_ATTACHMENT_BYTES, prepareAttachmentUpload } from '../../mcp/core/attachments.mjs';
+import { resolveAgentContext } from '../../mcp/core/context.mjs';
+
+export { resolveAgentContext } from '../../mcp/core/context.mjs';
 
 type JsonObject = Record<string, unknown>;
 const CLAIM_RECEIPTS_KEY = 'task_claim_receipts';
@@ -1422,6 +1425,18 @@ export async function handleMcpBridgeRequest(method: string, rawParams: unknown)
 
       return results.slice(0, clampLimit(params.limit))
         .map(result => ({ ...result, score: Math.round(result.score * 10) / 10 }));
+    }
+    case 'get_context': {
+      return resolveAgentContext({
+        query: requiredString(params, 'query'),
+        projectId: optionalString(params, 'projectId'),
+        anchorBlockId: optionalString(params, 'anchorBlockId'),
+        maxChars: typeof params.maxChars === 'number' ? params.maxChars : undefined
+      }, {
+        projects: await db.projects.toArray(),
+        blocks: await db.blocks.toArray(),
+        links: await db.links.toArray()
+      });
     }
     case 'create_project':
       return await createProject(params);

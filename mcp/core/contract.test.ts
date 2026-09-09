@@ -10,6 +10,7 @@ import * as coreMarkdown from './markdown.mjs';
 import * as coreRanking from './ranking.mjs';
 import * as coreTags from './tags.mjs';
 import * as coreTasks from './tasks.mjs';
+import * as coreContext from './context.mjs';
 
 import * as directStore from '../direct-store.mjs';
 import * as bridge from '../../src/mcp/bridge';
@@ -78,6 +79,11 @@ describe('shared domain core', () => {
     for (const name of ['createBlockLink', 'linkRefusal', 'normalizeLinkType', 'syncWikiLinksForBlock', 'collectRelatedBlocks'] as const) {
       expect(typeof coreLinks[name]).toBe('function');
     }
+  });
+
+  it('serves the context resolver to both adapters', () => {
+    expect(bridge.resolveAgentContext).toBe(coreContext.resolveAgentContext);
+    expect(directStore.resolveAgentContext).toBe(coreContext.resolveAgentContext);
   });
 
   it('serves task rules to both adapters', () => {

@@ -143,6 +143,33 @@ describe('DirectWorkspaceStore search over projects and blocks', () => {
 });
 
 describe('DirectWorkspaceStore knowledge graph', () => {
+  it('returns bounded context through direct SQLite', async () => {
+    const store = new DirectWorkspaceStore({ workspacePath: temporaryWorkspace() });
+    try {
+      const project = await store.handleRequest('create_project', {
+        title: 'Context project',
+        description: 'Local agent context',
+        scratchpad: '## Rules\n\nUse verified sources.'
+      });
+      const anchor = await store.handleRequest('create_block', {
+        projectId: project.id,
+        title: 'Plan',
+        content: 'Context resolver design'
+      });
+      const result = await store.handleRequest('get_context', {
+        query: 'context resolver',
+        projectId: project.id,
+        anchorBlockId: anchor.id,
+        maxChars: 2_000
+      });
+
+      expect(result.passages[0].blockId).toBe(anchor.id);
+      expect(result.budget.usedChars).toBeLessThanOrEqual(2_000);
+    } finally {
+      store.close();
+    }
+  });
+
   it('links blocks across projects and traverses the graph in both directions', async () => {
     const store = new DirectWorkspaceStore({ workspacePath: temporaryWorkspace() });
     try {

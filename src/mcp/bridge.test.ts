@@ -112,6 +112,28 @@ describe('DeepScribe MCP HTML content entry', () => {
 });
 
 describe('DeepScribe MCP knowledge graph', () => {
+  it('returns bounded context through the live bridge', async () => {
+    const project = await handleMcpBridgeRequest('create_project', {
+      title: 'Context project',
+      description: 'Local agent context',
+      scratchpad: '## Rules\n\nUse verified sources.'
+    }) as Project;
+    const anchor = await handleMcpBridgeRequest('create_block', {
+      projectId: project.id,
+      title: 'Plan',
+      content: 'Context resolver design'
+    }) as Block;
+    const result = await handleMcpBridgeRequest('get_context', {
+      query: 'context resolver',
+      projectId: project.id,
+      anchorBlockId: anchor.id,
+      maxChars: 2_000
+    }) as { passages: Array<{ blockId: string }>; budget: { usedChars: number } };
+
+    expect(result.passages[0].blockId).toBe(anchor.id);
+    expect(result.budget.usedChars).toBeLessThanOrEqual(2_000);
+  });
+
   it('links across projects and reports direction, type and distance', async () => {
     const research = await handleMcpBridgeRequest('create_project', { title: 'Onderzoek' }) as Project;
     const product = await handleMcpBridgeRequest('create_project', { title: 'Product' }) as Project;

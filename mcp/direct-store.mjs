@@ -57,6 +57,7 @@ import {
   unescapeHtml
 } from './core/markdown.mjs';
 import { contentToHtml, looksLikeHtml, sanitizeHtml } from './core/html.mjs';
+import { resolveAgentContext } from './core/context.mjs';
 
 export { normalizeTag, sanitizeTags };
 export { detectCircularDependency, formatDependencyMarkdown, getBlockDependencyStatus, isBlockCompleted, sanitizeDependsOn };
@@ -64,6 +65,7 @@ export { rankBlocksLocally, rankChunksLocally, rankProjectsLocally };
 export { getNextTaskNumber, parseTaskHumanId };
 export { contentStats, escapeHtml, htmlToPlainText, inlineMarkdown, markdownToHtml, unescapeHtml };
 export { contentToHtml, looksLikeHtml, sanitizeHtml };
+export { resolveAgentContext };
 
 export function resolveWorkspacePath(customPath) {
   if (customPath) return path.resolve(customPath);
@@ -1239,6 +1241,19 @@ export class DirectWorkspaceStore {
 
         return results.slice(0, clampLimit(params.limit))
           .map(result => ({ ...result, score: Math.round(result.score * 10) / 10 }));
+      }
+
+      case 'get_context': {
+        return resolveAgentContext({
+          query: requireString('query'),
+          projectId: optionalStr('projectId'),
+          anchorBlockId: optionalStr('anchorBlockId'),
+          maxChars: typeof params.maxChars === 'number' ? params.maxChars : undefined
+        }, {
+          projects: this.getAllProjects(),
+          blocks: this.getAllBlocks(),
+          links: this.getAllLinks()
+        });
       }
 
       case 'create_project': {

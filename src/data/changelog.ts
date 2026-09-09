@@ -14,9 +14,22 @@ export interface ReleaseEntry {
   items: ChangelogItem[];
 }
 
-export const CURRENT_APP_VERSION = '0.2.46';
+export const CURRENT_APP_VERSION = '0.2.47';
 
 export const CHANGELOG_ENTRIES: ReleaseEntry[] = [
+  {
+    version: '0.2.47',
+    date: 'September 2026',
+    title: 'Bounded Context Retrieval for Agents',
+    summary: 'Agents can now request one deterministic, source-traceable context package instead of assembling project knowledge through many separate calls.',
+    items: [
+      {
+        type: 'feature',
+        text: 'Bounded context retrieval for agents',
+        detail: 'Added a read-only get_context MCP tool that combines source passages, project instructions, hierarchy, typed relations, backlinks, tasks, dependencies, and freshness metadata in one deterministic character budget.'
+      }
+    ]
+  },
   {
     version: '0.2.46',
     date: 'September 2026',

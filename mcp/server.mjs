@@ -322,6 +322,18 @@ registerTool('search', {
   annotations: readOnly
 });
 
+registerTool('get_context', {
+  title: 'Get bounded agent context',
+  description: 'Return one deterministic, source-traceable context package for a concrete query. Optionally scope it to a project and/or anchor block. The package combines lexical passage ranking with hierarchy, typed relations, backlinks, relevant tasks, dependencies, and freshness metadata while always staying within maxChars.',
+  inputSchema: {
+    query: z.string().min(1).describe('Concrete question or task the agent needs context for'),
+    projectId: z.string().min(1).optional().describe('Hard project boundary for all returned blocks'),
+    anchorBlockId: z.string().min(1).optional().describe('Block whose hierarchy and relation neighbourhood should guide ranking'),
+    maxChars: z.number().int().min(1000).max(50000).optional().describe('Maximum character count of the pretty-printed context package (default: 12000)')
+  },
+  annotations: readOnly
+});
+
 registerTool('create_project', {
   title: 'Project aanmaken',
   description: 'Maak een nieuw DeepScribe-project aan.',
