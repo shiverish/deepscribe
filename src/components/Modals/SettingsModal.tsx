@@ -52,6 +52,39 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [updaterState, setUpdaterState] = useState<UpdaterState | null>(null);
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
   const [updateFeedback, setUpdateFeedback] = useState<string | null>(null);
+  const [isRecordingHotkey, setIsRecordingHotkey] = useState(false);
+
+  const handleRecordKeyDown = (e: React.KeyboardEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.key === 'Escape') {
+      setIsRecordingHotkey(false);
+      return;
+    }
+    if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) {
+      return;
+    }
+    const parts: string[] = [];
+    if (e.ctrlKey) parts.push('Ctrl');
+    if (e.altKey) parts.push('Alt');
+    if (e.shiftKey) parts.push('Shift');
+    if (e.metaKey) parts.push('Super');
+
+    let keyName = e.key;
+    if (keyName === ' ') keyName = 'Space';
+    else if (keyName.length === 1) keyName = keyName.toUpperCase();
+
+    // Require at least one modifier or an F-key to prevent capturing normal letter keys globally
+    const isFKey = /^F[1-9][0-2]?$/i.test(keyName);
+    if (parts.length === 0 && !isFKey) {
+      return;
+    }
+
+    parts.push(keyName);
+    const shortcut = parts.join('+');
+    onUpdateSettings({ globalHotkeyToggle: shortcut });
+    setIsRecordingHotkey(false);
+  };
 
   useEffect(() => {
     if (!isOpen) return;
@@ -1022,6 +1055,92 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   />
                   <span className="toggle-slider"></span>
                 </label>
+              </div>
+
+              {/* Toggle DeepScribe Window Global Shortcut */}
+              <div className="setting-item">
+                <div className="setting-info">
+                  <label>Toggle DeepScribe Window (Global Hotkey)</label>
+                  <span className="setting-description">Bring DeepScribe to the front or minimize it to the system tray from anywhere in Windows. Available while DeepScribe is running, including from the tray.</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {isRecordingHotkey ? (
+                    <div
+                      tabIndex={0}
+                      autoFocus
+                      onKeyDown={handleRecordKeyDown}
+                      onBlur={() => setIsRecordingHotkey(false)}
+                      style={{
+                        padding: '5px 12px',
+                        borderRadius: '6px',
+                        background: 'rgba(59, 130, 246, 0.2)',
+                        border: '1.5px solid #3B82F6',
+                        color: '#93C5FD',
+                        fontSize: '0.82rem',
+                        fontWeight: 600,
+                        fontFamily: 'monospace',
+                        outline: 'none',
+                        cursor: 'pointer'
+                      }}
+                      title="Press key combination on your keyboard (Esc to cancel)"
+                    >
+                      Press shortcut... (Esc to cancel)
+                    </div>
+                  ) : (
+                    <>
+                      <kbd
+                        style={{
+                          padding: '4px 10px',
+                          borderRadius: '6px',
+                          background: 'rgba(59, 130, 246, 0.15)',
+                          border: '1px solid rgba(59, 130, 246, 0.3)',
+                          color: '#60A5FA',
+                          fontSize: '0.82rem',
+                          fontWeight: 600,
+                          fontFamily: 'monospace'
+                        }}
+                      >
+                        {settings.globalHotkeyToggle || 'Ctrl+Alt+D'}
+                      </kbd>
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        style={{
+                          padding: '4px 10px',
+                          fontSize: '0.78rem',
+                          borderRadius: '6px',
+                          border: '1px solid var(--border-subtle, rgba(255, 255, 255, 0.15))',
+                          background: 'rgba(255, 255, 255, 0.05)',
+                          color: 'var(--text-primary)',
+                          cursor: 'pointer'
+                        }}
+                        onClick={() => setIsRecordingHotkey(true)}
+                        title="Click to record a new global shortcut"
+                      >
+                        Change
+                      </button>
+                      {settings.globalHotkeyToggle && settings.globalHotkeyToggle !== 'Ctrl+Alt+D' && (
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          style={{
+                            padding: '4px 8px',
+                            fontSize: '0.78rem',
+                            borderRadius: '6px',
+                            border: '1px solid var(--border-subtle, rgba(255, 255, 255, 0.15))',
+                            background: 'transparent',
+                            color: 'var(--text-muted, #9CA3AF)',
+                            cursor: 'pointer'
+                          }}
+                          onClick={() => onUpdateSettings({ globalHotkeyToggle: 'Ctrl+Alt+D' })}
+                          title="Reset to default (Ctrl+Alt+D)"
+                        >
+                          Reset
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
 
               {/* Quick Capture Global Shortcut Info */}

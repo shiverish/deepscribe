@@ -14,9 +14,27 @@ export interface ReleaseEntry {
   items: ChangelogItem[];
 }
 
-export const CURRENT_APP_VERSION = '0.2.47';
+export const CURRENT_APP_VERSION = '0.2.48';
 
 export const CHANGELOG_ENTRIES: ReleaseEntry[] = [
+  {
+    version: '0.2.48',
+    date: 'September 2026',
+    title: 'Global Window Toggle & Customizable Hotkey',
+    summary: 'Bring DeepScribe to the front or minimize it to the system tray with a system-wide hotkey (default Ctrl + Alt + D), fully customizable in Settings.',
+    items: [
+      {
+        type: 'feature',
+        text: 'Global hotkey to toggle DeepScribe window',
+        detail: 'Instantly restore, show, and focus DeepScribe from anywhere in Windows, or minimize it back to the system tray (default Ctrl + Alt + D).'
+      },
+      {
+        type: 'improvement',
+        text: 'Customizable global shortcut in Settings',
+        detail: 'Configure your preferred global shortcut with key recording support and a one-click reset under Settings → Desktop Integration.'
+      }
+    ]
+  },
   {
     version: '0.2.47',
     date: 'September 2026',

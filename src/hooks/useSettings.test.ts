@@ -78,6 +78,19 @@ describe('settings compatibility', () => {
     expect(merged.autoStartOnBoot).toBe(true);
     expect(merged.autoStartMinimized).toBe(false);
   });
+
+  it('defaults globalHotkeyToggle appropriately when omitted', () => {
+    const merged = mergeStoredSettings({ preset: 'vanilla' });
+    expect(merged.globalHotkeyToggle).toBe('Ctrl+Alt+D');
+  });
+
+  it('preserves custom globalHotkeyToggle when provided', () => {
+    const merged = mergeStoredSettings({
+      preset: 'vanilla',
+      globalHotkeyToggle: 'Ctrl+Shift+D'
+    });
+    expect(merged.globalHotkeyToggle).toBe('Ctrl+Shift+D');
+  });
 });
 
 

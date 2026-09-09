@@ -122,6 +122,9 @@ export function mergeStoredSettings(value: Partial<UserSettings>): UserSettings 
     // 0.2.33 — so anything the switcher no longer offers falls back to the default.
     startupView: isActiveView(value.startupView) ? value.startupView : DEFAULT_STARTUP_VIEW,
     lastActiveView: isActiveView(value.lastActiveView) ? value.lastActiveView : DEFAULT_STARTUP_VIEW,
+    globalHotkeyToggle: typeof value.globalHotkeyToggle === 'string' && value.globalHotkeyToggle.trim()
+      ? value.globalHotkeyToggle.trim()
+      : DEFAULT_USER_SETTINGS.globalHotkeyToggle,
     webhooks: normalizeWebhookEndpoints(value.webhooks),
     atmosphereColor: value.atmosphereColor || palette?.atmosphere || DEFAULT_USER_SETTINGS.atmosphereColor,
     selectedCardColor: value.selectedCardColor || palette?.selected || value.customBgColor || DEFAULT_USER_SETTINGS.selectedCardColor,
@@ -280,6 +283,13 @@ export function useSettings() {
       }).catch(() => {});
     }
   }, [settings.autoStartOnBoot, settings.autoStartMinimized]);
+
+  // Synchronize global toggle hotkey with the Electron main process
+  useEffect(() => {
+    if (window.electronAPI?.hotkeys?.setToggleShortcut) {
+      window.electronAPI.hotkeys.setToggleShortcut(settings.globalHotkeyToggle || DEFAULT_USER_SETTINGS.globalHotkeyToggle).catch(() => {});
+    }
+  }, [settings.globalHotkeyToggle]);
 
   const updateSettings = useCallback(async (partial: Partial<UserSettings>) => {
     setSettings(prev => {

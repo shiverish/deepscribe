@@ -52,6 +52,10 @@ declare global {
         getStatus: () => Promise<{ openAtLogin: boolean; openAsHidden: boolean }>;
         setSettings: (settings: { openAtLogin: boolean; openAsHidden: boolean }) => Promise<{ openAtLogin: boolean; openAsHidden: boolean }>;
       };
+      hotkeys?: {
+        getToggleShortcut: () => Promise<{ shortcut: string | null }>;
+        setToggleShortcut: (shortcut: string) => Promise<{ ok: boolean; shortcut?: string; error?: string }>;
+      };
       workspace: {
         status: () => Promise<WorkspaceStatus>;
         load: () => Promise<WorkspaceSnapshot>;

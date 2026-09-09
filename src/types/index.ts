@@ -317,6 +317,8 @@ export interface UserSettings {
   startupView: ActiveView;
   /** Follows the switcher, so 'last-used' has something to restore. */
   lastActiveView: ActiveView;
+  /** Global hotkey to toggle DeepScribe window from anywhere in Windows. */
+  globalHotkeyToggle: string;
   webhooks: WebhookEndpoint[];
   lastSeenWhatsNewVersion?: string;
 }
@@ -364,5 +366,6 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
   startupViewMode: 'fixed',
   startupView: 'columns',
   lastActiveView: 'columns',
+  globalHotkeyToggle: 'Ctrl+Alt+D',
   webhooks: []
 };

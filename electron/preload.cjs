@@ -54,6 +54,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getStatus: () => ipcRenderer.invoke('deepscribe:autostart:get-status'),
     setSettings: settings => ipcRenderer.invoke('deepscribe:autostart:set-status', settings)
   },
+  hotkeys: {
+    getToggleShortcut: () => ipcRenderer.invoke('deepscribe:hotkey:get-toggle'),
+    setToggleShortcut: shortcut => ipcRenderer.invoke('deepscribe:hotkey:set-toggle', shortcut)
+  },
   workspace: {
     status: () => ipcRenderer.invoke('deepscribe:workspace:status'),
     load: () => ipcRenderer.invoke('deepscribe:workspace:load'),

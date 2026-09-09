@@ -377,6 +377,75 @@ function registerAutoStartIpc() {
   });
 }
 
+let currentToggleShortcut = 'CommandOrControl+Alt+D';
+let activeToggleAccelerator = null;
+
+function normalizeAccelerator(shortcut) {
+  if (!shortcut || typeof shortcut !== 'string') return null;
+  const parts = shortcut.split('+').map(p => p.trim()).filter(Boolean);
+  if (parts.length === 0) return null;
+  const normalizedParts = parts.map(part => {
+    const lower = part.toLowerCase();
+    if (lower === 'ctrl' || lower === 'control') return 'CommandOrControl';
+    if (lower === 'cmd' || lower === 'command') return 'CommandOrControl';
+    if (lower === 'alt') return 'Alt';
+    if (lower === 'shift') return 'Shift';
+    if (lower === 'super' || lower === 'win' || lower === 'meta') return 'Super';
+    if (part.length === 1) return part.toUpperCase();
+    return part.charAt(0).toUpperCase() + part.slice(1);
+  });
+  return normalizedParts.join('+');
+}
+
+function applyToggleShortcut(shortcut) {
+  currentToggleShortcut = shortcut;
+
+  if (activeToggleAccelerator) {
+    try {
+      globalShortcut.unregister(activeToggleAccelerator);
+    } catch {}
+    activeToggleAccelerator = null;
+  }
+
+  if (!shortcut) {
+    return { ok: true, shortcut: null };
+  }
+
+  if (!app.isReady()) {
+    return { ok: true, shortcut };
+  }
+
+  const accelerator = normalizeAccelerator(shortcut);
+  if (!accelerator) {
+    return { ok: false, error: 'Invalid shortcut format' };
+  }
+
+  try {
+    const registered = globalShortcut.register(accelerator, () => {
+      toggleMainWindow();
+    });
+    if (!registered) {
+      console.warn(`Global shortcut ${accelerator} could not be registered (may be claimed by another app).`);
+      return { ok: false, error: 'Shortcut already in use or unavailable' };
+    }
+    activeToggleAccelerator = accelerator;
+    return { ok: true, shortcut: currentToggleShortcut };
+  } catch (err) {
+    console.warn(`Error registering global shortcut ${accelerator}:`, err);
+    return { ok: false, error: err.message };
+  }
+}
+
+function registerHotkeyIpc() {
+  ipcMain.handle('deepscribe:hotkey:get-toggle', async () => {
+    return { shortcut: currentToggleShortcut };
+  });
+
+  ipcMain.handle('deepscribe:hotkey:set-toggle', async (_event, shortcut) => {
+    return applyToggleShortcut(shortcut);
+  });
+}
+
 function trayBehavior() {
   return { minimizeToTray: isMinimizeToTrayEnabled, closeToTray: isCloseToTrayEnabled };
 }
@@ -1088,6 +1157,22 @@ function showMainWindow() {
   }
 }
 
+function toggleMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createWindow();
+    return;
+  }
+  if (mainWindow.isVisible() && mainWindow.isFocused()) {
+    if (isMinimizeToTrayEnabled || isCloseToTrayEnabled) {
+      mainWindow.hide();
+    } else {
+      mainWindow.minimize();
+    }
+  } else {
+    showMainWindow();
+  }
+}
+
 /**
  * Quick Capture: a small always-on-top window that only asks for text. It never
  * writes to the workspace itself — the text is handed to the main window, which
@@ -1329,6 +1414,7 @@ if (!gotTheLock) {
   registerScreenCaptureIpc();
   registerTrayIpc();
   registerAutoStartIpc();
+  registerHotkeyIpc();
   setupAutoUpdater();
 
   app.on('second-instance', (_event, commandLine) => {
@@ -1384,6 +1470,9 @@ if (!gotTheLock) {
     } catch (e) {
       console.warn('Failed to register global hotkey CommandOrControl+Alt+C:', e);
     }
+
+    // DeepScribe main window toggle shortcut
+    applyToggleShortcut(currentToggleShortcut);
 
     // In production, perform an initial background check for updates after 5s
     const isDev = process.env.NODE_ENV === 'development' || process.argv.includes('--dev');
