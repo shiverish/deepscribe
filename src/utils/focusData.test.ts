@@ -7,6 +7,7 @@ import {
   LONG_REVIEW_MS,
   STALE_HEARTBEAT_MS,
   buildFocusData,
+  buildProjectRadarData,
   formatDuration
 } from './focusData';
 
@@ -233,6 +234,42 @@ describe('project filtering and momentum rings', () => {
     expect(data.workingCount).toBe(1);
     expect(data.yourTurnCount).toBe(1);
     expect(data.stuckCount).toBe(1);
+  });
+});
+
+describe('project radar momentum', () => {
+  it('places recently active, well-connected urgent work closer to the centre than a stale sparse project', () => {
+    const activeProject: Project = { ...project, id: 'active', title: 'Active', updatedAt: NOW - 60_000 };
+    const staleProject: Project = { ...project, id: 'stale', title: 'Stale', updatedAt: NOW - 45 * 24 * 60 * 60_000 };
+    const activeTask = task({ id: 'active-task', projectId: 'active', status: 'blocked', updatedAt: NOW - 60_000 });
+    const supportingNote = task({ id: 'supporting-note', projectId: 'active', status: 'inbox', kind: undefined, task: undefined });
+
+    const radar = buildProjectRadarData(
+      [activeProject, staleProject],
+      [activeTask, supportingNote],
+      [{ id: 'link-1', sourceBlockId: 'active-task', targetBlockId: 'supporting-note', type: 'relates-to', createdBy: 'user', createdAt: NOW }],
+      NOW
+    );
+
+    const active = radar.items.find(item => item.projectId === 'active')!;
+    const stale = radar.items.find(item => item.projectId === 'stale')!;
+    expect(active.radius).toBeLessThan(stale.radius);
+    expect(active.statusCounts.blocked).toBe(1);
+    expect(active.referenceCount).toBe(1);
+    expect(stale.referenceCount).toBe(0);
+  });
+
+  it('keeps project filters and the workspace inbox out of the project radar', () => {
+    const otherProject: Project = { ...project, id: 'other', title: 'Other' };
+    const radar = buildProjectRadarData(
+      [project, otherProject],
+      [task({ id: 'one', status: 'ready' }), task({ id: 'two', projectId: 'other', status: 'ready' })],
+      [],
+      NOW,
+      ['proj-1']
+    );
+
+    expect(radar.items.map(item => item.projectId)).toEqual(['proj-1']);
   });
 });
 

@@ -14,9 +14,27 @@ export interface ReleaseEntry {
   items: ChangelogItem[];
 }
 
-export const CURRENT_APP_VERSION = '0.2.49';
+export const CURRENT_APP_VERSION = '0.2.50';
 
 export const CHANGELOG_ENTRIES: ReleaseEntry[] = [
+  {
+    version: '0.2.50',
+    date: 'September 2026',
+    title: 'Project Momentum Focus Radar',
+    summary: 'Focus Radar now maps projects by momentum instead of placing individual tasks on fixed status rings.',
+    items: [
+      {
+        type: 'feature',
+        text: 'Project-level momentum radar',
+        detail: 'Projects move inward through current activity, actionable work and stored graph references; stale, sparse projects remain visible on the outer orbit.'
+      },
+      {
+        type: 'fix',
+        text: 'Orbit rotation centred on the Focus hub',
+        detail: 'Replaced the conflicting status-ring transforms so radar nodes circulate around the actual centre.'
+      }
+    ]
+  },
   {
     version: '0.2.49',
     date: 'September 2026',

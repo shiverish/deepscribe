@@ -1,4 +1,4 @@
-import type { Block, Project, TaskAgentTarget } from '../types';
+import type { Block, BlockLink, Project, TaskAgentTarget } from '../types';
 import { getBlockDependencyStatus } from './dependencyUtils';
 import { hasUnseenAgentEdits } from './agentEdits';
 import { getProjectColor, INBOX_PROJECT_COLOR } from './projectColors';
@@ -312,5 +312,118 @@ export function buildFocusData(
     readyCount: readyItems.length,
     stuckCount: stuckItems.length,
     activeAgentCount: activeAgentSet.size
+  };
+}
+
+export interface ProjectRadarStatusCounts {
+  ready: number;
+  working: number;
+  review: number;
+  blocked: number;
+  unreadAgentEdits: number;
+}
+
+export interface ProjectRadarItem {
+  projectId: string;
+  title: string;
+  color: string;
+  /** 0 = dormant/sparse, 100 = current work with strong signals. */
+  momentumScore: number;
+  /** Distance from the centre in the fixed 640px radar coordinate space. */
+  radius: number;
+  referenceCount: number;
+  lastActivityAt: number;
+  leadBlockId?: string;
+  statusCounts: ProjectRadarStatusCounts;
+}
+
+export interface ProjectRadarData {
+  items: ProjectRadarItem[];
+  activeProjectCount: number;
+  dormantProjectCount: number;
+}
+
+const RADAR_INNER_RADIUS = 118;
+const RADAR_OUTER_RADIUS = 276;
+const MOMENTUM_RECENCY_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * Projects are the radar nodes. A project moves inward when it has meaningful,
+ * current work and real graph connections; quiet, sparse projects stay at the
+ * edge where they remain visible without competing with active work.
+ */
+export function buildProjectRadarData(
+  projects: Project[],
+  blocks: Block[],
+  links: BlockLink[],
+  now: number = Date.now(),
+  selectedProjectIds?: string[]
+): ProjectRadarData {
+  const selected = selectedProjectIds?.includes(TASK_FILTER_NONE)
+    ? []
+    : projects.filter(project => !project.isTrash && (!selectedProjectIds?.length || selectedProjectIds.includes(project.id)));
+  const activeBlocks = blocks.filter(block => !block.isTrash);
+
+  const items = selected.map(project => {
+    const projectBlocks = activeBlocks.filter(block => block.projectId === project.id);
+    const blockIds = new Set(projectBlocks.map(block => block.id));
+    const referenceCount = links.filter(link => blockIds.has(link.sourceBlockId) || blockIds.has(link.targetBlockId)).length;
+    const lastActivityAt = projectBlocks.reduce(
+      (latest, block) => Math.max(latest, block.updatedAt, block.lastAgentEditAt ?? 0),
+      Math.max(project.updatedAt, project.scratchpadUpdatedAt ?? 0)
+    );
+    const statusCounts: ProjectRadarStatusCounts = { ready: 0, working: 0, review: 0, blocked: 0, unreadAgentEdits: 0 };
+    let alertCount = 0;
+    for (const block of projectBlocks) {
+      if (block.kind === 'task' && block.task) {
+        if (block.task.status === 'ready') statusCounts.ready += 1;
+        if (block.task.status === 'in-progress') {
+          statusCounts.working += 1;
+          alertCount += claimAlerts(block, now).length;
+        }
+        if (block.task.status === 'review') statusCounts.review += 1;
+        if (block.task.status === 'blocked') statusCounts.blocked += 1;
+      }
+      if (block.kind !== 'task' && hasUnseenAgentEdits(block)) statusCounts.unreadAgentEdits += 1;
+    }
+
+    const age = Math.max(0, now - lastActivityAt);
+    const recency = Math.max(0, 30 * (1 - Math.min(1, age / MOMENTUM_RECENCY_WINDOW_MS)));
+    const connectedness = Math.min(20, referenceCount * 5);
+    const actionable = Math.min(45,
+      statusCounts.blocked * 20
+      + statusCounts.review * 15
+      + statusCounts.working * 10
+      + statusCounts.ready * 6
+      + statusCounts.unreadAgentEdits * 15
+      + alertCount * 12
+    );
+    const momentumScore = Math.round(Math.min(100, recency + connectedness + actionable));
+    const radius = Math.round(RADAR_OUTER_RADIUS - ((RADAR_OUTER_RADIUS - RADAR_INNER_RADIUS) * momentumScore) / 100);
+    const leadBlockId = [...projectBlocks].sort((a, b) => {
+      const weight = (block: Block) => block.task?.status === 'blocked' ? 4
+        : block.task?.status === 'review' ? 3
+          : block.task?.status === 'in-progress' ? 2
+            : block.task?.status === 'ready' ? 1 : 0;
+      return weight(b) - weight(a) || b.updatedAt - a.updatedAt;
+    })[0]?.id;
+
+    return {
+      projectId: project.id,
+      title: project.title,
+      color: getProjectColor(project.color),
+      momentumScore,
+      radius,
+      referenceCount,
+      lastActivityAt,
+      leadBlockId,
+      statusCounts
+    };
+  }).sort((a, b) => b.momentumScore - a.momentumScore || a.title.localeCompare(b.title));
+
+  return {
+    items,
+    activeProjectCount: items.filter(item => item.momentumScore >= 40).length,
+    dormantProjectCount: items.filter(item => item.momentumScore < 20).length
   };
 }

@@ -710,3 +710,26 @@
   font-weight: 600;
 }
 
+/* Project momentum radar. The rotating wrapper is centred exactly once; unlike
+   the retired status rings it does not combine negative margins with a second
+   translate, which previously moved the animation origin off the hub. */
+.project-radar-track { fill: none; stroke: rgba(148, 163, 184, 0.16); stroke-width: 1.25; stroke-dasharray: 4 8; }
+.project-radar-track.outer { stroke: rgba(148, 163, 184, 0.24); }
+.project-radar-track.inner { stroke: rgba(99, 102, 241, 0.28); }
+
+.project-radar-orbit { position: absolute; left: 50%; top: 50%; width: 0; height: 0; transform-origin: 0 0; animation: project-radar-orbit-spin 120s linear infinite; }
+.project-radar-orbit.paused { animation-play-state: paused; }
+@keyframes project-radar-orbit-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+.project-radar-node-slot { position: absolute; width: 0; height: 0; transform: rotate(var(--project-angle)) translateX(var(--project-radius)); }
+.project-radar-node { position: absolute; left: -22px; top: -22px; width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border: 2px solid; border-radius: 50%; background: rgba(24, 24, 31, 0.94); color: var(--text-primary); cursor: pointer; transition: transform 160ms ease, background 160ms ease; }
+.project-radar-node:hover, .project-radar-node.is-hovered { transform: scale(1.25); background: var(--bg-card); z-index: 5; }
+.project-radar-initial { font-size: 0.86rem; font-weight: 800; line-height: 1; }
+.project-radar-dot { position: absolute; right: 3px; top: 3px; width: 7px; height: 7px; border: 1px solid var(--bg-dark); border-radius: 50%; }
+.project-radar-popover { min-width: 260px; }
+.project-radar-popover-metrics { display: flex; flex-direction: column; gap: 4px; color: var(--text-secondary); font-size: 0.7rem; }
+.project-radar-popover-metrics span, .project-radar-legend span { display: inline-flex; align-items: center; gap: 4px; }
+.project-radar-legend span { color: var(--text-secondary); font-size: 0.75rem; gap: 6px; }
+
+@media (prefers-reduced-motion: reduce) { .project-radar-orbit, .radar-sweep-beam { animation: none; } }
+

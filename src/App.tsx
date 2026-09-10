@@ -1131,6 +1131,7 @@ function DeepScribeApp() {
           <FocusView
             projects={projects}
             blocks={allBlocks}
+            links={allLinks}
             onOpenBlock={openBlockById}
           />
         )}
