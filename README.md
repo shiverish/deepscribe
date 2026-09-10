@@ -67,13 +67,9 @@ DeepScribe can send task and block events as JSON to external automations such a
 
 Blocks created or modified by an agent through MCP receive a **New from agent** badge until the block has been opened and visible for a short time. Unread changes propagate upward as a counter through all parent blocks to the project. The border, badge, and optional glow use a separate global agent alert color that can be customized under **Settings → Appearance**.
 
-Register the local STDIO server with Codex once from this project directory:
+Install Codex from **Settings → AI & Integrations → Codex connection**. **Install / repair Codex connection** registers the packaged MCP server with Codex using the exact active installation path, so it works outside a development checkout. **Check connection** verifies both `codex mcp list` and the DeepScribe `status` tool. Start a new Codex session afterwards so the tools are loaded.
 
-```powershell
-codex mcp add deepscribe -- node "K:\Apps\DeepScribe\mcp\server.mjs"
-```
-
-Then start or restart DeepScribe with `npm run app:dev` or the desktop app and open a new Codex task. Check the connection with `/mcp`, or ask the agent to run the DeepScribe `status` tool. The STDIO setup follows the [official OpenAI documentation for local MCP servers](https://learn.chatgpt.com/docs/extend/mcp).
+The source repository also contains a portable Codex plugin under `integrations/codex/deepscribe` (build it with `npm run codex:plugin:build`). It bundles the DeepScribe skill; the app’s repair button performs the machine-specific MCP registration because an installed app path cannot be safely hardcoded into a portable plugin.
 
 ### Claude Desktop Extension
 

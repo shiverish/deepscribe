@@ -58,6 +58,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getToggleShortcut: () => ipcRenderer.invoke('deepscribe:hotkey:get-toggle'),
     setToggleShortcut: shortcut => ipcRenderer.invoke('deepscribe:hotkey:set-toggle', shortcut)
   },
+  codexMcp: {
+    repair: () => ipcRenderer.invoke('deepscribe:codex-mcp:repair'),
+    verify: () => ipcRenderer.invoke('deepscribe:codex-mcp:verify'),
+    runtime: () => ipcRenderer.invoke('deepscribe:codex-mcp:runtime')
+  },
   workspace: {
     status: () => ipcRenderer.invoke('deepscribe:workspace:status'),
     load: () => ipcRenderer.invoke('deepscribe:workspace:load'),

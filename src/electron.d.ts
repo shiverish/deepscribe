@@ -56,6 +56,11 @@ declare global {
         getToggleShortcut: () => Promise<{ shortcut: string | null }>;
         setToggleShortcut: (shortcut: string) => Promise<{ ok: boolean; shortcut?: string; error?: string }>;
       };
+      codexMcp?: {
+        repair: () => Promise<{ ok: boolean; message: string; runtime: { launcherPath: string; serverPath: string }; output?: string }>;
+        verify: () => Promise<{ ok: boolean; codex: { ok: boolean; registered: boolean; message?: string }; status: { ok: boolean; status?: unknown; message?: string } }>;
+        runtime: () => Promise<{ launcherPath: string; serverPath: string }>;
+      };
       workspace: {
         status: () => Promise<WorkspaceStatus>;
         load: () => Promise<WorkspaceSnapshot>;

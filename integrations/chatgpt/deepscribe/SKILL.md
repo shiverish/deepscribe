@@ -73,7 +73,7 @@ Do not create a relation when duplicate titles make it ambiguous. Explain that r
 ## Interpret common requests
 
 - “Zet dit in DeepScribe”: find the strongest existing destination, prefer appending, and ask only when materially ambiguous.
-- “Maak hier een actie van”: explain that DeepScribe tasks are user-managed and do not create one through the agent tools.
+- “Maak hier een actie van”: search for duplicates and use `create_task` for a concrete future action, risk, or idea worth preserving; reuse a stable `requestId` if retrying.
 - “Koppel dit aan X”: create a verified wiki relation from the current or named source block to X.
 - “Wat staat er over X?”: search, read the strongest matches, and synthesize without writing.
 - “Formatteer dit blok”: preserve all meaning while replacing the full body with clean, structured Markdown.

@@ -7,6 +7,7 @@ const { spawn } = require('child_process');
 const net = require('net');
 const path = require('path');
 const { WorkspaceStore } = require('./workspace.cjs');
+const { installOrRepairCodexConnection, resolveMcpRuntime, verifyCodexConnection } = require('./mcp-integration.cjs');
 
 let mainWindow;
 let activePrintWindow;
@@ -434,6 +435,19 @@ function applyToggleShortcut(shortcut) {
     console.warn(`Error registering global shortcut ${accelerator}:`, err);
     return { ok: false, error: err.message };
   }
+}
+
+function registerCodexMcpIpc() {
+  const runtime = () => resolveMcpRuntime({
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    appPath: app.getAppPath(),
+    executablePath: process.execPath
+  });
+
+  ipcMain.handle('deepscribe:codex-mcp:repair', async () => installOrRepairCodexConnection(runtime()));
+  ipcMain.handle('deepscribe:codex-mcp:verify', async () => verifyCodexConnection(runtime()));
+  ipcMain.handle('deepscribe:codex-mcp:runtime', async () => runtime());
 }
 
 function registerHotkeyIpc() {
@@ -1415,6 +1429,7 @@ if (!gotTheLock) {
   registerScreenCaptureIpc();
   registerTrayIpc();
   registerAutoStartIpc();
+  registerCodexMcpIpc();
   registerHotkeyIpc();
   setupAutoUpdater();
 

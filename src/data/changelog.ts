@@ -14,9 +14,27 @@ export interface ReleaseEntry {
   items: ChangelogItem[];
 }
 
-export const CURRENT_APP_VERSION = '0.2.52';
+export const CURRENT_APP_VERSION = '0.2.53';
 
 export const CHANGELOG_ENTRIES: ReleaseEntry[] = [
+  {
+    version: '0.2.53',
+    date: 'September 2026',
+    title: 'Self-Repairing Codex Connection',
+    summary: 'DeepScribe can now package, install and verify its Codex MCP connection without relying on a developer checkout path.',
+    items: [
+      {
+        type: 'feature',
+        text: 'Install / repair Codex connection',
+        detail: 'Settings → AI & Integrations installs DeepScribe from the active app resources and checks both Codex registration and the MCP status tool.'
+      },
+      {
+        type: 'improvement',
+        text: 'Portable Codex plugin and corrected task guidance',
+        detail: 'The repository now builds a Codex plugin with the DeepScribe skill, and “Maak hier een actie van” correctly uses create_task for concrete follow-ups.'
+      }
+    ]
+  },
   {
     version: '0.2.52',
     date: 'September 2026',

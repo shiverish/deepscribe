@@ -1,0 +1,6 @@
+{
+  "name": "deepscribe",
+  "version": "0.2.53",
+  "description": "Connect Codex to a local DeepScribe workspace through the packaged MCP server and follow its safe task workflow.",
+  "skills": "./skills/"
+}
