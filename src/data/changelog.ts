@@ -14,9 +14,27 @@ export interface ReleaseEntry {
   items: ChangelogItem[];
 }
 
-export const CURRENT_APP_VERSION = '0.2.51';
+export const CURRENT_APP_VERSION = '0.2.52';
 
 export const CHANGELOG_ENTRIES: ReleaseEntry[] = [
+  {
+    version: '0.2.52',
+    date: 'September 2026',
+    title: 'Responsive Keyboard Shortcut Guide',
+    summary: 'The shortcut guide is now wider, grouped by workflow and keeps its configurable window hotkey current.',
+    items: [
+      {
+        type: 'improvement',
+        text: 'Wider responsive shortcut guide',
+        detail: 'Shortcut categories use a two-column layout on wide screens and collapse to one scrolling column on compact windows.'
+      },
+      {
+        type: 'improvement',
+        text: 'Current global window hotkey',
+        detail: 'The guide now shows the configured Toggle DeepScribe Window binding rather than always displaying the default.'
+      }
+    ]
+  },
   {
     version: '0.2.51',
     date: 'September 2026',

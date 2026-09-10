@@ -1221,6 +1221,7 @@ function DeepScribeApp() {
       />
 
       <HotkeyHelpModal
+        globalToggleShortcut={settings.globalHotkeyToggle}
         isOpen={isHelpOpen}
         onClose={() => setIsHelpOpen(false)}
       />

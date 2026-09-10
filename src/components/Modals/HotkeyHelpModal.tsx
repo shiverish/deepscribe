@@ -1,137 +1,85 @@
 import React, { useEffect } from 'react';
-import { X, Command } from 'lucide-react';
-import { VIEW_DEFINITIONS } from '../../utils/views';
+import { Command, Monitor, X } from 'lucide-react';
+import { getKeyboardShortcutGroups } from '../../utils/keyboardShortcuts';
+import './HotkeyHelpModal.css';
 
 interface HotkeyHelpModalProps {
   isOpen: boolean;
   onClose: () => void;
+  globalToggleShortcut?: string;
 }
 
-export const HotkeyHelpModal: React.FC<HotkeyHelpModalProps> = ({ isOpen, onClose }) => {
+export const HotkeyHelpModal: React.FC<HotkeyHelpModalProps> = ({ isOpen, onClose, globalToggleShortcut }) => {
   useEffect(() => {
     if (!isOpen) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
         onClose();
       }
     };
+
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
-  const shortcuts = [
-    { key: '↑ / ↓', desc: 'Navigate vertically through cards in the active column' },
-    { key: 'Enter', desc: 'Edit title (press Enter again to move to text content)' },
-    { key: 'Escape', desc: 'Stop editing and return to card navigation' },
-    { key: 'Shift + →', desc: 'Add a new child block to the selected block' },
-    { key: 'Shift + ↓ / Shift + N', desc: 'Add a new text block at the active level' },
-    { key: 'Delete / Backspace', desc: 'Move the selected block to trash' },
-    { key: '→', desc: 'Open the next level / child blocks' },
-    { key: '←', desc: 'Navigate back to the parent column' },
-    { key: 'Ctrl + F', desc: 'Find text in current document' },
-    { key: 'Ctrl + Shift + F / Ctrl + K', desc: 'Open global search (title, content, and tags)' },
-    { key: 'Ctrl + D', desc: 'Duplicate selected block and descendant branch' },
-    {
-      key: `Ctrl + ${VIEW_DEFINITIONS.map((_, index) => index + 1).join(' / ')}`,
-      desc: `Switch view (${VIEW_DEFINITIONS.map(view => view.label).join(' / ')})`
-    },
-    { key: 'Ctrl + Alt + D', desc: 'Toggle DeepScribe window: show, focus or minimize (works across Windows)' },
-    { key: 'Ctrl + Alt + S', desc: 'Annotate screen & create task/block (works across Windows)' },
-    { key: 'Ctrl + Alt + C', desc: 'Quick Capture: dump a note into the Workspace Inbox (works across Windows)' },
-    { key: 'Ctrl + Shift + E', desc: 'Expand or collapse the fixed writing panel' },
-    { key: 'Shift + ?', desc: 'Open this keyboard shortcut overview' },
-  ];
+  const shortcutGroups = getKeyboardShortcutGroups(globalToggleShortcut);
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(7, 10, 18, 0.8)',
-        backdropFilter: 'blur(12px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 100
-      }}
-      onClick={onClose}
-    >
-      <div
-        style={{
-          width: '500px',
-          maxWidth: '90vw',
-          background: 'var(--bg-surface)',
-          backdropFilter: 'var(--glass-backdrop)',
-          border: '1px solid var(--neon-cyan)',
-          borderRadius: 'var(--radius-lg)',
-          boxShadow: '0 0 30px rgba(0, 240, 255, 0.2)',
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column'
-        }}
-        onClick={(e) => e.stopPropagation()}
+    <div className="shortcut-help-backdrop" onClick={onClose}>
+      <section
+        aria-labelledby="shortcut-help-title"
+        aria-modal="true"
+        className="shortcut-help-modal"
+        onClick={event => event.stopPropagation()}
+        role="dialog"
       >
-        <div
-          style={{
-            padding: '16px 20px',
-            borderBottom: '1px solid var(--border-subtle)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            background: 'rgba(10, 15, 26, 0.8)'
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '1rem', fontWeight: 600 }}>
-            <Command size={18} color="#00F0FF" />
-            <span>Keyboard Shortcuts</span>
+        <header className="shortcut-help-header">
+          <div>
+            <div className="shortcut-help-title-row">
+              <Command aria-hidden="true" className="shortcut-help-title-icon" size={20} />
+              <h2 id="shortcut-help-title">Keyboard Shortcuts</h2>
+            </div>
+            <p>Bindings are grouped by workflow, so they stay useful on a smaller window too.</p>
           </div>
-
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
+          <button aria-label="Close keyboard shortcuts" className="icon-button" onClick={onClose} title="Close (Esc)" type="button">
             <X size={18} />
           </button>
-        </div>
+        </header>
 
-        <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {shortcuts.map((item, index) => (
-            <div
-              key={index}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '8px 12px',
-                borderRadius: '6px',
-                background: 'rgba(255, 255, 255, 0.03)',
-                border: '1px solid var(--border-subtle)'
-              }}
-            >
-              <span style={{ fontSize: '0.825rem', color: 'var(--text-secondary)' }}>{item.desc}</span>
-              <kbd>{item.key}</kbd>
-            </div>
+        <div className="shortcut-help-body">
+          {shortcutGroups.map(group => (
+            <section className="shortcut-group" key={group.id}>
+              <div className="shortcut-group-header">
+                <div>
+                  <h3>{group.label}</h3>
+                  <p>{group.description}</p>
+                </div>
+                {group.id === 'desktop' && (
+                  <span className="shortcut-scope"><Monitor aria-hidden="true" size={13} /> Works across Windows</span>
+                )}
+              </div>
+
+              <div className="shortcut-list">
+                {group.shortcuts.map(shortcut => (
+                  <div className="shortcut-row" key={shortcut.id}>
+                    <span>{shortcut.description}</span>
+                    <kbd>{shortcut.key}</kbd>
+                  </div>
+                ))}
+              </div>
+            </section>
           ))}
         </div>
 
-        <div
-          style={{
-            padding: '12px 20px',
-            borderTop: '1px solid var(--border-subtle)',
-            fontSize: '0.75rem',
-            color: 'var(--text-muted)',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: 6,
-            background: 'rgba(10, 15, 26, 0.8)'
-          }}
-        >
-          <span>Tip: All actions are also available with the mouse and context menu.</span>
-          <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>DeepScribe v0.2.12</span>
-        </div>
-      </div>
+        <footer className="shortcut-help-footer">
+          <span>Tip: all actions are also available with the mouse and context menu.</span>
+          <span>Press <kbd>Escape</kbd> to close</span>
+        </footer>
+      </section>
     </div>
   );
 };
