@@ -14,9 +14,16 @@ export interface ReleaseEntry {
   items: ChangelogItem[];
 }
 
-export const CURRENT_APP_VERSION = '0.2.50';
+export const CURRENT_APP_VERSION = '0.2.51';
 
 export const CHANGELOG_ENTRIES: ReleaseEntry[] = [
+  {
+    version: '0.2.51',
+    date: 'September 2026',
+    title: 'Responsive Collapsible Inspector',
+    summary: 'Inspector metadata now collapses into accessible sections for smaller screens.',
+    items: [{ type: 'feature', text: 'Collapsible Inspector sections', detail: 'Project color, Quick Capture, task details, tags, attachments, dependencies, references and scratchpad can be expanded when needed.' }]
+  },
   {
     version: '0.2.50',
     date: 'September 2026',

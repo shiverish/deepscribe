@@ -895,3 +895,21 @@
   box-shadow: 0 0 0 1px #d97706;
 }
 
+/* Collapsible inspector sections keep the editor usable on short and narrow screens. */
+.inspector-section { margin: 0 20px 10px; border: 1px solid var(--border-subtle); border-radius: 8px; background: var(--bg-card); overflow: hidden; }
+.inspector-section-header { display: flex; align-items: center; min-height: 34px; }
+.inspector-section-toggle { flex: 1; min-width: 0; display: inline-flex; align-items: center; gap: 7px; padding: 8px 10px; border: 0; background: transparent; color: var(--text-secondary); font-size: .76rem; font-weight: 650; text-align: left; cursor: pointer; }
+.inspector-section-toggle:hover, .inspector-section-toggle:focus-visible { background: rgba(var(--atmosphere-rgb), .08); color: var(--text-primary); outline: none; }
+.inspector-section-chevron { transition: transform .16s ease; flex: 0 0 auto; }
+.inspector-section.is-open .inspector-section-chevron { transform: rotate(180deg); }
+.inspector-section-content { border-top: 1px solid var(--border-subtle); }
+.inspector-section-actions { display: flex; align-items: center; padding-right: 8px; }
+
+@media (max-width: 520px), (max-height: 700px) {
+  .writing-panel { min-width: min(320px, 100vw); }
+  .panel-header { padding: 10px 12px; }
+  .editor-title-input { padding: 11px 14px; font-size: 1.1rem; }
+  .inspector-section { margin-left: 12px; margin-right: 12px; }
+  .task-inspector-panel, .capture-inspector-panel, .attachments-panel, .references-panel { margin-left: 0; margin-right: 0; border-left: 0; border-right: 0; border-radius: 0; }
+}
+

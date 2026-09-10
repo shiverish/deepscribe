@@ -17,7 +17,8 @@ import { saveProjectDraft } from '../../db/operations';
 import { db } from '../../db/db';
 import { repository } from '../../db/repository';
 import { PROJECT_COLOR_PALETTE, DEFAULT_PROJECT_COLOR } from '../../utils/projectColors';
-import { Check, Loader2, AlertCircle, FileText, Folder, FolderOpen, Paperclip, PanelRightClose, Edit3, Plus, Tag as TagIcon, Settings2, Trash2, Link2, ArrowUpRight, ArrowRight, X, History, Lock, CheckCircle2, Clock, Bot, ClipboardCopy, Printer, Copy, CheckCheck, Zap } from 'lucide-react';
+import { getDefaultInspectorSections, toggleInspectorSection, type InspectorSectionId, type InspectorSectionState } from '../../utils/inspectorSections';
+import { Check, Loader2, AlertCircle, FileText, Folder, FolderOpen, Paperclip, PanelRightClose, Edit3, Plus, Tag as TagIcon, Settings2, Trash2, Link2, ArrowUpRight, ArrowRight, X, History, Lock, CheckCircle2, Clock, Bot, ClipboardCopy, Printer, Copy, CheckCheck, Zap, ChevronDown } from 'lucide-react';
 import './Editor.css';
 
 interface WritingPanelProps {
@@ -62,6 +63,33 @@ interface WritingPanelProps {
   onExportBlockPdf?: (blockId: string, draft: { title: string; content: string }, settings: BlockPrintSettings) => Promise<{ status: 'exported' | 'cancelled'; filePath?: string }>;
   onClose: () => void;
 }
+
+interface InspectorSectionProps {
+  id: InspectorSectionId;
+  title: string;
+  icon: React.ReactNode;
+  isOpen: boolean;
+  onToggle: (id: InspectorSectionId) => void;
+  actions?: React.ReactNode;
+  children: React.ReactNode;
+}
+
+const InspectorSection: React.FC<InspectorSectionProps> = ({ id, title, icon, isOpen, onToggle, actions, children }) => {
+  const contentId = `inspector-section-${id}`;
+  return (
+    <section className={`inspector-section ${isOpen ? 'is-open' : ''}`}>
+      <div className="inspector-section-header">
+        <button type="button" className="inspector-section-toggle" aria-expanded={isOpen} aria-controls={contentId} onClick={() => onToggle(id)}>
+          <ChevronDown size={15} className="inspector-section-chevron" aria-hidden="true" />
+          {icon}
+          <span>{title}</span>
+        </button>
+        {actions && <div className="inspector-section-actions">{actions}</div>}
+      </div>
+      {isOpen && <div id={contentId} className="inspector-section-content">{children}</div>}
+    </section>
+  );
+};
 
 export const WritingPanel: React.FC<WritingPanelProps> = ({
   isOpen,
@@ -114,6 +142,13 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
   const [printError, setPrintError] = useState<string | null>(null);
   const [isPrintSettingsOpen, setIsPrintSettingsOpen] = useState(false);
   const [printSettings, setPrintSettings] = useState<BlockPrintSettings>(getStoredPrintSettingsSync);
+  const [openInspectorSections, setOpenInspectorSections] = useState<InspectorSectionState>(() => getDefaultInspectorSections({
+    isProject: false, isCapture: false, isTask: false, isBlocked: false, hasClaim: false, hasTaskErrors: false,
+    attachmentCount: 0, dependencyCount: 0, referenceCount: 0, hasScratchpad: false
+  }));
+  const toggleSection = useCallback((section: InspectorSectionId) => {
+    setOpenInspectorSections(current => toggleInspectorSection(current, section));
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -358,6 +393,23 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
   }, [activeItem?.id, activeItem?.updatedAt, itemType, flushSave]);
 
   const isBlock = itemType === 'block';
+
+  useEffect(() => {
+    const block = itemType === 'block' ? activeItem as Block | null : null;
+    const task = block?.kind === 'task' ? block.task : undefined;
+    setOpenInspectorSections(getDefaultInspectorSections({
+      isProject: itemType === 'project',
+      isCapture: Boolean(block && isUnprocessedCapture(block)),
+      isTask: Boolean(task),
+      isBlocked: task?.status === 'blocked',
+      hasClaim: Boolean(task?.claim),
+      hasTaskErrors: false,
+      attachmentCount: attachments.length,
+      dependencyCount: block?.dependsOn?.length ?? 0,
+      referenceCount: references.outgoing.length + references.backlinks.length,
+      hasScratchpad: itemType === 'project' && Boolean((activeItem as Project | null)?.scratchpad)
+    }));
+  }, [activeItem, attachments.length, itemType, references.backlinks.length, references.outgoing.length]);
 
   const dependencyStatus = useMemo(() => {
     if (!isBlock || !activeItem) return null;
@@ -774,10 +826,8 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
           />
 
           {itemType === 'project' && (
-            <div style={{ margin: '10px 0 14px', padding: '10px 12px', background: 'var(--bg-surface)', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
-              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>
-                Project Color
-              </div>
+            <InspectorSection id="projectColor" title="Project Color" icon={<Folder size={14} />} isOpen={openInspectorSections.projectColor} onToggle={toggleSection}>
+              <div style={{ padding: '10px 12px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 {PROJECT_COLOR_PALETTE.map(option => (
                   <button
@@ -808,11 +858,13 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                   style={{ width: 26, height: 26, padding: 0, border: 'none', background: 'none', cursor: 'pointer', borderRadius: 4 }}
                 />
               </div>
-            </div>
+              </div>
+            </InspectorSection>
           )}
 
           {isBlock && activeItem && 'tags' in activeItem && isUnprocessedCapture(activeItem as Block) && (
-            <section className="capture-inspector-panel">
+            <InspectorSection id="capture" title="Quick Capture" icon={<Zap size={14} />} isOpen={openInspectorSections.capture} onToggle={toggleSection}>
+              <section className="capture-inspector-panel">
               <div className="capture-inspector-heading">
                 <span>
                   <Zap size={14} />
@@ -864,11 +916,13 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                   </select>
                 </label>
               </div>
-            </section>
+              </section>
+            </InspectorSection>
           )}
 
           {isBlock && taskMetadata && (
-            <section className="task-inspector-panel">
+            <InspectorSection id="task" title={`Task · ${TASK_STATUS_LABELS[taskMetadata.status]}`} icon={<CheckCircle2 size={14} />} isOpen={openInspectorSections.task} onToggle={toggleSection}>
+              <section className="task-inspector-panel">
               <div className="task-inspector-heading">
                 <span>
                   <CheckCircle2 size={14} />
@@ -985,11 +1039,13 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                 </label>
               )}
               {taskErrors.length > 0 && <ul className="task-validation-errors" role="alert">{taskErrors.map(error => <li key={error}>{error}</li>)}</ul>}
-            </section>
+              </section>
+            </InspectorSection>
           )}
 
           {itemType && (
-            <div style={{ padding: '0 24px 10px 24px', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <InspectorSection id="tags" title="Tags" icon={<TagIcon size={14} />} isOpen={openInspectorSections.tags} onToggle={toggleSection}>
+              <div style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
               <TagIcon size={13} color="var(--text-muted)" style={{ opacity: 0.7 }} />
               {tags.map(tag => (
                 <TagBadge key={tag} tag={tag} onRemove={handleRemoveTag} size="sm" />
@@ -1078,7 +1134,8 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                   {tagComposer.error}
                 </span>
               )}
-            </div>
+              </div>
+            </InspectorSection>
           )}
           {onRenameProjectTag && onDeleteProjectTag && (
             <TagManagerModal
@@ -1175,7 +1232,8 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
             />
           )}
           {isBlock && (
-            <section className="attachments-panel">
+            <InspectorSection id="attachments" title={`Attachments${attachments.length ? ` (${attachments.length})` : ''}`} icon={<Paperclip size={14} />} isOpen={openInspectorSections.attachments} onToggle={toggleSection}>
+              <section className="attachments-panel">
               <div className="attachments-header">
                 <span className="attachments-title">
                   <Paperclip size={13} />
@@ -1252,11 +1310,13 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                 </div>
               ))}
               {attachmentError && <p role="alert" className="attachment-error">{attachmentError}</p>}
-            </section>
+              </section>
+            </InspectorSection>
           )}
 
           {isBlock && (
-            <section className="references-panel" style={{ marginTop: '8px' }}>
+            <InspectorSection id="dependencies" title="Dependencies" icon={<Lock size={14} />} isOpen={openInspectorSections.dependencies} onToggle={toggleSection}>
+              <section className="references-panel" style={{ marginTop: '8px' }}>
               <div className="references-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <Lock size={13} color={dependencyStatus?.isBlocked ? '#F59E0B' : 'var(--text-muted)'} />
@@ -1395,11 +1455,13 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                   </div>
                 </div>
               )}
-            </section>
+              </section>
+            </InspectorSection>
           )}
 
           {isBlock && (
-            <section className="references-panel">
+            <InspectorSection id="references" title="References" icon={<Link2 size={14} />} isOpen={openInspectorSections.references} onToggle={toggleSection}>
+              <section className="references-panel">
               <div className="references-header"><Link2 size={13} /> References</div>
               <p className="references-help">Type <code>[[Block name]]</code> in the text to link a block.</p>
               {references.outgoing.length > 0 && (
@@ -1437,11 +1499,13 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
               {references.outgoing.length === 0 && references.backlinks.length === 0 && (
                 <p className="references-empty">No links for this block yet.</p>
               )}
-            </section>
+              </section>
+            </InspectorSection>
           )}
 
           {!isBlock && (
-            <section className="references-panel" style={{ marginTop: '8px', marginBottom: '8px' }}>
+            <InspectorSection id="scratchpad" title="Agent Context & Scratchpad" icon={<Bot size={14} />} isOpen={openInspectorSections.scratchpad} onToggle={toggleSection}>
+              <section className="references-panel" style={{ marginTop: '8px', marginBottom: '8px' }}>
               <div className="references-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <Bot size={14} color="#38bdf8" />
@@ -1500,7 +1564,8 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
                   boxSizing: 'border-box'
                 }}
               />
-            </section>
+              </section>
+            </InspectorSection>
           )}
 
           <div style={{ flex: 1, overflow: 'hidden' }}>
