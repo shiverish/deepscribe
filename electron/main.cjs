@@ -7,7 +7,13 @@ const { spawn } = require('child_process');
 const net = require('net');
 const path = require('path');
 const { WorkspaceStore } = require('./workspace.cjs');
-const { installOrRepairCodexConnection, resolveMcpRuntime, verifyCodexConnection } = require('./mcp-integration.cjs');
+const {
+  installOrRepairClaudeDesktopConnection,
+  installOrRepairCodexConnection,
+  resolveMcpRuntime,
+  verifyClaudeDesktopConnection,
+  verifyCodexConnection
+} = require('./mcp-integration.cjs');
 
 let mainWindow;
 let activePrintWindow;
@@ -437,7 +443,7 @@ function applyToggleShortcut(shortcut) {
   }
 }
 
-function registerCodexMcpIpc() {
+function registerAgentMcpIpc() {
   const runtime = () => resolveMcpRuntime({
     isPackaged: app.isPackaged,
     resourcesPath: process.resourcesPath,
@@ -448,6 +454,8 @@ function registerCodexMcpIpc() {
   ipcMain.handle('deepscribe:codex-mcp:repair', async () => installOrRepairCodexConnection(runtime()));
   ipcMain.handle('deepscribe:codex-mcp:verify', async () => verifyCodexConnection(runtime()));
   ipcMain.handle('deepscribe:codex-mcp:runtime', async () => runtime());
+  ipcMain.handle('deepscribe:claude-mcp:repair', async () => installOrRepairClaudeDesktopConnection(runtime()));
+  ipcMain.handle('deepscribe:claude-mcp:verify', async () => verifyClaudeDesktopConnection(runtime()));
 }
 
 function registerHotkeyIpc() {
@@ -1429,7 +1437,7 @@ if (!gotTheLock) {
   registerScreenCaptureIpc();
   registerTrayIpc();
   registerAutoStartIpc();
-  registerCodexMcpIpc();
+  registerAgentMcpIpc();
   registerHotkeyIpc();
   setupAutoUpdater();
 

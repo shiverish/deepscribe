@@ -61,6 +61,15 @@ declare global {
         verify: () => Promise<{ ok: boolean; codex: { ok: boolean; registered: boolean; message?: string }; status: { ok: boolean; status?: unknown; message?: string } }>;
         runtime: () => Promise<{ launcherPath: string; serverPath: string }>;
       };
+      claudeMcp?: {
+        repair: () => Promise<{ ok: boolean; changed: boolean; message: string; configPath?: string; backupPath?: string | null }>;
+        verify: () => Promise<{
+          ok: boolean;
+          registration: { ok: boolean; registered: boolean; message?: string };
+          status: { ok: boolean; status?: unknown; message?: string };
+          configPath?: string | null;
+        }>;
+      };
       workspace: {
         status: () => Promise<WorkspaceStatus>;
         load: () => Promise<WorkspaceSnapshot>;

@@ -14,9 +14,27 @@ export interface ReleaseEntry {
   items: ChangelogItem[];
 }
 
-export const CURRENT_APP_VERSION = '0.2.53';
+export const CURRENT_APP_VERSION = '0.2.54';
 
 export const CHANGELOG_ENTRIES: ReleaseEntry[] = [
+  {
+    version: '0.2.54',
+    date: 'September 2026',
+    title: 'Self-Repairing Claude Desktop Connection',
+    summary: 'DeepScribe can now install and verify its Claude Desktop MCP connection from the active app installation.',
+    items: [
+      {
+        type: 'feature',
+        text: 'Install / repair Claude Desktop connection',
+        detail: 'DeepScribe safely merges its portable MCP registration into Claude Desktop, preserves every other configured server and creates a backup before changing the file.'
+      },
+      {
+        type: 'improvement',
+        text: 'Claude connection check',
+        detail: 'The check validates both the exact installed DeepScribe runtime path and a live MCP status response, with a clear Claude Desktop restart reminder.'
+      }
+    ]
+  },
   {
     version: '0.2.53',
     date: 'September 2026',

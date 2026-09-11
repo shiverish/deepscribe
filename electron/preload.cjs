@@ -63,6 +63,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     verify: () => ipcRenderer.invoke('deepscribe:codex-mcp:verify'),
     runtime: () => ipcRenderer.invoke('deepscribe:codex-mcp:runtime')
   },
+  claudeMcp: {
+    repair: () => ipcRenderer.invoke('deepscribe:claude-mcp:repair'),
+    verify: () => ipcRenderer.invoke('deepscribe:claude-mcp:verify')
+  },
   workspace: {
     status: () => ipcRenderer.invoke('deepscribe:workspace:status'),
     load: () => ipcRenderer.invoke('deepscribe:workspace:load'),

@@ -69,6 +69,8 @@ Blocks created or modified by an agent through MCP receive a **New from agent** 
 
 Install Codex from **Settings → AI & Integrations → Codex connection**. **Install / repair Codex connection** registers the packaged MCP server with Codex using the exact active installation path, so it works outside a development checkout. **Check connection** verifies both `codex mcp list` and the DeepScribe `status` tool. Start a new Codex session afterwards so the tools are loaded.
 
+Install Claude Desktop from **Settings → AI & Integrations → Claude Desktop connection**. **Install / repair Claude connection** safely merges DeepScribe into Claude Desktop's MCP configuration, preserves other registered servers, and creates a timestamped backup before changing the file. It uses the installed DeepScribe executable as its Node runtime, so a separate Node.js installation is not required. Completely quit and restart Claude Desktop after installation, then use **Check Claude connection** to verify the registered runtime path and the DeepScribe `status` tool.
+
 The source repository also contains a portable Codex plugin under `integrations/codex/deepscribe` (build it with `npm run codex:plugin:build`). It bundles the DeepScribe skill; the app’s repair button performs the machine-specific MCP registration because an installed app path cannot be safely hardcoded into a portable plugin.
 
 ### Claude Desktop Extension
@@ -104,4 +106,3 @@ The tests cover cyclic tree structures, moving records, restoring projects and b
 ## License
 
 DeepScribe is licensed under the [GNU General Public License v3.0 (GPLv3)](LICENSE).
-

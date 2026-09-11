@@ -55,6 +55,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [isRecordingHotkey, setIsRecordingHotkey] = useState(false);
   const [codexMcpMessage, setCodexMcpMessage] = useState<string | null>(null);
   const [isManagingCodexMcp, setIsManagingCodexMcp] = useState(false);
+  const [claudeMcpMessage, setClaudeMcpMessage] = useState<string | null>(null);
+  const [isManagingClaudeMcp, setIsManagingClaudeMcp] = useState(false);
   const [mcpRuntime, setMcpRuntime] = useState<{ launcherPath: string; serverPath: string } | null>(null);
 
   useEffect(() => {
@@ -1240,14 +1242,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10B981', display: 'inline-block', boxShadow: '0 0 8px #10B981' }} />
-                      <strong style={{ color: '#10B981', fontSize: '13px' }}>Smart Dual-Mode MCP Server Active</strong>
+                      <strong style={{ color: '#10B981', fontSize: '13px' }}>DeepScribe MCP Runtime Available</strong>
                     </div>
                     <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '12px', background: 'rgba(16, 185, 129, 0.15)', color: '#10B981', fontWeight: 600 }}>
-                      24/7 Agent Ready
+                      Local agent runtime
                     </span>
                   </div>
                   <span style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
-                    AI agents (such as Antigravity, Claude Desktop, and Cursor) can always read and update DeepScribe — live while the window is open or directly through SQLite while the app is closed.
+                    Connected AI clients can read and update DeepScribe live while the window is open or directly through SQLite while the app is closed. Configure and verify each client below.
                   </span>
                 </div>
               </div>
@@ -1298,6 +1300,60 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <CheckCheck size={14} /> Check connection
                     </button>
                     {codexMcpMessage && <span className="setting-description" role="status">{codexMcpMessage}</span>}
+                  </div>
+                ) : (
+                  <span className="setting-description">Available in the installed DeepScribe desktop app.</span>
+                )}
+              </div>
+
+              <div className="setting-item">
+                <div className="setting-info">
+                  <label>Claude Desktop connection</label>
+                  <span className="setting-description">Install or repair DeepScribe in Claude Desktop without replacing your other MCP servers. DeepScribe creates a backup before changing Claude’s configuration. Completely restart Claude Desktop after installation.</span>
+                </div>
+                {window.electronAPI?.claudeMcp ? (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 10 }}>
+                    <button
+                      className="secondary-button"
+                      disabled={isManagingClaudeMcp}
+                      onClick={async () => {
+                        setIsManagingClaudeMcp(true);
+                        setClaudeMcpMessage(null);
+                        try {
+                          const result = await window.electronAPI!.claudeMcp!.repair();
+                          setClaudeMcpMessage(result.message);
+                        } catch (error) {
+                          setClaudeMcpMessage(error instanceof Error ? error.message : 'Claude Desktop connection could not be installed.');
+                        } finally {
+                          setIsManagingClaudeMcp(false);
+                        }
+                      }}
+                      type="button"
+                    >
+                      <RefreshCw size={14} /> {isManagingClaudeMcp ? 'Working…' : 'Install / repair Claude connection'}
+                    </button>
+                    <button
+                      className="secondary-button"
+                      disabled={isManagingClaudeMcp}
+                      onClick={async () => {
+                        setIsManagingClaudeMcp(true);
+                        setClaudeMcpMessage(null);
+                        try {
+                          const result = await window.electronAPI!.claudeMcp!.verify();
+                          setClaudeMcpMessage(result.ok
+                            ? 'Connected: Claude Desktop is configured for this DeepScribe installation and the status tool responded.'
+                            : `Connection check failed: ${result.registration.message || result.status.message || 'DeepScribe is not registered.'}`);
+                        } catch (error) {
+                          setClaudeMcpMessage(error instanceof Error ? error.message : 'Claude Desktop connection check could not run.');
+                        } finally {
+                          setIsManagingClaudeMcp(false);
+                        }
+                      }}
+                      type="button"
+                    >
+                      <CheckCheck size={14} /> Check Claude connection
+                    </button>
+                    {claudeMcpMessage && <span className="setting-description" role="status">{claudeMcpMessage}</span>}
                   </div>
                 ) : (
                   <span className="setting-description">Available in the installed DeepScribe desktop app.</span>
@@ -1360,6 +1416,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         if (selectedMcpClient === 'codex') {
                           return `codex mcp add deepscribe --env ELECTRON_RUN_AS_NODE=1 -- "${launcherPath}" "${serverPath}"`;
                         }
+                        if (selectedMcpClient === 'claude') {
+                          return JSON.stringify({
+                            mcpServers: { deepscribe: { command: launcherPath, args: [serverPath], env: { ELECTRON_RUN_AS_NODE: '1' } } }
+                          }, null, 2);
+                        }
                         if (selectedMcpClient === 'cli') return `node "${serverPath}"`;
                         return JSON.stringify({
                           mcpServers: { deepscribe: { command: 'node', args: [serverPath] } }
@@ -1383,11 +1444,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     onClick={() => {
                       const serverPath = mcpRuntime?.serverPath || 'DeepScribe MCP runtime unavailable';
                       const launcherPath = mcpRuntime?.launcherPath || 'DeepScribe.exe';
-                      const text = selectedMcpClient === 'codex'
-                        ? `codex mcp add deepscribe --env ELECTRON_RUN_AS_NODE=1 -- "${launcherPath}" "${serverPath}"`
-                        : selectedMcpClient === 'cli'
-                          ? `node "${serverPath}"`
-                          : JSON.stringify({ mcpServers: { deepscribe: { command: 'node', args: [serverPath] } } }, null, 2);
+                      let text: string;
+                      if (selectedMcpClient === 'codex') {
+                        text = `codex mcp add deepscribe --env ELECTRON_RUN_AS_NODE=1 -- "${launcherPath}" "${serverPath}"`;
+                      } else if (selectedMcpClient === 'claude') {
+                        text = JSON.stringify({
+                          mcpServers: {
+                            deepscribe: { command: launcherPath, args: [serverPath], env: { ELECTRON_RUN_AS_NODE: '1' } }
+                          }
+                        }, null, 2);
+                      } else if (selectedMcpClient === 'cli') {
+                        text = `node "${serverPath}"`;
+                      } else {
+                        text = JSON.stringify({ mcpServers: { deepscribe: { command: 'node', args: [serverPath] } } }, null, 2);
+                      }
                       navigator.clipboard.writeText(text);
                       setCopiedClient(selectedMcpClient);
                       setTimeout(() => setCopiedClient(null), 2500);
