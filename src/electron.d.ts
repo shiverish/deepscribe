@@ -57,8 +57,13 @@ declare global {
         setToggleShortcut: (shortcut: string) => Promise<{ ok: boolean; shortcut?: string; error?: string }>;
       };
       codexMcp?: {
-        repair: () => Promise<{ ok: boolean; message: string; runtime: { launcherPath: string; serverPath: string }; output?: string }>;
-        verify: () => Promise<{ ok: boolean; codex: { ok: boolean; registered: boolean; message?: string }; status: { ok: boolean; status?: unknown; message?: string } }>;
+        repair: () => Promise<{ ok: boolean; changed: boolean; message: string; configPath?: string; backupPath?: string | null }>;
+        verify: () => Promise<{
+          ok: boolean;
+          registration: { ok: boolean; registered: boolean; message?: string };
+          status: { ok: boolean; status?: unknown; message?: string };
+          configPath?: string | null;
+        }>;
         runtime: () => Promise<{ launcherPath: string; serverPath: string }>;
       };
       claudeMcp?: {

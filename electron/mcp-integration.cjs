@@ -15,12 +15,46 @@ function resolveMcpRuntime({ isPackaged, resourcesPath, appPath, executablePath 
   };
 }
 
-function buildCodexMcpInstallPlan({ launcherPath, serverPath }) {
-  return {
-    command: 'codex',
-    args: ['mcp', 'add', MCP_SERVER_NAME, '--env', 'ELECTRON_RUN_AS_NODE=1', '--', launcherPath, serverPath],
-    env: { ELECTRON_RUN_AS_NODE: '1' }
-  };
+function resolveCodexConfigPath({ codexHome = process.env.CODEX_HOME, homeDirectory = os.homedir() } = {}) {
+  return path.join(codexHome || path.join(homeDirectory, '.codex'), 'config.toml');
+}
+
+function tomlString(value) {
+  return JSON.stringify(String(value));
+}
+
+function buildCodexMcpRegistration({ launcherPath, serverPath }) {
+  return [
+    '# DeepScribe managed MCP connection',
+    `[mcp_servers.${MCP_SERVER_NAME}]`,
+    `command = ${tomlString(launcherPath)}`,
+    `args = [${tomlString(serverPath)}]`,
+    '',
+    `[mcp_servers.${MCP_SERVER_NAME}.env]`,
+    'ELECTRON_RUN_AS_NODE = "1"',
+    '# End DeepScribe managed MCP connection'
+  ].join('\n');
+}
+
+function withoutCodexRegistration(content) {
+  const root = `mcp_servers.${MCP_SERVER_NAME}`;
+  const output = [];
+  let skipping = false;
+
+  for (const line of String(content || '').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').split('\n')) {
+    const table = /^\s*\[([^\]]+)]\s*(?:#.*)?$/.exec(line)?.[1]?.trim();
+    if (table) skipping = table === root || table.startsWith(`${root}.`);
+    if (skipping) continue;
+    if (line.trim() === '# DeepScribe managed MCP connection' || line.trim() === '# End DeepScribe managed MCP connection') continue;
+    output.push(line);
+  }
+
+  return output.join('\n').trimEnd();
+}
+
+function mergeCodexMcpRegistration(content, runtime) {
+  const preserved = withoutCodexRegistration(content);
+  return `${preserved ? `${preserved}\n\n` : ''}${buildCodexMcpRegistration(runtime)}\n`;
 }
 
 function resolveClaudeDesktopConfigPath({ appData = process.env.APPDATA } = {}) {
@@ -72,6 +106,27 @@ function writeClaudeDesktopConfig(configPath, config, existed) {
   const temporaryPath = `${configPath}.deepscribe-${suffix}.tmp`;
   const backupPath = existed ? `${configPath}.deepscribe-${suffix}.bak` : null;
   fs.writeFileSync(temporaryPath, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
+
+  try {
+    if (backupPath) fs.renameSync(configPath, backupPath);
+    fs.renameSync(temporaryPath, configPath);
+    return backupPath;
+  } catch (error) {
+    try {
+      if (backupPath && fs.existsSync(backupPath) && !fs.existsSync(configPath)) fs.renameSync(backupPath, configPath);
+    } catch {}
+    try { if (fs.existsSync(temporaryPath)) fs.unlinkSync(temporaryPath); } catch {}
+    throw error;
+  }
+}
+
+function writeTextConfig(configPath, content, existed) {
+  const directory = path.dirname(configPath);
+  fs.mkdirSync(directory, { recursive: true });
+  const suffix = crypto.randomUUID();
+  const temporaryPath = `${configPath}.deepscribe-${suffix}.tmp`;
+  const backupPath = existed ? `${configPath}.deepscribe-${suffix}.bak` : null;
+  fs.writeFileSync(temporaryPath, content, 'utf8');
 
   try {
     if (backupPath) fs.renameSync(configPath, backupPath);
@@ -153,55 +208,50 @@ async function verifyClaudeDesktopConnection(runtime, options = {}) {
   return { ok: registration.registered && status.ok, registration, status, configPath };
 }
 
-function run(command, args, { timeout = 15000, env = process.env } = {}) {
-  return new Promise((resolve) => {
-    let stdout = '';
-    let stderr = '';
-    let settled = false;
-    const child = spawn(command, args, {
-      env,
-      shell: process.platform === 'win32',
-      windowsHide: true
-    });
-    const finish = result => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve(result);
+async function installOrRepairCodexConnection(runtime, options = {}) {
+  const configPath = options.configPath || resolveCodexConfigPath(options);
+  try {
+    const exists = fs.existsSync(configPath);
+    const current = exists ? fs.readFileSync(configPath, 'utf8') : '';
+    const next = mergeCodexMcpRegistration(current, runtime);
+    if (current.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n') === next) {
+      return {
+        ok: true,
+        changed: false,
+        message: 'Codex desktop connection is already installed. Start a new Codex task if the tools are not visible.',
+        configPath
+      };
+    }
+
+    const backupPath = writeTextConfig(configPath, next, exists);
+    return {
+      ok: true,
+      changed: true,
+      message: 'Codex desktop connection installed. Completely quit and restart Codex, then start a new task and run Check connection.',
+      configPath,
+      backupPath
     };
-    const timer = setTimeout(() => {
-      child.kill();
-      finish({ ok: false, code: null, stdout, stderr: `${stderr}\nTimed out after ${timeout} ms.`.trim() });
-    }, timeout);
-    child.stdout?.on('data', chunk => { stdout += chunk; });
-    child.stderr?.on('data', chunk => { stderr += chunk; });
-    child.once('error', error => finish({ ok: false, code: null, stdout, stderr: `${stderr}\n${error.message}`.trim() }));
-    child.once('close', code => finish({ ok: code === 0, code, stdout, stderr }));
-  });
+  } catch (error) {
+    return { ok: false, changed: false, message: `Codex desktop configuration could not be updated: ${error.message}`, configPath };
+  }
 }
 
-async function installOrRepairCodexConnection(runtime) {
-  // Ignore a missing prior registration; the add below is the authoritative result.
-  await run('codex', ['mcp', 'remove', MCP_SERVER_NAME]);
-  const plan = buildCodexMcpInstallPlan(runtime);
-  const result = await run(plan.command, plan.args);
-  return {
-    ok: result.ok,
-    message: result.ok ? 'Codex connection installed.' : (result.stderr || result.stdout || 'Codex could not register DeepScribe.'),
-    runtime,
-    output: result.stdout
-  };
-}
-
-async function verifyCodexConnection(runtime) {
-  const codex = await run('codex', ['mcp', 'list']);
-  const registered = codex.ok && new RegExp(`(^|\\s)${MCP_SERVER_NAME}(\\s|$)`, 'mi').test(codex.stdout);
-  const status = await callStatusTool(runtime);
-  return {
-    ok: registered && status.ok,
-    codex: { ok: codex.ok, registered, message: codex.ok ? undefined : (codex.stderr || codex.stdout) },
-    status
-  };
+async function verifyCodexConnection(runtime, options = {}) {
+  const configPath = options.configPath || resolveCodexConfigPath(options);
+  let registration = { ok: false, registered: false, message: undefined };
+  try {
+    const current = fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf8') : '';
+    const registered = current.replace(/\r\n/g, '\n').includes(buildCodexMcpRegistration(runtime));
+    registration = {
+      ok: true,
+      registered,
+      message: registered ? undefined : 'DeepScribe is not registered with the current installed app path in Codex desktop.'
+    };
+  } catch (error) {
+    registration = { ok: false, registered: false, message: `Codex desktop configuration could not be read: ${error.message}` };
+  }
+  const status = options.callStatus ? await options.callStatus(runtime) : await callStatusTool(runtime);
+  return { ok: registration.registered && status.ok, registration, status, configPath };
 }
 
 function callStatusTool(runtime) {
@@ -248,11 +298,13 @@ function callStatusTool(runtime) {
 
 module.exports = {
   buildClaudeDesktopRegistration,
-  buildCodexMcpInstallPlan,
+  buildCodexMcpRegistration,
   installOrRepairClaudeDesktopConnection,
   installOrRepairCodexConnection,
+  mergeCodexMcpRegistration,
   registrationMatches,
   resolveClaudeDesktopConfigPath,
+  resolveCodexConfigPath,
   resolveMcpRuntime,
   verifyClaudeDesktopConnection,
   verifyCodexConnection

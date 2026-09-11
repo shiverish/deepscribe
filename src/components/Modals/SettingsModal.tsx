@@ -1256,8 +1256,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
               <div className="setting-item">
                 <div className="setting-info">
-                  <label>Codex connection</label>
-                  <span className="setting-description">Install or repair the local DeepScribe MCP connection using this app’s actual installation path. The check confirms both <code>codex mcp list</code> and the DeepScribe <code>status</code> tool.</span>
+                  <label>Codex / ChatGPT desktop connection</label>
+                  <span className="setting-description">Install or repair DeepScribe directly in the shared Codex desktop configuration. The Codex CLI is not required. Existing settings and other MCP servers are preserved, with a backup created before changes.</span>
                 </div>
                 {window.electronAPI?.codexMcp ? (
                   <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 10 }}>
@@ -1269,7 +1269,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         setCodexMcpMessage(null);
                         try {
                           const result = await window.electronAPI!.codexMcp!.repair();
-                          setCodexMcpMessage(result.ok ? 'Codex connection installed. Run Check connection to verify it.' : result.message);
+                          setCodexMcpMessage(result.message);
                         } catch (error) {
                           setCodexMcpMessage(error instanceof Error ? error.message : 'Codex connection could not be installed.');
                         } finally {
@@ -1278,7 +1278,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       }}
                       type="button"
                     >
-                      <RefreshCw size={14} /> {isManagingCodexMcp ? 'Working…' : 'Install / repair Codex connection'}
+                      <RefreshCw size={14} /> {isManagingCodexMcp ? 'Working…' : 'Install / repair desktop connection'}
                     </button>
                     <button
                       className="secondary-button"
@@ -1288,7 +1288,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         setCodexMcpMessage(null);
                         try {
                           const result = await window.electronAPI!.codexMcp!.verify();
-                          setCodexMcpMessage(result.ok ? 'Connected: Codex lists DeepScribe and the status tool responded.' : `Connection check failed: ${result.codex.message || result.status.message || 'DeepScribe is not registered.'}`);
+                          setCodexMcpMessage(result.ok
+                            ? 'Connected: Codex desktop is configured for this DeepScribe installation and the status tool responded.'
+                            : `Connection check failed: ${result.registration.message || result.status.message || 'DeepScribe is not registered.'}`);
                         } catch (error) {
                           setCodexMcpMessage(error instanceof Error ? error.message : 'Connection check could not run.');
                         } finally {
@@ -1414,7 +1416,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         const serverPath = mcpRuntime?.serverPath || 'DeepScribe MCP runtime unavailable';
                         const launcherPath = mcpRuntime?.launcherPath || 'DeepScribe.exe';
                         if (selectedMcpClient === 'codex') {
-                          return `codex mcp add deepscribe --env ELECTRON_RUN_AS_NODE=1 -- "${launcherPath}" "${serverPath}"`;
+                          return [
+                            '[mcp_servers.deepscribe]',
+                            `command = ${JSON.stringify(launcherPath)}`,
+                            `args = [${JSON.stringify(serverPath)}]`,
+                            '',
+                            '[mcp_servers.deepscribe.env]',
+                            'ELECTRON_RUN_AS_NODE = "1"'
+                          ].join('\n');
                         }
                         if (selectedMcpClient === 'claude') {
                           return JSON.stringify({
@@ -1446,7 +1455,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       const launcherPath = mcpRuntime?.launcherPath || 'DeepScribe.exe';
                       let text: string;
                       if (selectedMcpClient === 'codex') {
-                        text = `codex mcp add deepscribe --env ELECTRON_RUN_AS_NODE=1 -- "${launcherPath}" "${serverPath}"`;
+                        text = [
+                          '[mcp_servers.deepscribe]',
+                          `command = ${JSON.stringify(launcherPath)}`,
+                          `args = [${JSON.stringify(serverPath)}]`,
+                          '',
+                          '[mcp_servers.deepscribe.env]',
+                          'ELECTRON_RUN_AS_NODE = "1"'
+                        ].join('\n');
                       } else if (selectedMcpClient === 'claude') {
                         text = JSON.stringify({
                           mcpServers: {

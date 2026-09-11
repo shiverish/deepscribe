@@ -5,16 +5,20 @@ import path from 'node:path';
 const require = createRequire(import.meta.url);
 const {
   buildClaudeDesktopRegistration,
-  buildCodexMcpInstallPlan,
+  buildCodexMcpRegistration,
   installOrRepairClaudeDesktopConnection,
+  installOrRepairCodexConnection,
   resolveMcpRuntime,
-  verifyClaudeDesktopConnection
+  verifyClaudeDesktopConnection,
+  verifyCodexConnection
 } = require('./mcp-integration.cjs') as {
   buildClaudeDesktopRegistration: (runtime: { launcherPath: string; serverPath: string }) => { command: string; args: string[]; env: Record<string, string> };
-  buildCodexMcpInstallPlan: (runtime: { launcherPath: string; serverPath: string }) => { command: string; args: string[]; env: Record<string, string> };
+  buildCodexMcpRegistration: (runtime: { launcherPath: string; serverPath: string }) => string;
   installOrRepairClaudeDesktopConnection: (runtime: { launcherPath: string; serverPath: string }, options: { configPath: string }) => Promise<{ ok: boolean; changed: boolean; message: string; backupPath?: string }>;
+  installOrRepairCodexConnection: (runtime: { launcherPath: string; serverPath: string }, options: { configPath: string }) => Promise<{ ok: boolean; changed: boolean; message: string; backupPath?: string }>;
   resolveMcpRuntime: (input: { isPackaged: boolean; resourcesPath: string; appPath: string; executablePath: string }) => { launcherPath: string; serverPath: string };
   verifyClaudeDesktopConnection: (runtime: { launcherPath: string; serverPath: string }, options: { configPath: string; callStatus: () => Promise<{ ok: boolean; status: unknown }> }) => Promise<{ ok: boolean; registration: { registered: boolean }; status: { ok: boolean } }>;
+  verifyCodexConnection: (runtime: { launcherPath: string; serverPath: string }, options: { configPath: string; callStatus: () => Promise<{ ok: boolean; status: unknown }> }) => Promise<{ ok: boolean; registration: { registered: boolean }; status: { ok: boolean } }>;
 };
 import fs from 'node:fs';
 import os from 'node:os';
@@ -34,19 +38,66 @@ describe('DeepScribe Codex MCP integration', () => {
     });
   });
 
-  it('creates a Codex install plan that launches Electron as Node', () => {
-    const plan = buildCodexMcpInstallPlan({
+  it('creates desktop-compatible Codex TOML without requiring the Codex CLI', () => {
+    const registration = buildCodexMcpRegistration({
       launcherPath: 'C:/Program Files/DeepScribe/DeepScribe.exe',
       serverPath: 'C:/Program Files/DeepScribe/resources/mcp/server.mjs'
     });
 
-    expect(plan.command).toBe('codex');
-    expect(plan.env).toEqual({ ELECTRON_RUN_AS_NODE: '1' });
-    expect(plan.args).toEqual([
-      'mcp', 'add', 'deepscribe', '--env', 'ELECTRON_RUN_AS_NODE=1', '--',
-      'C:/Program Files/DeepScribe/DeepScribe.exe',
-      'C:/Program Files/DeepScribe/resources/mcp/server.mjs'
-    ]);
+    expect(registration).toContain('[mcp_servers.deepscribe]');
+    expect(registration).toContain('command = "C:/Program Files/DeepScribe/DeepScribe.exe"');
+    expect(registration).toContain('args = ["C:/Program Files/DeepScribe/resources/mcp/server.mjs"]');
+    expect(registration).toContain('[mcp_servers.deepscribe.env]');
+    expect(registration).toContain('ELECTRON_RUN_AS_NODE = "1"');
+  });
+
+  it('repairs Codex desktop config while preserving settings and other MCP servers', async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'deepscribe-codex-'));
+    const configPath = path.join(directory, 'config.toml');
+    const runtime = {
+      launcherPath: 'C:\\Program Files\\DeepScribe\\DeepScribe.exe',
+      serverPath: 'C:\\Program Files\\DeepScribe\\resources\\mcp\\server.mjs'
+    };
+    fs.writeFileSync(configPath, [
+      'model = "gpt-5.6-sol"',
+      '',
+      '[mcp_servers.existing]',
+      'command = "existing.exe"',
+      '',
+      '[mcp_servers.deepscribe]',
+      'command = "old.exe"',
+      'args = ["old-server.mjs"]',
+      '',
+      '[mcp_servers.deepscribe.env]',
+      'ELECTRON_RUN_AS_NODE = "1"',
+      '',
+      '[projects."K:\\\\Apps"]',
+      'trust_level = "trusted"',
+      ''
+    ].join('\n'));
+
+    try {
+      const result = await installOrRepairCodexConnection(runtime, { configPath });
+      expect(result).toMatchObject({ ok: true, changed: true });
+      expect(result.backupPath && fs.existsSync(result.backupPath)).toBe(true);
+      const config = fs.readFileSync(configPath, 'utf8');
+      expect(config).toContain('model = "gpt-5.6-sol"');
+      expect(config).toContain('[mcp_servers.existing]');
+      expect(config).toContain('[projects."K:\\\\Apps"]');
+      expect(config).not.toContain('old.exe');
+      expect(config).toContain(buildCodexMcpRegistration(runtime));
+
+      const repeated = await installOrRepairCodexConnection(runtime, { configPath });
+      expect(repeated).toMatchObject({ ok: true, changed: false });
+
+      const verified = await verifyCodexConnection(runtime, {
+        configPath,
+        callStatus: async () => ({ ok: true, status: { workspace: 'ready' } })
+      });
+      expect(verified).toMatchObject({ ok: true, registration: { registered: true }, status: { ok: true } });
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it('creates a portable Claude Desktop registration without requiring Node', () => {

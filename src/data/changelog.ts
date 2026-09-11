@@ -14,9 +14,27 @@ export interface ReleaseEntry {
   items: ChangelogItem[];
 }
 
-export const CURRENT_APP_VERSION = '0.2.54';
+export const CURRENT_APP_VERSION = '0.2.55';
 
 export const CHANGELOG_ENTRIES: ReleaseEntry[] = [
+  {
+    version: '0.2.55',
+    date: 'September 2026',
+    title: 'Codex Desktop Connection Repair',
+    summary: 'DeepScribe now connects the Codex and ChatGPT desktop experience directly, without depending on a separately installed Codex CLI command.',
+    items: [
+      {
+        type: 'fix',
+        text: 'Desktop-first Codex connection',
+        detail: 'Install / repair now safely updates the shared Codex config.toml, preserves other settings and MCP servers, and creates a backup before changing the file.'
+      },
+      {
+        type: 'improvement',
+        text: 'Connection verification without CLI lookup',
+        detail: 'Check connection validates the stored desktop registration and the live DeepScribe status tool instead of running codex mcp list through the app process PATH.'
+      }
+    ]
+  },
   {
     version: '0.2.54',
     date: 'September 2026',
