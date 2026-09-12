@@ -14,9 +14,32 @@ export interface ReleaseEntry {
   items: ChangelogItem[];
 }
 
-export const CURRENT_APP_VERSION = '0.2.55';
+export const CURRENT_APP_VERSION = '0.2.56';
 
 export const CHANGELOG_ENTRIES: ReleaseEntry[] = [
+  {
+    version: '0.2.56',
+    date: 'September 2026',
+    title: 'Less Aggressive Auto-Save & Typing Performance',
+    summary: 'Eliminated typing lag by decoupling text editing from database saves, debouncing task AST extraction, and optimizing periodic saves.',
+    items: [
+      {
+        type: 'improvement',
+        text: 'Decoupled typing from auto-save',
+        detail: 'Removed the 750ms mid-typing auto-save timer. Drafts are now saved on blur, navigation, or window unload.'
+      },
+      {
+        type: 'improvement',
+        text: 'Debounced TipTap task extraction',
+        detail: 'Debounced expensive JSON AST task count extraction by 300ms so typing remains lightweight and fluid on large documents.'
+      },
+      {
+        type: 'fix',
+        text: 'Quiet 30-second periodic background save',
+        detail: 'Background fallback saves dirty drafts quietly without creating duplicate revisions, activity entries, or running heavy wiki-link table scans.'
+      }
+    ]
+  },
   {
     version: '0.2.55',
     date: 'September 2026',

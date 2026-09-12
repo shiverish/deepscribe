@@ -25,7 +25,11 @@ export interface BlockDraftUpdate {
   captureAgentTarget?: TaskAgentTarget;
 }
 
-export async function saveBlockDraft(blockId: string, draft: BlockDraftUpdate): Promise<void> {
+export interface SaveBlockDraftOptions {
+  skipWikiSync?: boolean;
+}
+
+export async function saveBlockDraft(blockId: string, draft: BlockDraftUpdate, options?: SaveBlockDraftOptions): Promise<void> {
   await db.blocks.update(blockId, {
     ...draft,
     tags: sanitizeTags(draft.tags),
@@ -34,7 +38,9 @@ export async function saveBlockDraft(blockId: string, draft: BlockDraftUpdate): 
     ...(draft.captureAgentTarget !== undefined ? { captureAgentTarget: draft.captureAgentTarget } : {}),
     updatedAt: Date.now()
   });
-  await syncBlockWikiLinks(blockId);
+  if (!options?.skipWikiSync) {
+    await syncBlockWikiLinks(blockId);
+  }
 }
 
 /**

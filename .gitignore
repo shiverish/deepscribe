@@ -13,6 +13,7 @@ dist-ssr
 dist-electron
 dist-mcpb
 dist-skills
+dist-plugins
 *.local
 
 # Claude Code personal settings

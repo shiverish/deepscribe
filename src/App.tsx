@@ -669,7 +669,7 @@ function DeepScribeApp() {
     await recordActivity({ projectId: block?.projectId, blockId: attachment.blockId, action: 'attachment-removed', summary: `Attachment “${attachment.fileName}” removed` });
   };
 
-  // Explicit Save Handler called by WritingPanel on blur, navigation, 10s timer, beforeunload
+  // Explicit Save Handler called by WritingPanel on blur, navigation, 30s background timer, beforeunload
   const handleSaveItem = useCallback(async (
     itemId: string,
     itemType: 'project' | 'block',
@@ -682,10 +682,12 @@ function DeepScribeApp() {
     dependsOn?: string[],
     scratchpad?: string,
     task?: TaskMetadata,
-    captureAgentTarget?: TaskAgentTarget
+    captureAgentTarget?: TaskAgentTarget,
+    options?: { silent?: boolean }
   ) => {
     setSaveStatus({ state: 'saving' });
     try {
+      const isSilent = options?.silent === true;
       if (itemType === 'project') {
         await saveProjectDraft(itemId, {
           title,
@@ -693,11 +695,13 @@ function DeepScribeApp() {
           tags,
           scratchpad
         });
-        await recordActivity({ projectId: itemId, action: 'project-updated', summary: `Project “${title}” updated` });
+        if (!isSilent) {
+          await recordActivity({ projectId: itemId, action: 'project-updated', summary: `Project “${title}” updated` });
+        }
       } else {
         const currentBlock = await db.blocks.get(itemId);
-        if (currentBlock) {
-        await recordBlockRevision(currentBlock, 'user', 'State before developer edit');
+        if (!isSilent && currentBlock) {
+          await recordBlockRevision(currentBlock, 'user', 'State before developer edit');
         }
         if (task && currentBlock?.kind === 'task' && currentBlock.task) {
           if (!canTransitionTask(currentBlock.task.status, task.status)) throw new Error('Invalid task status transition.');
@@ -716,21 +720,23 @@ function DeepScribeApp() {
           dependsOn,
           task,
           captureAgentTarget
-        });
+        }, { skipWikiSync: isSilent });
         const block = await db.blocks.get(itemId);
-        if (block) {
-          await recordBlockRevision(block, 'user', `Ontwikkelaar bewerkte “${title}”`);
+        if (!isSilent) {
+          if (block) {
+            await recordBlockRevision(block, 'user', `Developer edited “${title}”`);
+          }
+          const oldTask = currentBlock?.task;
+          const newTask = block?.task;
+          const action = oldTask?.claim && !newTask?.claim
+            ? 'task-claim-released-by-user'
+            : oldTask?.status !== newTask?.status
+            ? newTask?.status === 'ready' ? 'task-readiness-changed' : newTask?.status === 'done' ? 'task-completed' : 'task-status-changed'
+            : oldTask && newTask && (oldTask.agentTarget !== newTask.agentTarget || oldTask.customAgentName !== newTask.customAgentName)
+              ? 'task-metadata-updated'
+              : 'block-updated';
+          await recordActivity({ projectId: block?.projectId, blockId: itemId, action, summary: block?.kind === 'task' ? `${action === 'task-claim-released-by-user' ? 'Claim released by user for' : 'Task'} “${title}”${newTask ? ` → ${newTask.status}` : ''}` : `Block “${title}” updated` });
         }
-        const oldTask = currentBlock?.task;
-        const newTask = block?.task;
-        const action = oldTask?.claim && !newTask?.claim
-          ? 'task-claim-released-by-user'
-          : oldTask?.status !== newTask?.status
-          ? newTask?.status === 'ready' ? 'task-readiness-changed' : newTask?.status === 'done' ? 'task-completed' : 'task-status-changed'
-          : oldTask && newTask && (oldTask.agentTarget !== newTask.agentTarget || oldTask.customAgentName !== newTask.customAgentName)
-            ? 'task-metadata-updated'
-            : 'block-updated';
-      await recordActivity({ projectId: block?.projectId, blockId: itemId, action, summary: block?.kind === 'task' ? `${action === 'task-claim-released-by-user' ? 'Claim released by user for' : 'Task'} “${title}”${newTask ? ` → ${newTask.status}` : ''}` : `Block “${title}” updated` });
       }
       setSaveStatus({ state: 'saved', lastSavedAt: Date.now() });
     } catch (err) {

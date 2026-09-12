@@ -46,7 +46,8 @@ interface WritingPanelProps {
     dependsOn?: string[],
     scratchpad?: string,
     task?: TaskMetadata,
-    captureAgentTarget?: TaskAgentTarget
+    captureAgentTarget?: TaskAgentTarget,
+    options?: { silent?: boolean }
   ) => Promise<void>;
   tagSuggestions?: Array<{ tag: string; count: number }>;
   onRenameProjectTag?: (from: string, to: string) => Promise<number>;
@@ -261,7 +262,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
     };
   }, [title, htmlContent, plainTextContent, taskCount, completedTaskCount, tags, dependsOn, scratchpad, taskMetadata, captureAgentTarget, isDirty, itemType]);
 
-  const flushSave = useCallback(async () => {
+  const flushSave = useCallback(async (options?: { silent?: boolean }) => {
     const currentId = activeItemIdRef.current;
     if (!currentId || !draftRef.current.isDirty) return;
     if (isSavingRef.current) {
@@ -289,7 +290,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
 
     try {
       if (itemType) {
-        await onSaveItem(currentId, itemType, title, htmlContent, plainTextContent, taskCount, completedTaskCount, finalTags, currentDependsOn, currentScratchpad, currentTask, currentCaptureAgent);
+        await onSaveItem(currentId, itemType, title, htmlContent, plainTextContent, taskCount, completedTaskCount, finalTags, currentDependsOn, currentScratchpad, currentTask, currentCaptureAgent, options);
       }
     } finally {
       isSavingRef.current = false;
@@ -299,6 +300,10 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
       }
     }
   }, [onSaveItem]);
+
+  const handleBlurSave = useCallback(() => {
+    void flushSave();
+  }, [flushSave]);
 
   useEffect(() => {
     const previousId = activeItemIdRef.current;
@@ -607,19 +612,14 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
     dispatchTagComposer({ type: 'clear-error' });
   };
 
-  // Save shortly after typing stops; blur and the periodic timer remain fallbacks.
-  useEffect(() => {
-    if (!isDirty) return;
-    const timeout = window.setTimeout(() => void flushSave(), 750);
-    return () => window.clearTimeout(timeout);
-  }, [isDirty, title, htmlContent, plainTextContent, taskCount, completedTaskCount, tags, taskMetadata, flushSave]);
-
+  // Periodic background fallback save every 30 seconds to prevent data loss.
+  // Performs a quiet draft save without recording revisions or activities.
   useEffect(() => {
     const interval = setInterval(() => {
       if (draftRef.current.isDirty) {
-        flushSave();
+        void flushSave({ silent: true });
       }
-    }, 10000);
+    }, 30000);
 
     return () => clearInterval(interval);
   }, [flushSave]);
@@ -679,7 +679,10 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  const wordCount = plainTextContent.trim() ? plainTextContent.trim().split(/\s+/).length : 0;
+  const wordCount = useMemo(() => {
+    const trimmed = plainTextContent.trim();
+    return trimmed ? trimmed.split(/\s+/).length : 0;
+  }, [plainTextContent]);
   const charCount = plainTextContent.length;
 
   if (!isOpen) return null;
@@ -811,7 +814,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
             type="text"
             value={title}
             onChange={handleTitleChange}
-            onBlur={flushSave}
+            onBlur={handleBlurSave}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault();
@@ -1546,7 +1549,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
               <textarea
                 value={scratchpad}
                 onChange={handleScratchpadChange}
-                onBlur={flushSave}
+                onBlur={handleBlurSave}
                 placeholder="# Project Context & Architecture Decisions&#10;&#10;- Important decisions...&#10;- Current roadmap..."
                 style={{
                   width: '100%',
@@ -1574,7 +1577,7 @@ export const WritingPanel: React.FC<WritingPanelProps> = ({
               key={activeItem?.id}
               content={htmlContent}
               onChange={handleEditorChange}
-              onBlur={flushSave}
+              onBlur={handleBlurSave}
               onUploadImage={onUploadImage}
               onReturnFocusToCards={onReturnFocusToCards}
             />

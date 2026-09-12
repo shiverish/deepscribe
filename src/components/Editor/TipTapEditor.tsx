@@ -68,6 +68,18 @@ export const TipTapEditor = forwardRef<TipTapEditorHandle, TipTapEditorProps>(({
   // De editorProps van useEditor worden eenmalig gemaakt, dus Ctrl+F in de editor moet
   // via een ref bij de actuele openFind komen in plaats van bij die van de eerste render.
   const openFindRef = useRef<(prefill?: string) => void>(() => {});
+  const taskStatsRef = useRef({ taskCount: 0, completedTaskCount: 0 });
+  const taskStatsTimeoutRef = useRef<number | null>(null);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+
+  useEffect(() => {
+    return () => {
+      if (taskStatsTimeoutRef.current !== null) {
+        window.clearTimeout(taskStatsTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const resolveImageSource = useCallback(async (file: File): Promise<string> => {
       if (!file.type.startsWith('image/')) throw new Error(`“${file.name}” is not an image.`);
@@ -107,6 +119,9 @@ export const TipTapEditor = forwardRef<TipTapEditorHandle, TipTapEditorProps>(({
       SearchHighlightExtension
     ],
     content: content || '<p></p>',
+    onCreate: ({ editor }) => {
+      taskStatsRef.current = extractTipTapTaskStats(editor.getJSON());
+    },
     editorProps: {
       handleKeyDown: (_view, event) => {
         if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === 'f') {
@@ -153,9 +168,23 @@ export const TipTapEditor = forwardRef<TipTapEditorHandle, TipTapEditorProps>(({
       const html = editor.getHTML();
       const plainText = editor.getText();
 
-      const { taskCount, completedTaskCount } = extractTipTapTaskStats(editor.getJSON());
+      // Immediately propagate HTML & plainText so the draft ref stays fresh
+      onChangeRef.current(html, plainText, taskStatsRef.current.taskCount, taskStatsRef.current.completedTaskCount);
 
-      onChange(html, plainText, taskCount, completedTaskCount);
+      // Debounce expensive full-AST task count extraction (300ms)
+      if (taskStatsTimeoutRef.current !== null) {
+        window.clearTimeout(taskStatsTimeoutRef.current);
+      }
+      taskStatsTimeoutRef.current = window.setTimeout(() => {
+        taskStatsTimeoutRef.current = null;
+        if (!editor.isDestroyed) {
+          const stats = extractTipTapTaskStats(editor.getJSON());
+          if (stats.taskCount !== taskStatsRef.current.taskCount || stats.completedTaskCount !== taskStatsRef.current.completedTaskCount) {
+            taskStatsRef.current = stats;
+            onChangeRef.current(editor.getHTML(), editor.getText(), stats.taskCount, stats.completedTaskCount);
+          }
+        }
+      }, 300);
 
       const search = getSearchHighlightState(editor.state);
       if (search && search.searchTerm) {
@@ -163,7 +192,16 @@ export const TipTapEditor = forwardRef<TipTapEditorHandle, TipTapEditorProps>(({
         setFindActiveMatchIndex(search.activeMatchIndex);
       }
     },
-    onBlur: () => {
+    onBlur: ({ editor }) => {
+      if (taskStatsTimeoutRef.current !== null) {
+        window.clearTimeout(taskStatsTimeoutRef.current);
+        taskStatsTimeoutRef.current = null;
+        if (!editor.isDestroyed) {
+          const stats = extractTipTapTaskStats(editor.getJSON());
+          taskStatsRef.current = stats;
+          onChangeRef.current(editor.getHTML(), editor.getText(), stats.taskCount, stats.completedTaskCount);
+        }
+      }
       if (onBlur) onBlur();
     }
   }, [resolveImageSource]);
@@ -259,6 +297,7 @@ export const TipTapEditor = forwardRef<TipTapEditorHandle, TipTapEditorProps>(({
   useEffect(() => {
     if (editor && !editor.isFocused && content !== editor.getHTML()) {
       editor.commands.setContent(content || '<p></p>');
+      taskStatsRef.current = extractTipTapTaskStats(editor.getJSON());
     }
   }, [content, editor]);
 

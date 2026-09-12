@@ -171,6 +171,15 @@ describe('local data safety operations', () => {
     expect((await db.blocks.get('root'))?.tags).toEqual(['belangrijk']);
   });
 
+  it('supports skipWikiSync option to avoid wiki-link sync overhead on silent saves', async () => {
+    await saveBlockDraft('root', {
+      title: 'Silent update', content: '<p>[[Child]]</p>', plainText: '[[Child]]',
+      taskCount: 0, completedTaskCount: 0, tags: []
+    }, { skipWikiSync: true });
+    expect((await db.blocks.get('root'))?.title).toBe('Silent update');
+    expect(await db.links.where('sourceBlockId').equals('root').count()).toBe(0);
+  });
+
   it('marks a block and its active descendants as read without touching siblings', async () => {
     await db.blocks.add({
       ...block('grandchild', 'child', 0),
